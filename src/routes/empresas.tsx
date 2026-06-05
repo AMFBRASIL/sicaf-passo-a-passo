@@ -462,7 +462,11 @@ function EmpresaDetalhesSheet({
                       <h4 className="text-lg font-bold">Documentos</h4>
                       <p className="text-sm text-muted-foreground">Arquivos vinculados a esta empresa.</p>
                     </div>
-                    <Button size="sm" className="gap-2"><Plus className="h-4 w-4" /> Enviar</Button>
+                    <Button asChild size="sm" className="gap-2" onClick={() => onOpenChange(false)}>
+                      <Link to="/documentos" search={{ cnpj: empresa.cnpj }}>
+                        <Plus className="h-4 w-4" /> Enviar
+                      </Link>
+                    </Button>
                   </div>
                   <div className="space-y-2">
                     <SectionItemRow status="ok" title="Contrato Social.pdf" desc="Enviado em 12/03/2025" action={{ label: "Ver" }} />
