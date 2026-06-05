@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Building2, ChevronRight, Edit3, FileText, MapPin, Plus, Rocket, Save, RefreshCw, ShieldCheck, User, X } from "lucide-react";
+import { Building2, ChevronRight, Edit3, FileText, MapPin, Plus, Rocket, Save, RefreshCw, ShieldCheck, User, X, Search, Loader2, QrCode, Receipt, Check, ArrowRight, ArrowLeft, Sparkles, CheckCircle2, Mail, Phone, Briefcase, Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import { PageHeader, StatusBadge } from "@/components/page-header";
 
 export const Route = createFileRoute("/empresas")({
