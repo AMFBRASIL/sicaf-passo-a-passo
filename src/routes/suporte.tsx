@@ -76,20 +76,42 @@ const prioridades = [
   { id: "alta", label: "Alta", desc: "Está me impedindo de trabalhar", cor: "border-destructive/40" },
 ];
 
+type Anexo = { id: string; name: string; size: number; type: string };
+
+const steps = [
+  { id: 1, title: "Categoria", desc: "Sobre o que é o chamado?" },
+  { id: 2, title: "Urgência", desc: "Qual a prioridade?" },
+  { id: 3, title: "Detalhes", desc: "Conte o que aconteceu" },
+  { id: 4, title: "Anexos", desc: "Documentos, prints, PDFs" },
+  { id: 5, title: "Revisão", desc: "Confira e envie" },
+];
+
 function NovoChamadoDialog() {
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState(1);
   const [categoria, setCategoria] = useState<string | null>(null);
   const [prioridade, setPrioridade] = useState<string>("media");
   const [assunto, setAssunto] = useState("");
   const [mensagem, setMensagem] = useState("");
+  const [anexos, setAnexos] = useState<Anexo[]>([]);
+  const [drag, setDrag] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const podeEnviar = categoria && assunto.trim().length > 3 && mensagem.trim().length > 10;
+  const total = steps.length;
+  const podeAvancar =
+    (step === 1 && !!categoria) ||
+    (step === 2 && !!prioridade) ||
+    (step === 3 && assunto.trim().length > 3 && mensagem.trim().length > 10) ||
+    step === 4 ||
+    step === 5;
 
   const reset = () => {
+    setStep(1);
     setCategoria(null);
     setPrioridade("media");
     setAssunto("");
     setMensagem("");
+    setAnexos([]);
   };
 
   const enviar = () => {
@@ -97,6 +119,20 @@ function NovoChamadoDialog() {
     reset();
     setOpen(false);
   };
+
+  const addFiles = (files: FileList | null) => {
+    if (!files) return;
+    const novos: Anexo[] = Array.from(files).map((f) => ({
+      id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2, 7)}`,
+      name: f.name,
+      size: f.size,
+      type: f.type,
+    }));
+    setAnexos((prev) => [...prev, ...novos]);
+  };
+
+  const catSel = categorias.find((c) => c.id === categoria);
+  const priSel = prioridades.find((p) => p.id === prioridade);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
@@ -106,132 +142,501 @@ function NovoChamadoDialog() {
           Abrir chamado
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[92vh] overflow-y-auto p-0 sm:max-w-2xl">
-        <div className="border-b bg-gradient-to-br from-primary/5 to-transparent px-6 py-5">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">Abrir novo chamado</DialogTitle>
-            <DialogDescription className="text-base">
-              Conte o que está acontecendo. Nosso time responde em até 1 hora útil.
-            </DialogDescription>
-          </DialogHeader>
-        </div>
+      <DialogContent
+        className="overflow-hidden p-0 sm:max-w-[960px] lg:max-w-[1080px] [&>button]:z-30 [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100"
+      >
+        <div className="grid h-[88vh] max-h-[760px] grid-cols-1 lg:grid-cols-[340px_1fr]">
+          {/* LEFT — wizard sidebar with bg image */}
+          <aside
+            className="relative hidden flex-col justify-between overflow-hidden p-7 text-white lg:flex"
+            style={{
+              backgroundImage: `url(${wizardBg})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/55 to-black/80" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_60%)]" />
 
-        <div className="space-y-7 px-6 py-6">
-          {/* Categoria */}
-          <section>
-            <Label className="mb-3 block text-sm font-semibold">
-              1. Qual o assunto? <span className="text-destructive">*</span>
-            </Label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {categorias.map((c) => {
-                const Icon = c.icon;
-                const ativo = categoria === c.id;
+            {/* Top brand */}
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/70">
+                <Headphones className="h-4 w-4" />
+                Suporte CADBRASIL
+              </div>
+              <h2 className="mt-4 text-3xl font-bold leading-tight">
+                Vamos resolver<br />juntos.
+              </h2>
+              <p className="mt-2 text-sm text-white/75">
+                Resposta em até <span className="font-semibold text-white">1 hora útil</span>.
+              </p>
+            </div>
+
+            {/* Stepper */}
+            <ol className="relative z-10 space-y-1">
+              {steps.map((s, i) => {
+                const done = step > s.id;
+                const active = step === s.id;
                 return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setCategoria(c.id)}
-                    className={cn(
-                      "group flex items-start gap-3 rounded-xl border-2 p-4 text-left transition-all hover:border-primary/50 hover:bg-primary/5",
-                      ativo ? "border-primary bg-primary/10 shadow-sm" : "border-border bg-card",
+                  <li key={s.id} className="relative">
+                    {i < steps.length - 1 && (
+                      <span
+                        className={cn(
+                          "absolute left-[14px] top-9 h-7 w-px",
+                          done ? "bg-white/60" : "bg-white/15",
+                        )}
+                      />
                     )}
-                  >
-                    <div className={cn("rounded-lg bg-muted p-2 transition-colors", ativo && "bg-primary/15")}>
-                      <Icon className={cn("h-5 w-5", c.cor)} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold leading-tight">{c.titulo}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{c.descricao}</p>
-                    </div>
-                    {ativo && <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={s.id > step}
+                      onClick={() => setStep(s.id)}
+                      className={cn(
+                        "group flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition",
+                        active && "bg-white/10",
+                        s.id < step && "hover:bg-white/5",
+                        s.id > step && "cursor-not-allowed opacity-60",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition",
+                          done && "border-white bg-white text-primary",
+                          active && "border-white bg-white/15 text-white",
+                          !done && !active && "border-white/30 text-white/70",
+                        )}
+                      >
+                        {done ? <CheckCircle2 className="h-4 w-4" /> : s.id}
+                      </span>
+                      <span className="min-w-0">
+                        <span className={cn("block text-sm font-semibold leading-tight", active ? "text-white" : "text-white/85")}>
+                          {s.title}
+                        </span>
+                        <span className="block truncate text-[11px] text-white/55">{s.desc}</span>
+                      </span>
+                    </button>
+                  </li>
                 );
               })}
-            </div>
-          </section>
+            </ol>
 
-          {/* Prioridade */}
-          <section>
-            <Label className="mb-3 block text-sm font-semibold">2. Qual a urgência?</Label>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {prioridades.map((p) => {
-                const ativo = prioridade === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setPrioridade(p.id)}
+            {/* Bottom badge */}
+            <div className="relative z-10 rounded-xl border border-white/15 bg-white/5 p-3 backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                <Zap className="h-4 w-4 text-warning" />
+                Atendimento humano
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-white/70">
+                Especialistas em licitações disponíveis seg–sex, 8h às 18h.
+              </p>
+            </div>
+          </aside>
+
+          {/* RIGHT — content */}
+          <div className="flex h-full min-h-0 flex-col">
+            {/* Header */}
+            <header className="flex items-center justify-between border-b px-6 py-4 sm:px-8 sm:py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                  Etapa {step} de {total}
+                </p>
+                <h3 className="mt-0.5 text-xl font-bold tracking-tight">{steps[step - 1].title}</h3>
+              </div>
+              <div className="hidden items-center gap-1 sm:flex">
+                {steps.map((s) => (
+                  <span
+                    key={s.id}
                     className={cn(
-                      "rounded-xl border-2 p-3 text-left transition-all hover:border-primary/50",
-                      ativo ? "border-primary bg-primary/5" : p.cor,
+                      "h-1.5 w-6 rounded-full transition-all",
+                      s.id < step && "bg-primary",
+                      s.id === step && "w-10 bg-primary",
+                      s.id > step && "bg-muted",
                     )}
-                  >
-                    <p className="font-semibold">{p.label}</p>
-                    <p className="text-xs text-muted-foreground">{p.desc}</p>
-                  </button>
-                );
-              })}
+                  />
+                ))}
+              </div>
+            </header>
+
+            {/* Step content (scroll) */}
+            <div className="flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-7">
+              {step === 1 && (
+                <StepCategoria selected={categoria} onSelect={setCategoria} />
+              )}
+              {step === 2 && (
+                <StepPrioridade selected={prioridade} onSelect={setPrioridade} />
+              )}
+              {step === 3 && (
+                <StepDetalhes
+                  assunto={assunto}
+                  mensagem={mensagem}
+                  onAssunto={setAssunto}
+                  onMensagem={setMensagem}
+                />
+              )}
+              {step === 4 && (
+                <StepAnexos
+                  anexos={anexos}
+                  drag={drag}
+                  setDrag={setDrag}
+                  addFiles={addFiles}
+                  remove={(id) => setAnexos((a) => a.filter((x) => x.id !== id))}
+                  fileRef={fileRef}
+                />
+              )}
+              {step === 5 && (
+                <StepRevisao
+                  categoria={catSel?.titulo}
+                  prioridade={priSel?.label}
+                  assunto={assunto}
+                  mensagem={mensagem}
+                  anexos={anexos}
+                />
+              )}
             </div>
-          </section>
 
-          {/* Assunto */}
-          <section className="space-y-2">
-            <Label htmlFor="assunto" className="text-sm font-semibold">
-              3. Resuma em uma frase <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="assunto"
-              placeholder="Ex.: Não consigo atualizar meu SICAF"
-              value={assunto}
-              onChange={(e) => setAssunto(e.target.value)}
-              className="h-12 text-base"
-            />
-          </section>
-
-          {/* Mensagem */}
-          <section className="space-y-2">
-            <Label htmlFor="mensagem" className="text-sm font-semibold">
-              4. Descreva com detalhes <span className="text-destructive">*</span>
-            </Label>
-            <Textarea
-              id="mensagem"
-              placeholder="Conte o que você estava fazendo, o que aconteceu e qualquer mensagem de erro que apareceu. Quanto mais detalhes, mais rápido resolvemos."
-              value={mensagem}
-              onChange={(e) => setMensagem(e.target.value)}
-              className="min-h-[160px] resize-none text-base leading-relaxed"
-            />
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            {/* Footer nav */}
+            <footer className="flex items-center justify-between gap-3 border-t bg-muted/30 px-6 py-4 sm:px-8">
+              <Button
+                variant="ghost"
+                onClick={() => (step === 1 ? setOpen(false) : setStep((s) => s - 1))}
+                className="gap-1.5"
               >
-                <Paperclip className="h-3.5 w-3.5" />
-                Anexar print ou documento
-              </button>
-              <span className="text-xs text-muted-foreground">{mensagem.length} caracteres</span>
-            </div>
-          </section>
+                <ArrowLeft className="h-4 w-4" />
+                {step === 1 ? "Cancelar" : "Voltar"}
+              </Button>
 
-          {/* Aviso */}
-          <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <p className="text-muted-foreground">
-              Responderemos no seu e-mail cadastrado e também aqui no portal, em <strong className="text-foreground">Suporte → Seus chamados</strong>.
-            </p>
+              {step < total ? (
+                <Button
+                  size="lg"
+                  disabled={!podeAvancar}
+                  onClick={() => setStep((s) => Math.min(total, s + 1))}
+                  className="gap-1.5"
+                >
+                  Próximo
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button size="lg" onClick={enviar} className="gap-2">
+                  <Send className="h-4 w-4" />
+                  Enviar chamado
+                </Button>
+              )}
+            </footer>
           </div>
         </div>
-
-        <DialogFooter className="sticky bottom-0 gap-2 border-t bg-background/95 px-6 py-4 backdrop-blur sm:justify-between">
-          <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button size="lg" disabled={!podeEnviar} onClick={enviar} className="gap-2">
-            <CheckCircle2 className="h-4 w-4" />
-            Enviar chamado
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
+/* ───────── Step components ───────── */
+
+function StepCategoria({
+  selected, onSelect,
+}: { selected: string | null; onSelect: (id: string) => void }) {
+  return (
+    <div>
+      <p className="text-sm text-muted-foreground">
+        Escolha o tipo de assunto. Isso ajuda a direcionar para o especialista certo.
+      </p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        {categorias.map((c) => {
+          const Icon = c.icon;
+          const ativo = selected === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onSelect(c.id)}
+              className={cn(
+                "group relative flex items-start gap-4 overflow-hidden rounded-2xl border-2 p-5 text-left transition-all",
+                "hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lift",
+                ativo
+                  ? "border-primary bg-primary/5 shadow-lift"
+                  : "border-border bg-card",
+              )}
+            >
+              <div
+                className={cn(
+                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-colors",
+                  ativo ? "bg-primary/15" : "bg-muted",
+                )}
+              >
+                <Icon className={cn("h-6 w-6", c.cor)} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold leading-tight">{c.titulo}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{c.descricao}</p>
+              </div>
+              {ativo && (
+                <span className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StepPrioridade({
+  selected, onSelect,
+}: { selected: string; onSelect: (id: string) => void }) {
+  return (
+    <div>
+      <p className="text-sm text-muted-foreground">
+        Isso define a fila de atendimento. Use "Alta" só quando estiver travado.
+      </p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        {prioridades.map((p) => {
+          const ativo = selected === p.id;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onSelect(p.id)}
+              className={cn(
+                "relative overflow-hidden rounded-2xl border-2 p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-lift",
+                ativo ? "border-primary bg-primary/5 shadow-lift" : "border-border bg-card",
+              )}
+            >
+              <div
+                className={cn(
+                  "mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl",
+                  p.id === "alta" && "bg-destructive/15 text-destructive",
+                  p.id === "media" && "bg-warning/15 text-warning-foreground",
+                  p.id === "baixa" && "bg-success/15 text-success",
+                )}
+              >
+                <Zap className="h-5 w-5" />
+              </div>
+              <p className="text-lg font-semibold">{p.label}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{p.desc}</p>
+              {ativo && (
+                <span className="absolute right-3 top-3 inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StepDetalhes({
+  assunto, mensagem, onAssunto, onMensagem,
+}: {
+  assunto: string; mensagem: string;
+  onAssunto: (v: string) => void; onMensagem: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <Label htmlFor="assunto" className="text-sm font-semibold">
+          Resuma em uma frase <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          id="assunto"
+          placeholder="Ex.: Não consigo atualizar meu SICAF"
+          value={assunto}
+          onChange={(e) => onAssunto(e.target.value)}
+          className="h-12 text-base"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="mensagem" className="text-sm font-semibold">
+          Descreva com detalhes <span className="text-destructive">*</span>
+        </Label>
+        <Textarea
+          id="mensagem"
+          placeholder="Conte o que você estava fazendo, o que aconteceu e qualquer mensagem de erro. Quanto mais detalhes, mais rápido resolvemos."
+          value={mensagem}
+          onChange={(e) => onMensagem(e.target.value)}
+          className="min-h-[200px] resize-none text-base leading-relaxed"
+        />
+        <p className="text-right text-xs text-muted-foreground">{mensagem.length} caracteres</p>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <p className="text-muted-foreground">
+          Responderemos no seu e-mail cadastrado e também aqui no portal, em{" "}
+          <strong className="text-foreground">Suporte → Seus chamados</strong>.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function StepAnexos({
+  anexos, drag, setDrag, addFiles, remove, fileRef,
+}: {
+  anexos: Anexo[];
+  drag: boolean;
+  setDrag: (v: boolean) => void;
+  addFiles: (files: FileList | null) => void;
+  remove: (id: string) => void;
+  fileRef: React.RefObject<HTMLInputElement | null>;
+}) {
+  return (
+    <div className="space-y-5">
+      <p className="text-sm text-muted-foreground">
+        Anexe prints, PDFs, planilhas ou qualquer arquivo que ajude a entender o problema. Opcional.
+      </p>
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDrag(false);
+          addFiles(e.dataTransfer.files);
+        }}
+        onClick={() => fileRef.current?.click()}
+        className={cn(
+          "group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-10 text-center transition-all",
+          drag
+            ? "border-primary bg-primary/10"
+            : "border-border bg-muted/30 hover:border-primary/50 hover:bg-primary/5",
+        )}
+      >
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary transition-transform group-hover:scale-105">
+          <Upload className="h-7 w-7" />
+        </div>
+        <p className="mt-4 text-base font-semibold">
+          Arraste arquivos aqui ou <span className="text-primary underline-offset-4 hover:underline">clique para selecionar</span>
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          PDF, PNG, JPG, DOCX, XLSX — até 20 MB cada
+        </p>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.doc,.xls"
+          className="hidden"
+          onChange={(e) => addFiles(e.target.files)}
+        />
+      </div>
+
+      {anexos.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {anexos.length} arquivo{anexos.length > 1 ? "s" : ""} anexado{anexos.length > 1 ? "s" : ""}
+          </p>
+          <ul className="space-y-2">
+            {anexos.map((a) => {
+              const isImg = a.type.startsWith("image/");
+              const isPdf = a.type === "application/pdf" || a.name.toLowerCase().endsWith(".pdf");
+              return (
+                <li
+                  key={a.id}
+                  className="flex items-center gap-3 rounded-xl border bg-card p-3 transition hover:border-primary/40"
+                >
+                  <div
+                    className={cn(
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                      isPdf && "bg-destructive/10 text-destructive",
+                      isImg && "bg-primary/10 text-primary",
+                      !isPdf && !isImg && "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {isImg ? <ImageIcon className="h-5 w-5" /> : isPdf ? <FileText className="h-5 w-5" /> : <FileIcon className="h-5 w-5" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{a.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatBytes(a.size)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => remove(a.id)}
+                    className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                    aria-label="Remover"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepRevisao({
+  categoria, prioridade, assunto, mensagem, anexos,
+}: {
+  categoria?: string; prioridade?: string;
+  assunto: string; mensagem: string; anexos: Anexo[];
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Confira as informações abaixo antes de enviar.
+      </p>
+
+      <div className="space-y-3 rounded-2xl border bg-card p-5">
+        <ReviewRow label="Categoria" value={categoria ?? "—"} />
+        <ReviewRow label="Urgência" value={prioridade ?? "—"} />
+        <ReviewRow label="Assunto" value={assunto || "—"} />
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mensagem</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{mensagem || "—"}</p>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Anexos ({anexos.length})
+          </p>
+          {anexos.length === 0 ? (
+            <p className="mt-1 text-sm text-muted-foreground">Nenhum arquivo anexado</p>
+          ) : (
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {anexos.map((a) => (
+                <li
+                  key={a.id}
+                  className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs"
+                >
+                  <Paperclip className="h-3 w-3 text-muted-foreground" />
+                  {a.name}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-xl border border-success/30 bg-success/5 p-3 text-sm">
+        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+        <p className="text-muted-foreground">
+          Tudo certo? Ao enviar, você recebe um número de protocolo e acompanha aqui no portal.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-sm font-medium">{value}</p>
+    </div>
+  );
+}
+
+function formatBytes(b: number) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 
 function SupportPage() {
   return (
