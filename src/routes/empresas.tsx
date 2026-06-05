@@ -25,7 +25,7 @@ export const Route = createFileRoute("/empresas")({
 
 type SicafStatus = "ativo" | "atencao" | "vencido" | "sem_cadastro";
 
-interface EmpresaData {
+export interface EmpresaData {
   nome: string;
   cnpj: string;
   sicaf: SicafStatus;
