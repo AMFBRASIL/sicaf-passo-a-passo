@@ -119,6 +119,55 @@ const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | 
   sem_cadastro: { label: "Sem cadastro SICAF", status: "idle" },
 };
 
+type SectionId = "visao" | "faltam" | "documentos" | "manutencao" | "certidoes" | "pagamento";
+
+const sectionMenu: { id: SectionId; label: string; icon: typeof FileText; badge?: string; tone?: "warn" | "danger" | "ok" }[] = [
+  { id: "visao", label: "Visão geral", icon: Building2 },
+  { id: "faltam", label: "O que falta", icon: Sparkles, badge: "3", tone: "warn" },
+  { id: "documentos", label: "Documentos", icon: FileText },
+  { id: "manutencao", label: "Manutenção", icon: RefreshCw, badge: "ativo", tone: "ok" },
+  { id: "certidoes", label: "Certidões", icon: ShieldCheck, badge: "1", tone: "danger" },
+  { id: "pagamento", label: "Pagamento", icon: Receipt },
+];
+
+function SectionItemRow({
+  title,
+  desc,
+  status,
+  action,
+}: {
+  title: string;
+  desc?: string;
+  status: "ok" | "warn" | "danger" | "idle";
+  action?: { label: string; onClick?: () => void };
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-xl border bg-card p-4">
+      <div className="flex items-start gap-3 min-w-0">
+        <div className={`mt-0.5 h-9 w-9 shrink-0 rounded-lg flex items-center justify-center ${
+          status === "ok" ? "bg-success/15 text-success" :
+          status === "warn" ? "bg-warning/15 text-warning-foreground" :
+          status === "danger" ? "bg-danger/15 text-danger" :
+          "bg-muted text-muted-foreground"
+        }`}>
+          {status === "ok" ? <CheckCircle2 className="h-5 w-5" /> :
+           status === "danger" ? <X className="h-5 w-5" /> :
+           <ShieldCheck className="h-5 w-5" />}
+        </div>
+        <div className="min-w-0">
+          <p className="font-medium text-sm leading-tight">{title}</p>
+          {desc && <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>}
+        </div>
+      </div>
+      {action && (
+        <Button size="sm" variant="outline" onClick={action.onClick} className="shrink-0">
+          {action.label}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function EmpresaDetalhesSheet({
   empresa,
   open,
@@ -130,39 +179,27 @@ function EmpresaDetalhesSheet({
 }) {
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState<Partial<EmpresaData>>({});
+  const [section, setSection] = useState<SectionId>("visao");
 
   const startEditing = () => {
     if (!empresa) return;
     setForm({ ...empresa });
     setEditando(true);
   };
-
-  const cancelEditing = () => {
-    setEditando(false);
-    setForm({});
-  };
-
-  const saveEditing = () => {
-    // Aqui viria a chamada ao backend para salvar
-    setEditando(false);
-    setForm({});
-  };
-
-  const updateField = (field: keyof EmpresaData, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  };
+  const cancelEditing = () => { setEditando(false); setForm({}); };
+  const saveEditing = () => { setEditando(false); setForm({}); };
+  const updateField = (field: keyof EmpresaData, value: string) => setForm((p) => ({ ...p, [field]: value }));
 
   if (!empresa) return null;
-
   const meta = statusLabel[empresa.sicaf];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-xl md:max-w-2xl p-0 flex flex-col">
+      <SheetContent className="w-full sm:max-w-3xl md:max-w-4xl p-0 flex flex-col">
         <SheetHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <SheetTitle className="text-xl leading-tight">{empresa.nome}</SheetTitle>
+            <div className="min-w-0">
+              <SheetTitle className="text-xl leading-tight truncate">{empresa.nome}</SheetTitle>
               <SheetDescription className="mt-1">
                 CNPJ {empresa.cnpj} · <StatusBadge status={meta.status}>{meta.label}</StatusBadge>
               </SheetDescription>
@@ -170,241 +207,229 @@ function EmpresaDetalhesSheet({
           </div>
         </SheetHeader>
 
-        <ScrollArea className="flex-1 px-6 py-5">
-          {!editando ? (
-            <div className="space-y-6">
-              {/* SICAF */}
-              <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <ShieldCheck className="h-4 w-4 text-primary" />
-                  Situação SICAF
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Status</p>
-                    <p className="text-sm font-medium mt-0.5"><StatusBadge status={meta.status}>{meta.label}</StatusBadge></p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Validade</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.validade ?? "—"}</p>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <p className="text-xs text-muted-foreground">Próximo passo</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.proximoPasso}</p>
-                  </div>
-                </div>
-              </div>
+        <div className="flex flex-1 min-h-0">
+          {/* Menu lateral */}
+          <nav className="hidden md:flex w-56 shrink-0 flex-col border-r bg-muted/30 p-3 gap-1">
+            {sectionMenu.map((s) => {
+              const Icon = s.icon;
+              const active = s.id === section;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => { setSection(s.id); setEditando(false); }}
+                  className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm text-left transition ${
+                    active ? "bg-primary text-primary-foreground shadow-soft" : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{s.label}</span>
+                  </span>
+                  {s.badge && (
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                      active ? "bg-primary-foreground/20 text-primary-foreground" :
+                      s.tone === "danger" ? "bg-danger/15 text-danger" :
+                      s.tone === "warn" ? "bg-warning/20 text-warning-foreground" :
+                      s.tone === "ok" ? "bg-success/15 text-success" :
+                      "bg-muted text-muted-foreground"
+                    }`}>{s.badge}</span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
 
-              <Separator />
+          {/* Mobile section tabs */}
+          <div className="md:hidden absolute top-[88px] left-0 right-0 border-b bg-card px-3 py-2 overflow-x-auto flex gap-2 z-10">
+            {sectionMenu.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => { setSection(s.id); setEditando(false); }}
+                className={`shrink-0 text-xs px-3 py-1.5 rounded-full ${section === s.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
 
-              {/* Dados cadastrais */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <FileText className="h-4 w-4 text-primary" />
-                  Dados Cadastrais
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Razão Social / Nome Fantasia</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.nome}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">CNPJ</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.cnpj}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Inscrição Estadual</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.inscricaoEstadual}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Inscrição Municipal</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.inscricaoMunicipal}</p>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <p className="text-xs text-muted-foreground">Ramo de Atividade</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.ramoAtividade}</p>
-                  </div>
-                </div>
-              </div>
+          <ScrollArea className="flex-1 md:pt-0 pt-12">
+            <div className="px-6 py-6 space-y-6">
 
-              <Separator />
-
-              {/* Endereço */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <MapPin className="h-4 w-4 text-primary" />
-                  Endereço e Contato
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <p className="text-xs text-muted-foreground">Endereço</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.endereco}</p>
+              {section === "visao" && !editando && (
+                <div className="space-y-6">
+                  <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="h-4 w-4 text-primary" />Situação SICAF</div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div><p className="text-xs text-muted-foreground">Status</p><p className="text-sm font-medium mt-0.5"><StatusBadge status={meta.status}>{meta.label}</StatusBadge></p></div>
+                      <div><p className="text-xs text-muted-foreground">Validade</p><p className="text-sm font-medium mt-0.5">{empresa.validade ?? "—"}</p></div>
+                      <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Próximo passo</p><p className="text-sm font-medium mt-0.5">{empresa.proximoPasso}</p></div>
+                    </div>
                   </div>
+                  <Separator />
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold"><FileText className="h-4 w-4 text-primary" />Dados Cadastrais</div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div><p className="text-xs text-muted-foreground">Razão Social</p><p className="text-sm font-medium mt-0.5">{empresa.nome}</p></div>
+                      <div><p className="text-xs text-muted-foreground">CNPJ</p><p className="text-sm font-medium mt-0.5">{empresa.cnpj}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Inscrição Estadual</p><p className="text-sm font-medium mt-0.5">{empresa.inscricaoEstadual}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Inscrição Municipal</p><p className="text-sm font-medium mt-0.5">{empresa.inscricaoMunicipal}</p></div>
+                      <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Ramo de Atividade</p><p className="text-sm font-medium mt-0.5">{empresa.ramoAtividade}</p></div>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold"><MapPin className="h-4 w-4 text-primary" />Endereço e Contato</div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Endereço</p><p className="text-sm font-medium mt-0.5">{empresa.endereco}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Cidade / UF</p><p className="text-sm font-medium mt-0.5">{empresa.cidade} / {empresa.uf}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Telefone</p><p className="text-sm font-medium mt-0.5">{empresa.telefone}</p></div>
+                      <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">E-mail</p><p className="text-sm font-medium mt-0.5">{empresa.email}</p></div>
+                      <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Responsável legal</p><p className="text-sm font-medium mt-0.5">{empresa.responsavel}</p></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {section === "visao" && editando && (
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5 sm:col-span-2"><Label>Razão Social</Label><Input value={form.nome ?? ""} onChange={(e) => updateField("nome", e.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>CNPJ</Label><Input value={form.cnpj ?? ""} onChange={(e) => updateField("cnpj", e.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>Ramo</Label><Input value={form.ramoAtividade ?? ""} onChange={(e) => updateField("ramoAtividade", e.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>IE</Label><Input value={form.inscricaoEstadual ?? ""} onChange={(e) => updateField("inscricaoEstadual", e.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>IM</Label><Input value={form.inscricaoMunicipal ?? ""} onChange={(e) => updateField("inscricaoMunicipal", e.target.value)} /></div>
+                    <div className="space-y-1.5 sm:col-span-2"><Label>Endereço</Label><Input value={form.endereco ?? ""} onChange={(e) => updateField("endereco", e.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>Cidade</Label><Input value={form.cidade ?? ""} onChange={(e) => updateField("cidade", e.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>UF</Label><Input maxLength={2} value={form.uf ?? ""} onChange={(e) => updateField("uf", e.target.value.toUpperCase())} /></div>
+                    <div className="space-y-1.5"><Label>Telefone</Label><Input value={form.telefone ?? ""} onChange={(e) => updateField("telefone", e.target.value)} /></div>
+                    <div className="space-y-1.5"><Label>E-mail</Label><Input type="email" value={form.email ?? ""} onChange={(e) => updateField("email", e.target.value)} /></div>
+                    <div className="space-y-1.5 sm:col-span-2"><Label>Responsável</Label><Input value={form.responsavel ?? ""} onChange={(e) => updateField("responsavel", e.target.value)} /></div>
+                  </div>
+                </div>
+              )}
+
+              {section === "faltam" && (
+                <div className="space-y-4">
                   <div>
-                    <p className="text-xs text-muted-foreground">Cidade / UF</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.cidade} / {empresa.uf}</p>
+                    <h4 className="text-lg font-bold">O que falta para ficar 100%</h4>
+                    <p className="text-sm text-muted-foreground">Pendências detectadas para esta empresa.</p>
                   </div>
+                  <div className="space-y-2">
+                    <SectionItemRow status="warn" title="Atualizar Nível III - Qualificação Técnica" desc="Vence em 28/02/2026" action={{ label: "Resolver" }} />
+                    <SectionItemRow status="danger" title="Certidão de Débitos Trabalhistas vencida" desc="Necessária para emitir SICAF" action={{ label: "Enviar agora" }} />
+                    <SectionItemRow status="warn" title="Atualizar contrato social" desc="Versão mais recente não enviada" action={{ label: "Anexar" }} />
+                  </div>
+                </div>
+              )}
+
+              {section === "documentos" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-lg font-bold">Documentos</h4>
+                      <p className="text-sm text-muted-foreground">Arquivos vinculados a esta empresa.</p>
+                    </div>
+                    <Button size="sm" className="gap-2"><Plus className="h-4 w-4" /> Enviar</Button>
+                  </div>
+                  <div className="space-y-2">
+                    <SectionItemRow status="ok" title="Contrato Social.pdf" desc="Enviado em 12/03/2025" action={{ label: "Ver" }} />
+                    <SectionItemRow status="ok" title="Cartão CNPJ.pdf" desc="Atualizado em 02/01/2026" action={{ label: "Ver" }} />
+                    <SectionItemRow status="ok" title="Procuração.pdf" desc="Válida até 31/12/2026" action={{ label: "Ver" }} />
+                    <SectionItemRow status="idle" title="Balanço Patrimonial 2025" desc="Não enviado" action={{ label: "Enviar" }} />
+                  </div>
+                </div>
+              )}
+
+              {section === "manutencao" && (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-success/40 bg-success/5 p-5 flex items-start gap-3">
+                    <CheckCircle2 className="h-6 w-6 text-success shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold">Manutenção ativa</p>
+                      <p className="text-sm text-muted-foreground">Renovação automática em 15/01/2026 — R$ 149,00/mês</p>
+                    </div>
+                    <Button size="sm" variant="outline">Gerenciar</Button>
+                  </div>
+                  <Separator />
                   <div>
-                    <p className="text-xs text-muted-foreground">Telefone</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.telefone}</p>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <p className="text-xs text-muted-foreground">E-mail</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.email}</p>
+                    <h4 className="text-base font-semibold mb-3">Últimas ações da CADBRASIL</h4>
+                    <div className="space-y-2">
+                      <SectionItemRow status="ok" title="Renovação SICAF Nível I e II" desc="Concluída em 02/01/2026" />
+                      <SectionItemRow status="ok" title="Atualização cadastral mensal" desc="15/12/2025" />
+                      <SectionItemRow status="ok" title="Verificação de certidões" desc="01/12/2025" />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              <Separator />
-
-              {/* Responsável */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <User className="h-4 w-4 text-primary" />
-                  Responsável
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <p className="text-xs text-muted-foreground">Nome do responsável legal</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.responsavel}</p>
+              {section === "certidoes" && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-lg font-bold">Situação das certidões</h4>
+                    <p className="text-sm text-muted-foreground">Monitoramos a validade de todas as certidões obrigatórias.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <SectionItemRow status="ok" title="Receita Federal (Conjunta)" desc="Válida até 12/05/2026" action={{ label: "Baixar" }} />
+                    <SectionItemRow status="ok" title="FGTS (CRF)" desc="Válida até 03/04/2026" action={{ label: "Baixar" }} />
+                    <SectionItemRow status="danger" title="Trabalhista (CNDT)" desc="Vencida em 14/11/2025" action={{ label: "Renovar" }} />
+                    <SectionItemRow status="ok" title="Estadual" desc="Válida até 20/06/2026" action={{ label: "Baixar" }} />
+                    <SectionItemRow status="warn" title="Municipal" desc="Vence em 22 dias" action={{ label: "Renovar" }} />
                   </div>
                 </div>
-              </div>
+              )}
+
+              {section === "pagamento" && (
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border bg-card p-4">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">Próxima cobrança</p>
+                      <p className="text-2xl font-bold mt-1">R$ 149,00</p>
+                      <p className="text-xs text-muted-foreground mt-1">Manutenção · 15/01/2026</p>
+                    </div>
+                    <div className="rounded-xl border bg-card p-4">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground">Licença anual</p>
+                      <p className="text-2xl font-bold mt-1">R$ 985,00</p>
+                      <p className="text-xs text-muted-foreground mt-1">Renova em 02/01/2027</p>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div>
+                    <h4 className="text-base font-semibold mb-3">Histórico</h4>
+                    <div className="space-y-2">
+                      <SectionItemRow status="ok" title="Manutenção SICAF - Dezembro/2025" desc="Pago em 15/12 · PIX" action={{ label: "Nota" }} />
+                      <SectionItemRow status="ok" title="Licença Anual SICAF 2026" desc="Pago em 02/01 · Boleto" action={{ label: "Nota" }} />
+                      <SectionItemRow status="ok" title="Manutenção SICAF - Novembro/2025" desc="Pago em 15/11 · PIX" action={{ label: "Nota" }} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="space-y-6">
-              {/* SICAF */}
-              <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <ShieldCheck className="h-4 w-4 text-primary" />
-                  Situação SICAF
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Status</p>
-                    <p className="text-sm font-medium mt-0.5"><StatusBadge status={meta.status}>{meta.label}</StatusBadge></p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Validade</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.validade ?? "—"}</p>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <p className="text-xs text-muted-foreground">Próximo passo</p>
-                    <p className="text-sm font-medium mt-0.5">{empresa.proximoPasso}</p>
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Dados cadastrais editáveis */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <FileText className="h-4 w-4 text-primary" />
-                  Dados Cadastrais
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="nome">Razão Social / Nome Fantasia</Label>
-                    <Input id="nome" value={form.nome ?? ""} onChange={(e) => updateField("nome", e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="cnpj">CNPJ</Label>
-                    <Input id="cnpj" value={form.cnpj ?? ""} onChange={(e) => updateField("cnpj", e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ramoAtividade">Ramo de Atividade</Label>
-                    <Input id="ramoAtividade" value={form.ramoAtividade ?? ""} onChange={(e) => updateField("ramoAtividade", e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="inscricaoEstadual">Inscrição Estadual</Label>
-                    <Input id="inscricaoEstadual" value={form.inscricaoEstadual ?? ""} onChange={(e) => updateField("inscricaoEstadual", e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="inscricaoMunicipal">Inscrição Municipal</Label>
-                    <Input id="inscricaoMunicipal" value={form.inscricaoMunicipal ?? ""} onChange={(e) => updateField("inscricaoMunicipal", e.target.value)} />
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Endereço editável */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <MapPin className="h-4 w-4 text-primary" />
-                  Endereço e Contato
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="endereco">Endereço</Label>
-                    <Input id="endereco" value={form.endereco ?? ""} onChange={(e) => updateField("endereco", e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="cidade">Cidade</Label>
-                    <Input id="cidade" value={form.cidade ?? ""} onChange={(e) => updateField("cidade", e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="uf">UF</Label>
-                    <Input id="uf" maxLength={2} value={form.uf ?? ""} onChange={(e) => updateField("uf", e.target.value.toUpperCase())} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="telefone">Telefone</Label>
-                    <Input id="telefone" value={form.telefone ?? ""} onChange={(e) => updateField("telefone", e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="email">E-mail</Label>
-                    <Input id="email" type="email" value={form.email ?? ""} onChange={(e) => updateField("email", e.target.value)} />
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Responsável editável */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <User className="h-4 w-4 text-primary" />
-                  Responsável
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="responsavel">Nome do responsável legal</Label>
-                  <Input id="responsavel" value={form.responsavel ?? ""} onChange={(e) => updateField("responsavel", e.target.value)} />
-                </div>
-              </div>
-            </div>
-          )}
-        </ScrollArea>
+          </ScrollArea>
+        </div>
 
         <SheetFooter className="px-6 py-4 border-t flex flex-col sm:flex-row gap-3">
-          {!editando ? (
-            <>
-              <Button variant="outline" onClick={() => onOpenChange(false)} className="gap-2">
-                <X className="h-4 w-4" />
-                Fechar
-              </Button>
-              <Button onClick={startEditing} className="gap-2">
-                <Edit3 className="h-4 w-4" />
-                Editar dados
-              </Button>
-            </>
+          {section === "visao" ? (
+            !editando ? (
+              <>
+                <Button variant="outline" onClick={() => onOpenChange(false)} className="gap-2"><X className="h-4 w-4" />Fechar</Button>
+                <Button onClick={startEditing} className="gap-2"><Edit3 className="h-4 w-4" />Editar dados</Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={cancelEditing} className="gap-2"><X className="h-4 w-4" />Cancelar</Button>
+                <Button onClick={saveEditing} className="gap-2"><Save className="h-4 w-4" />Salvar</Button>
+              </>
+            )
           ) : (
-            <>
-              <Button variant="outline" onClick={cancelEditing} className="gap-2">
-                <X className="h-4 w-4" />
-                Cancelar
-              </Button>
-              <Button onClick={saveEditing} className="gap-2">
-                <Save className="h-4 w-4" />
-                Salvar alterações
-              </Button>
-            </>
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="gap-2 sm:ml-auto"><X className="h-4 w-4" />Fechar</Button>
           )}
         </SheetFooter>
       </SheetContent>
     </Sheet>
   );
 }
+
 
 type WizardForm = {
   cnpj: string;
