@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SicafRouteImport } from './routes/sicaf'
 import { Route as MissoesRouteImport } from './routes/missoes'
 import { Route as DocumentosRouteImport } from './routes/documentos'
+import { Route as CertidoesRouteImport } from './routes/certidoes'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SicafRoute = SicafRouteImport.update({
@@ -29,6 +30,11 @@ const DocumentosRoute = DocumentosRouteImport.update({
   path: '/documentos',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CertidoesRoute = CertidoesRouteImport.update({
+  id: '/certidoes',
+  path: '/certidoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -37,12 +43,14 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/certidoes': typeof CertidoesRoute
   '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
   '/sicaf': typeof SicafRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/certidoes': typeof CertidoesRoute
   '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
   '/sicaf': typeof SicafRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/certidoes': typeof CertidoesRoute
   '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
   '/sicaf': typeof SicafRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/documentos' | '/missoes' | '/sicaf'
+  fullPaths: '/' | '/certidoes' | '/documentos' | '/missoes' | '/sicaf'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/documentos' | '/missoes' | '/sicaf'
-  id: '__root__' | '/' | '/documentos' | '/missoes' | '/sicaf'
+  to: '/' | '/certidoes' | '/documentos' | '/missoes' | '/sicaf'
+  id: '__root__' | '/' | '/certidoes' | '/documentos' | '/missoes' | '/sicaf'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CertidoesRoute: typeof CertidoesRoute
   DocumentosRoute: typeof DocumentosRoute
   MissoesRoute: typeof MissoesRoute
   SicafRoute: typeof SicafRoute
@@ -92,6 +102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocumentosRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/certidoes': {
+      id: '/certidoes'
+      path: '/certidoes'
+      fullPath: '/certidoes'
+      preLoaderRoute: typeof CertidoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CertidoesRoute: CertidoesRoute,
   DocumentosRoute: DocumentosRoute,
   MissoesRoute: MissoesRoute,
   SicafRoute: SicafRoute,
