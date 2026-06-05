@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -476,23 +477,21 @@ function FiltrosDialog({
     });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-hidden p-0">
-        <div className="border-b bg-gradient-to-br from-primary/5 to-transparent p-6">
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-md md:max-w-lg p-0 flex flex-col">
+        <SheetHeader className="px-6 pt-6 pb-4 border-b bg-gradient-to-br from-primary/5 to-transparent">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <Filter className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">Filtrar licitações</h2>
-              <p className="text-sm text-muted-foreground">
-                Selecione abaixo. A lista atualiza em tempo real.
-              </p>
+              <SheetTitle className="text-lg">Filtrar licitações</SheetTitle>
+              <SheetDescription>A lista atualiza em tempo real conforme você seleciona.</SheetDescription>
             </div>
           </div>
-        </div>
+        </SheetHeader>
 
-        <ScrollArea className="max-h-[60vh]">
+        <ScrollArea className="flex-1">
           <div className="space-y-6 p-6">
             <FiltroBloco icon={<MapPin className="h-4 w-4" />} titulo="Estado (UF)">
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -510,8 +509,10 @@ function FiltrosDialog({
               </div>
             </FiltroBloco>
 
+            <Separator />
+
             <FiltroBloco icon={<Briefcase className="h-4 w-4" />} titulo="Modalidade">
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
                 {modalidades.map((m) => {
                   const ativo = filtros.modalidades.includes(m);
                   return (
@@ -526,8 +527,10 @@ function FiltrosDialog({
               </div>
             </FiltroBloco>
 
+            <Separator />
+
             <FiltroBloco icon={<DollarSign className="h-4 w-4" />} titulo="Faixa de valor">
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
                 {faixasValor.map((f) => (
                   <ChipCard
                     key={f.id}
@@ -541,8 +544,10 @@ function FiltrosDialog({
               </div>
             </FiltroBloco>
 
+            <Separator />
+
             <FiltroBloco icon={<Sparkles className="h-4 w-4" />} titulo="Compatibilidade (match)">
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
                 {matchOpts.map((m) => (
                   <ChipCard
                     key={m.id}
@@ -554,8 +559,10 @@ function FiltrosDialog({
               </div>
             </FiltroBloco>
 
+            <Separator />
+
             <FiltroBloco icon={<Clock className="h-4 w-4" />} titulo="Prazo de encerramento">
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2">
                 {prazos.map((p) => (
                   <ChipCard
                     key={p.id}
@@ -569,16 +576,16 @@ function FiltrosDialog({
           </div>
         </ScrollArea>
 
-        <div className="flex items-center justify-between gap-3 border-t bg-muted/30 p-4">
+        <SheetFooter className="flex flex-row items-center justify-between gap-3 border-t bg-muted/30 p-4">
           <Button variant="ghost" onClick={() => setFiltros(filtrosDefault)}>
             Limpar filtros
           </Button>
           <Button onClick={() => onOpenChange(false)}>
             Ver {total} {total === 1 ? "licitação" : "licitações"}
           </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 
