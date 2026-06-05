@@ -22,7 +22,6 @@ import { Route as EmpresasRouteImport } from './routes/empresas'
 import { Route as DocumentosRouteImport } from './routes/documentos'
 import { Route as ConcluidoRouteImport } from './routes/concluido'
 import { Route as CertidoesRouteImport } from './routes/certidoes'
-import { Route as ProntidaoRouteImport } from './routes/prontidao'
 import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -89,6 +88,11 @@ const ConcluidoRoute = ConcluidoRouteImport.update({
 const CertidoesRoute = CertidoesRouteImport.update({
   id: '/certidoes',
   path: '/certidoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProntidaoRoute = ProntidaoRouteImport.update({
+  id: '/prontidao',
+  path: '/prontidao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AjudaRoute = AjudaRouteImport.update({
