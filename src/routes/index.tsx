@@ -246,7 +246,7 @@ function FeatureCard({
   desc,
 }: {
   to: "/prontidao" | "/certidoes" | "/licitacoes";
-  icon: React.ReactNode;
+  icon: ReactNode;
   tag: string;
   title: string;
   desc: string;

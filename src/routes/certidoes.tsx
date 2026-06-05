@@ -267,7 +267,7 @@ function ChannelRow({
   checked,
   onChange,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: string;
   checked: boolean;

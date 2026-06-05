@@ -218,7 +218,7 @@ function KpiCard({
   tone, icon, label, value, hint,
 }: {
   tone: "ok" | "warn" | "danger";
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: number;
   hint: string;
@@ -342,7 +342,7 @@ function EmpresaCard({ empresa: e, posicao }: { empresa: Empresa; posicao: numbe
 function BreakdownRow({
   icon, label, value, tone,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: number;
   tone: "ok" | "warn" | "danger";
