@@ -937,6 +937,8 @@ function SicafPage() {
           </span>
         </CardContent>
       </Card>
+        </div>
+      </div>
 
       {/* Modais */}
       <CertificadoDialog
