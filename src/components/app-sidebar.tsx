@@ -26,7 +26,7 @@ const items = [
   { title: "Início", url: "/", icon: LayoutDashboard },
   { title: "Minhas Empresas", url: "/empresas", icon: Building2 },
   { title: "Licitações", url: "/licitacoes", icon: Gavel },
-  { title: "Serviços com IA", url: "/servicos-ia", icon: Sparkles, highlight: true },
+  { title: "Serviços com IA", url: "/servicos-ia", icon: Sparkles },
   { title: "Meus Serviços", url: "/servicos", icon: FileSignature },
   { title: "Suporte", url: "/suporte", icon: Headphones },
   { title: "Central de Ajuda", url: "/ajuda", icon: HelpCircle },
