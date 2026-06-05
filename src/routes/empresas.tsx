@@ -826,7 +826,6 @@ function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpenChange
 
 function EmpresasPage() {
   const [detalhesEmpresa, setDetalhesEmpresa] = useState<EmpresaData | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
 
 
@@ -838,7 +837,10 @@ function EmpresasPage() {
 
   const abrirDetalhes = (empresa: EmpresaData) => {
     setDetalhesEmpresa(empresa);
-    setSheetOpen(true);
+  };
+
+  const handleDetalhesOpenChange = (open: boolean) => {
+    if (!open) setDetalhesEmpresa(null);
   };
 
   return (
@@ -917,6 +919,7 @@ function EmpresasPage() {
                 </div>
                 <div className="flex shrink-0 gap-2 sm:flex-col sm:items-stretch">
                   <Button
+                    type="button"
                     variant={e.acao.variant ?? "default"}
                     className="gap-2"
                     onClick={() => abrirDetalhes(e)}
@@ -959,8 +962,8 @@ function EmpresasPage() {
 
       <EmpresaDetalhesSheet
         empresa={detalhesEmpresa}
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
+        open={Boolean(detalhesEmpresa)}
+        onOpenChange={handleDetalhesOpenChange}
       />
       <NovaEmpresaWizard open={wizardOpen} onOpenChange={setWizardOpen} />
     </div>
