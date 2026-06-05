@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SicafRouteImport } from './routes/sicaf'
+import { Route as MissoesRouteImport } from './routes/missoes'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SicafRoute = SicafRouteImport.update({
   id: '/sicaf',
   path: '/sicaf',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MissoesRoute = MissoesRouteImport.update({
+  id: '/missoes',
+  path: '/missoes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -25,27 +31,31 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/missoes': typeof MissoesRoute
   '/sicaf': typeof SicafRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/missoes': typeof MissoesRoute
   '/sicaf': typeof SicafRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/missoes': typeof MissoesRoute
   '/sicaf': typeof SicafRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/sicaf'
+  fullPaths: '/' | '/missoes' | '/sicaf'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/sicaf'
-  id: '__root__' | '/' | '/sicaf'
+  to: '/' | '/missoes' | '/sicaf'
+  id: '__root__' | '/' | '/missoes' | '/sicaf'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  MissoesRoute: typeof MissoesRoute
   SicafRoute: typeof SicafRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/sicaf'
       fullPath: '/sicaf'
       preLoaderRoute: typeof SicafRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/missoes': {
+      id: '/missoes'
+      path: '/missoes'
+      fullPath: '/missoes'
+      preLoaderRoute: typeof MissoesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  MissoesRoute: MissoesRoute,
   SicafRoute: SicafRoute,
 }
 export const routeTree = rootRouteImport
