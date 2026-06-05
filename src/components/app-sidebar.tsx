@@ -60,7 +60,7 @@ export function AppSidebar() {
                       asChild
                       isActive={active}
                       tooltip={item.title}
-                      className={item.highlight ? "bg-sidebar-primary/15 text-sidebar-primary-foreground hover:bg-sidebar-primary/25" : ""}
+                      
                     >
                       <Link to={item.url}>
                         <item.icon className="h-4 w-4" />
