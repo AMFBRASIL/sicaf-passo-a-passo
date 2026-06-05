@@ -16,6 +16,7 @@ import { Route as PagamentosRouteImport } from './routes/pagamentos'
 import { Route as MissoesRouteImport } from './routes/missoes'
 import { Route as DocumentosRouteImport } from './routes/documentos'
 import { Route as CertidoesRouteImport } from './routes/certidoes'
+import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SuporteRoute = SuporteRouteImport.update({
@@ -53,6 +54,11 @@ const CertidoesRoute = CertidoesRouteImport.update({
   path: '/certidoes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AjudaRoute = AjudaRouteImport.update({
+  id: '/ajuda',
+  path: '/ajuda',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -61,6 +67,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ajuda': typeof AjudaRoute
   '/certidoes': typeof CertidoesRoute
   '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
@@ -71,6 +78,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ajuda': typeof AjudaRoute
   '/certidoes': typeof CertidoesRoute
   '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
@@ -82,6 +90,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/ajuda': typeof AjudaRoute
   '/certidoes': typeof CertidoesRoute
   '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
@@ -94,6 +103,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ajuda'
     | '/certidoes'
     | '/documentos'
     | '/missoes'
@@ -104,6 +114,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ajuda'
     | '/certidoes'
     | '/documentos'
     | '/missoes'
@@ -114,6 +125,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/ajuda'
     | '/certidoes'
     | '/documentos'
     | '/missoes'
@@ -125,6 +137,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AjudaRoute: typeof AjudaRoute
   CertidoesRoute: typeof CertidoesRoute
   DocumentosRoute: typeof DocumentosRoute
   MissoesRoute: typeof MissoesRoute
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CertidoesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ajuda': {
+      id: '/ajuda'
+      path: '/ajuda'
+      fullPath: '/ajuda'
+      preLoaderRoute: typeof AjudaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -197,6 +217,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AjudaRoute: AjudaRoute,
   CertidoesRoute: CertidoesRoute,
   DocumentosRoute: DocumentosRoute,
   MissoesRoute: MissoesRoute,
