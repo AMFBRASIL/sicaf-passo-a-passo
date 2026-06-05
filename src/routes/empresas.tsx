@@ -926,7 +926,7 @@ function EmpresasPage() {
               </p>
             </div>
           </div>
-          <Button size="lg" variant="outline" className="gap-2">
+          <Button size="lg" variant="outline" className="gap-2" onClick={() => setWizardOpen(true)}>
             <Plus className="h-4 w-4" />
             Adicionar empresa
           </Button>
@@ -938,6 +938,7 @@ function EmpresasPage() {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
       />
+      <NovaEmpresaWizard open={wizardOpen} onOpenChange={setWizardOpen} />
     </div>
   );
 }
