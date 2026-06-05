@@ -442,6 +442,10 @@ function EmpresaDetalhesSheet({
                 </div>
               )}
 
+              {section === "sicaf" && (
+                <MeuSicafSection empresa={empresa} meta={meta} />
+              )}
+
               {section === "faltam" && (
                 <div className="space-y-4">
                   <div>
