@@ -927,7 +927,12 @@ function EmpresasPage() {
                     <Icon className="h-4 w-4" />
                     Gerenciar
                   </Button>
-                  <Button asChild variant="default" size="sm" className="gap-1 text-xs shadow-sm">
+                  <Button
+                    asChild
+                    size="sm"
+                    className="gap-1 text-xs shadow-sm hover:brightness-90"
+                    style={{ backgroundColor: 'var(--accent-green)', color: 'var(--accent-green-foreground)' }}
+                  >
                     <Link to="/sicaf">
                       Ir para SICAF
                       <ChevronRight className="h-3 w-3" />

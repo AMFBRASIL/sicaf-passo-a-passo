@@ -37,6 +37,8 @@
   --color-danger-foreground: var(--danger-foreground);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  --color-accent-green: var(--accent-green);
+  --color-accent-green-foreground: var(--accent-green-foreground);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -79,6 +81,8 @@
   --danger-foreground: oklch(0.99 0 0);
   --brand: oklch(0.48 0.16 248);
   --brand-foreground: oklch(0.99 0 0);
+  --accent-green: oklch(0.42 0.13 150);
+  --accent-green-foreground: oklch(0.99 0 0);
 
   --sidebar: oklch(0.22 0.06 250);
   --sidebar-foreground: oklch(0.95 0.01 240);
