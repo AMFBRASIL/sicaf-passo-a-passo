@@ -10,6 +10,7 @@ import {
   Target,
   HelpCircle,
   ShieldCheck,
+  Building2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -26,6 +27,7 @@ import {
 
 const items = [
   { title: "Início", url: "/", icon: LayoutDashboard },
+  { title: "Minhas Empresas", url: "/empresas", icon: Building2 },
   { title: "Atualizar SICAF", url: "/sicaf", icon: Bot, highlight: true },
   { title: "O que falta?", url: "/missoes", icon: Target },
   { title: "Meus Documentos", url: "/documentos", icon: FileText },

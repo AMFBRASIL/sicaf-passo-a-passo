@@ -14,6 +14,7 @@ import { Route as SicafRouteImport } from './routes/sicaf'
 import { Route as ServicosRouteImport } from './routes/servicos'
 import { Route as PagamentosRouteImport } from './routes/pagamentos'
 import { Route as MissoesRouteImport } from './routes/missoes'
+import { Route as EmpresasRouteImport } from './routes/empresas'
 import { Route as DocumentosRouteImport } from './routes/documentos'
 import { Route as ConcluidoRouteImport } from './routes/concluido'
 import { Route as CertidoesRouteImport } from './routes/certidoes'
@@ -43,6 +44,11 @@ const PagamentosRoute = PagamentosRouteImport.update({
 const MissoesRoute = MissoesRouteImport.update({
   id: '/missoes',
   path: '/missoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmpresasRoute = EmpresasRouteImport.update({
+  id: '/empresas',
+  path: '/empresas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocumentosRoute = DocumentosRouteImport.update({
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/certidoes': typeof CertidoesRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
+  '/empresas': typeof EmpresasRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
   '/servicos': typeof ServicosRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/certidoes': typeof CertidoesRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
+  '/empresas': typeof EmpresasRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
   '/servicos': typeof ServicosRoute
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/certidoes': typeof CertidoesRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
+  '/empresas': typeof EmpresasRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
   '/servicos': typeof ServicosRoute
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/certidoes'
     | '/concluido'
     | '/documentos'
+    | '/empresas'
     | '/missoes'
     | '/pagamentos'
     | '/servicos'
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/certidoes'
     | '/concluido'
     | '/documentos'
+    | '/empresas'
     | '/missoes'
     | '/pagamentos'
     | '/servicos'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/certidoes'
     | '/concluido'
     | '/documentos'
+    | '/empresas'
     | '/missoes'
     | '/pagamentos'
     | '/servicos'
@@ -153,6 +165,7 @@ export interface RootRouteChildren {
   CertidoesRoute: typeof CertidoesRoute
   ConcluidoRoute: typeof ConcluidoRoute
   DocumentosRoute: typeof DocumentosRoute
+  EmpresasRoute: typeof EmpresasRoute
   MissoesRoute: typeof MissoesRoute
   PagamentosRoute: typeof PagamentosRoute
   ServicosRoute: typeof ServicosRoute
@@ -195,6 +208,13 @@ declare module '@tanstack/react-router' {
       path: '/missoes'
       fullPath: '/missoes'
       preLoaderRoute: typeof MissoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/empresas': {
+      id: '/empresas'
+      path: '/empresas'
+      fullPath: '/empresas'
+      preLoaderRoute: typeof EmpresasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/documentos': {
@@ -241,6 +261,7 @@ const rootRouteChildren: RootRouteChildren = {
   CertidoesRoute: CertidoesRoute,
   ConcluidoRoute: ConcluidoRoute,
   DocumentosRoute: DocumentosRoute,
+  EmpresasRoute: EmpresasRoute,
   MissoesRoute: MissoesRoute,
   PagamentosRoute: PagamentosRoute,
   ServicosRoute: ServicosRoute,
@@ -250,3 +271,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
