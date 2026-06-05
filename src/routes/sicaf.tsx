@@ -64,24 +64,55 @@ const passosBase: Passo[] = [
   },
   {
     n: 2,
+    titulo: "Documentação da empresa",
+    descricao: "Envie os documentos básicos que vamos usar para o cadastro.",
+  },
+  {
+    n: 3,
     titulo: "Conectar ao Compras.gov.br",
     descricao: "Vamos instalar o Assistente CADBRASIL para automatizar o acesso.",
   },
   {
-    n: 3,
+    n: 4,
     titulo: "Atualizar Nível III — Receita Federal",
     descricao: "Encontramos documentos que precisam ser atualizados.",
   },
   {
-    n: 4,
+    n: 5,
     titulo: "Atualizar Nível IV — Qualificação técnica",
     descricao: "Envie ou confirme os documentos da sua atividade.",
   },
   {
-    n: 5,
+    n: 6,
     titulo: "Validar e enviar",
     descricao: "Confirmação final — você pronto para licitar.",
   },
+];
+
+// ============================================================
+// Empresa em processo (mock — viria de query param / contexto)
+// ============================================================
+const empresaEmProcesso = {
+  nome: "Nova Filial Brasília LTDA",
+  cnpj: "34.567.890/0001-22",
+  endereco: "SHS Qd. 6, Bloco C - Asa Sul",
+  cidade: "Brasília",
+  uf: "DF",
+  telefone: "(61) 3456-7890",
+  email: "filial@novabrasilia.com.br",
+  responsavel: "Ana Souza",
+  ramoAtividade: "Prestação de Serviços Administrativos",
+};
+
+// ============================================================
+// Documentos exigidos
+// ============================================================
+const documentosNecessarios = [
+  { id: "contrato_social", label: "Contrato Social (última alteração)", obrigatorio: true },
+  { id: "cnpj_card", label: "Cartão CNPJ atualizado", obrigatorio: true },
+  { id: "rg_socio", label: "RG e CPF do(s) sócio(s)", obrigatorio: true },
+  { id: "comprovante_endereco", label: "Comprovante de endereço da empresa", obrigatorio: true },
+  { id: "procuracao", label: "Procuração (se aplicável)", obrigatorio: false },
 ];
 
 // ============================================================
