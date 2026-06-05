@@ -40,6 +40,7 @@ interface EmpresaData {
   inscricaoEstadual: string;
   inscricaoMunicipal: string;
   ramoAtividade: string;
+  niveis?: number[];
 }
 
 const empresasMock: EmpresaData[] = [
