@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PlanosPage } from "@/components/planos-page";
 
-export const Route = createFileRoute("/pagamentos")({
+export const Route = createFileRoute("/pagamentos_naoefetuado")({
   head: () => ({
     meta: [
       { title: "Pagamentos — CADBRASIL" },

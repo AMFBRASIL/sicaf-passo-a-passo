@@ -13,6 +13,7 @@ import { Route as SuporteRouteImport } from './routes/suporte'
 import { Route as SicafRouteImport } from './routes/sicaf'
 import { Route as ServicosIaRouteImport } from './routes/servicos-ia'
 import { Route as ServicosRouteImport } from './routes/servicos'
+import { Route as Pagamentos_naoefetuadoRouteImport } from './routes/pagamentos_naoefetuado'
 import { Route as PagamentosRouteImport } from './routes/pagamentos'
 import { Route as MissoesRouteImport } from './routes/missoes'
 import { Route as LicitacoesRouteImport } from './routes/licitacoes'
@@ -41,6 +42,11 @@ const ServicosIaRoute = ServicosIaRouteImport.update({
 const ServicosRoute = ServicosRouteImport.update({
   id: '/servicos',
   path: '/servicos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const Pagamentos_naoefetuadoRoute = Pagamentos_naoefetuadoRouteImport.update({
+  id: '/pagamentos_naoefetuado',
+  path: '/pagamentos_naoefetuado',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PagamentosRoute = PagamentosRouteImport.update({
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/licitacoes': typeof LicitacoesRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
+  '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
@@ -114,6 +121,7 @@ export interface FileRoutesByTo {
   '/licitacoes': typeof LicitacoesRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
+  '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
@@ -130,6 +138,7 @@ export interface FileRoutesById {
   '/licitacoes': typeof LicitacoesRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
+  '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
@@ -147,6 +156,7 @@ export interface FileRouteTypes {
     | '/licitacoes'
     | '/missoes'
     | '/pagamentos'
+    | '/pagamentos_naoefetuado'
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
@@ -162,6 +172,7 @@ export interface FileRouteTypes {
     | '/licitacoes'
     | '/missoes'
     | '/pagamentos'
+    | '/pagamentos_naoefetuado'
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
@@ -177,6 +188,7 @@ export interface FileRouteTypes {
     | '/licitacoes'
     | '/missoes'
     | '/pagamentos'
+    | '/pagamentos_naoefetuado'
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
@@ -193,6 +205,7 @@ export interface RootRouteChildren {
   LicitacoesRoute: typeof LicitacoesRoute
   MissoesRoute: typeof MissoesRoute
   PagamentosRoute: typeof PagamentosRoute
+  Pagamentos_naoefetuadoRoute: typeof Pagamentos_naoefetuadoRoute
   ServicosRoute: typeof ServicosRoute
   ServicosIaRoute: typeof ServicosIaRoute
   SicafRoute: typeof SicafRoute
@@ -227,6 +240,13 @@ declare module '@tanstack/react-router' {
       path: '/servicos'
       fullPath: '/servicos'
       preLoaderRoute: typeof ServicosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pagamentos_naoefetuado': {
+      id: '/pagamentos_naoefetuado'
+      path: '/pagamentos_naoefetuado'
+      fullPath: '/pagamentos_naoefetuado'
+      preLoaderRoute: typeof Pagamentos_naoefetuadoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pagamentos': {
@@ -305,6 +325,7 @@ const rootRouteChildren: RootRouteChildren = {
   LicitacoesRoute: LicitacoesRoute,
   MissoesRoute: MissoesRoute,
   PagamentosRoute: PagamentosRoute,
+  Pagamentos_naoefetuadoRoute: Pagamentos_naoefetuadoRoute,
   ServicosRoute: ServicosRoute,
   ServicosIaRoute: ServicosIaRoute,
   SicafRoute: SicafRoute,
