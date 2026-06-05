@@ -96,6 +96,7 @@ const empresasMock: EmpresaData[] = [
     inscricaoEstadual: "456.789.123.000",
     inscricaoMunicipal: "5678901234",
     ramoAtividade: "Construção Civil",
+    niveis: [1, 2, 3, 4, 5, 6],
   },
   {
     nome: "Nova Filial Brasília LTDA",
