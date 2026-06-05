@@ -362,5 +362,3 @@ function BreakdownRow({
   );
 }
 
-// Avoid unused-import warning
-void CircleDashed; void Trophy; void Progress;
