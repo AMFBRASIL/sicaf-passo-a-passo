@@ -146,6 +146,7 @@ function NovoChamadoDialog() {
       <DialogContent
         className="overflow-hidden p-0 sm:max-w-[960px] lg:max-w-[1080px]"
       >
+        <DialogTitle className="sr-only">Abrir novo chamado</DialogTitle>
         <div className="grid h-[88vh] max-h-[760px] grid-cols-1 lg:grid-cols-[340px_1fr]">
           {/* LEFT — wizard sidebar with bg image */}
           <aside
