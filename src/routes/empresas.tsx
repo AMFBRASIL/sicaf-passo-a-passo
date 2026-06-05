@@ -118,14 +118,14 @@ export const empresasMock: EmpresaData[] = [
   },
 ];
 
-const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | "danger" | "idle" }> = {
+export const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | "danger" | "idle" }> = {
   ativo: { label: "SICAF Ativo", status: "ok" },
   atencao: { label: "Atualização recomendada", status: "warn" },
   vencido: { label: "SICAF Vencido", status: "danger" },
   sem_cadastro: { label: "Sem cadastro SICAF", status: "idle" },
 };
 
-const NIVEIS_SICAF: { num: number; roman: string; nome: string; color: string }[] = [
+export const NIVEIS_SICAF: { num: number; roman: string; nome: string; color: string }[] = [
   { num: 1, roman: "I", nome: "Habilitação", color: "#16a34a" },
   { num: 2, roman: "II", nome: "Habilitação Jurídica", color: "#16a34a" },
   { num: 3, roman: "III", nome: "Regularidade Fiscal Federal", color: "#f59e0b" },
