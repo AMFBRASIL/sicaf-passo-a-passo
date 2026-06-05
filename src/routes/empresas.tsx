@@ -1,7 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Building2, Plus, Rocket, RefreshCw, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { Building2, ChevronRight, Edit3, FileText, MapPin, Plus, Rocket, Save, RefreshCw, ShieldCheck, User, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { PageHeader, StatusBadge } from "@/components/page-header";
 
 export const Route = createFileRoute("/empresas")({
