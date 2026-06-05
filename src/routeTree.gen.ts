@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SuporteRouteImport } from './routes/suporte'
 import { Route as SicafRouteImport } from './routes/sicaf'
+import { Route as ServicosRouteImport } from './routes/servicos'
 import { Route as PagamentosRouteImport } from './routes/pagamentos'
 import { Route as MissoesRouteImport } from './routes/missoes'
 import { Route as DocumentosRouteImport } from './routes/documentos'
@@ -25,6 +26,11 @@ const SuporteRoute = SuporteRouteImport.update({
 const SicafRoute = SicafRouteImport.update({
   id: '/sicaf',
   path: '/sicaf',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicosRoute = ServicosRouteImport.update({
+  id: '/servicos',
+  path: '/servicos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PagamentosRoute = PagamentosRouteImport.update({
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
+  '/servicos': typeof ServicosRoute
   '/sicaf': typeof SicafRoute
   '/suporte': typeof SuporteRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
+  '/servicos': typeof ServicosRoute
   '/sicaf': typeof SicafRoute
   '/suporte': typeof SuporteRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
+  '/servicos': typeof ServicosRoute
   '/sicaf': typeof SicafRoute
   '/suporte': typeof SuporteRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/documentos'
     | '/missoes'
     | '/pagamentos'
+    | '/servicos'
     | '/sicaf'
     | '/suporte'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/documentos'
     | '/missoes'
     | '/pagamentos'
+    | '/servicos'
     | '/sicaf'
     | '/suporte'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/documentos'
     | '/missoes'
     | '/pagamentos'
+    | '/servicos'
     | '/sicaf'
     | '/suporte'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   DocumentosRoute: typeof DocumentosRoute
   MissoesRoute: typeof MissoesRoute
   PagamentosRoute: typeof PagamentosRoute
+  ServicosRoute: typeof ServicosRoute
   SicafRoute: typeof SicafRoute
   SuporteRoute: typeof SuporteRoute
 }
@@ -135,6 +148,13 @@ declare module '@tanstack/react-router' {
       path: '/sicaf'
       fullPath: '/sicaf'
       preLoaderRoute: typeof SicafRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/servicos': {
+      id: '/servicos'
+      path: '/servicos'
+      fullPath: '/servicos'
+      preLoaderRoute: typeof ServicosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pagamentos': {
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocumentosRoute: DocumentosRoute,
   MissoesRoute: MissoesRoute,
   PagamentosRoute: PagamentosRoute,
+  ServicosRoute: ServicosRoute,
   SicafRoute: SicafRoute,
   SuporteRoute: SuporteRoute,
 }
