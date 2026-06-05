@@ -237,3 +237,40 @@ function HomePage() {
     </div>
   );
 }
+
+function FeatureCard({
+  to,
+  icon,
+  tag,
+  title,
+  desc,
+}: {
+  to: "/prontidao" | "/certidoes" | "/licitacoes";
+  icon: React.ReactNode;
+  tag: string;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border bg-card p-4 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lift"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          {icon}
+        </div>
+        <span className="rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+          {tag}
+        </span>
+      </div>
+      <div>
+        <p className="font-semibold leading-tight">{title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{desc}</p>
+      </div>
+      <span className="mt-auto inline-flex items-center gap-1 text-xs font-medium text-primary opacity-80 group-hover:opacity-100">
+        Abrir <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
+      </span>
+    </Link>
+  );
+}
