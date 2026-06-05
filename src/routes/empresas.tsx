@@ -251,10 +251,11 @@ function NiveisSicafBadges({ empresa }: { empresa: EmpresaData }) {
 }
 
 
-type SectionId = "visao" | "faltam" | "documentos" | "manutencao" | "certidoes" | "pagamento";
+type SectionId = "visao" | "sicaf" | "faltam" | "documentos" | "manutencao" | "certidoes" | "pagamento";
 
 const sectionMenu: { id: SectionId; label: string; icon: typeof FileText; badge?: string; tone?: "warn" | "danger" | "ok" }[] = [
   { id: "visao", label: "Visão geral", icon: Building2 },
+  { id: "sicaf", label: "Meu SICAF", icon: ShieldCheck },
   { id: "faltam", label: "O que falta", icon: Sparkles, badge: "3", tone: "warn" },
   { id: "documentos", label: "Documentos", icon: FileText },
   { id: "manutencao", label: "Manutenção", icon: RefreshCw, badge: "ativo", tone: "ok" },
