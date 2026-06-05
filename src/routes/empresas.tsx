@@ -45,7 +45,7 @@ export interface EmpresaData {
   detalhesNiveis?: Record<number, NivelDetalhe>;
 }
 
-const empresasMock: EmpresaData[] = [
+export const empresasMock: EmpresaData[] = [
   {
     nome: "Empresa Demonstração LTDA",
     cnpj: "00.000.000/0001-00",
