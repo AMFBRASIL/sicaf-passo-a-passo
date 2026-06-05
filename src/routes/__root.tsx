@@ -141,7 +141,7 @@ function RootComponent() {
                   Olá, João 👋
                 </span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
                 <Button variant="ghost" size="icon" className="rounded-full" aria-label="Notificações">
                   <Bell className="h-4 w-4" />
                 </Button>
