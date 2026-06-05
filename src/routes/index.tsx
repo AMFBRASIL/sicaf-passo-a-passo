@@ -159,6 +159,32 @@ function HomePage() {
             </CardContent>
           </Card>
 
+          {/* Diferenciais — Prontidão, Monitor, Feed PNCP */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <FeatureCard
+              to="/prontidao"
+              icon={<Gauge className="h-5 w-5" />}
+              tag="Novo"
+              title="Prontidão para Licitar"
+              desc="Score 0–100 por CNPJ com ranking e plano de ação."
+            />
+            <FeatureCard
+              to="/certidoes"
+              icon={<Bell className="h-5 w-5" />}
+              tag="Automático"
+              title="Monitor de Certidões"
+              desc="Alertas 30 / 15 / 5 dias por e-mail e WhatsApp."
+            />
+            <FeatureCard
+              to="/licitacoes"
+              icon={<Gavel className="h-5 w-5" />}
+              tag="PNCP"
+              title="Feed de Oportunidades"
+              desc="Licitações compatíveis com seu perfil, em tempo real."
+            />
+          </div>
+
+
           {/* Missões mini */}
           <Card>
             <CardHeader>
