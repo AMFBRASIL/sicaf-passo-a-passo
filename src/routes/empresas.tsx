@@ -251,10 +251,11 @@ function NiveisSicafBadges({ empresa }: { empresa: EmpresaData }) {
 }
 
 
-type SectionId = "visao" | "faltam" | "documentos" | "manutencao" | "certidoes" | "pagamento";
+type SectionId = "visao" | "sicaf" | "faltam" | "documentos" | "manutencao" | "certidoes" | "pagamento";
 
 const sectionMenu: { id: SectionId; label: string; icon: typeof FileText; badge?: string; tone?: "warn" | "danger" | "ok" }[] = [
   { id: "visao", label: "Visão geral", icon: Building2 },
+  { id: "sicaf", label: "Meu SICAF", icon: ShieldCheck },
   { id: "faltam", label: "O que falta", icon: Sparkles, badge: "3", tone: "warn" },
   { id: "documentos", label: "Documentos", icon: FileText },
   { id: "manutencao", label: "Manutenção", icon: RefreshCw, badge: "ativo", tone: "ok" },
@@ -299,6 +300,241 @@ function SectionItemRow({
     </div>
   );
 }
+
+function MeuSicafSection({
+  empresa,
+  meta,
+}: {
+  empresa: EmpresaData;
+  meta: { label: string; status: "ok" | "warn" | "danger" | "idle" };
+}) {
+  const niveis = NIVEIS_SICAF.map((n) => ({ ...n, det: detalhesPara(empresa, n.num) }));
+  const validados = niveis.filter((n) => n.det.status === "validado").length;
+  const pendentes = niveis.filter((n) => n.det.status === "pendente" || n.det.status === "vencendo").length;
+  const vencidos = niveis.filter((n) => n.det.status === "vencido").length;
+  const naoCad = niveis.filter((n) => n.det.status === "nao_cadastrado").length;
+
+  const certidoes = [
+    { nome: "Certidão Federal", emissor: "Receita Federal / PGFN", vencimento: "15/05/2026", status: "validado" as NivelStatus },
+    { nome: "Certidão FGTS", emissor: "Caixa Econômica Federal", vencimento: "30/03/2026", status: "validado" as NivelStatus },
+    { nome: "Certidão Trabalhista (CNDT)", emissor: "Tribunal Superior do Trabalho", vencimento: "Vencida em 12/11/2025", status: "vencido" as NivelStatus },
+    { nome: "Certidão Estadual", emissor: "Sefaz " + empresa.uf, vencimento: "Não emitida", status: "pendente" as NivelStatus },
+    { nome: "Certidão Municipal", emissor: "Prefeitura de " + empresa.cidade, vencimento: "10/06/2026", status: "validado" as NivelStatus },
+    { nome: "Certidão Negativa de Falência", emissor: "Distribuidor cível", vencimento: "08/04/2026", status: "validado" as NivelStatus },
+  ];
+
+  const certVencidas = certidoes.filter((c) => c.status === "vencido").length;
+  const certPendentes = certidoes.filter((c) => c.status === "pendente").length;
+
+  return (
+    <div className="space-y-6">
+      {/* Hero card */}
+      <Card className="overflow-hidden border-0 shadow-soft">
+        <div
+          className={`relative px-6 py-5 text-white ${
+            meta.status === "ok"
+              ? "bg-gradient-to-br from-success via-success/90 to-success/70"
+              : meta.status === "warn"
+              ? "bg-gradient-to-br from-warning via-warning/90 to-warning/70"
+              : meta.status === "danger"
+              ? "bg-gradient-to-br from-danger via-danger/90 to-danger/70"
+              : "bg-gradient-to-br from-muted-foreground via-muted-foreground/90 to-muted-foreground/70"
+          }`}
+        >
+          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_top_right,white,transparent_60%)]" />
+          <div className="relative flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-wider font-semibold opacity-80">Situação SICAF</p>
+              <h3 className="text-2xl font-bold mt-1 leading-tight">{meta.label}</h3>
+              <p className="text-sm opacity-90 mt-1">{empresa.proximoPasso}</p>
+            </div>
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/20 backdrop-blur">
+              <ShieldCheck className="h-7 w-7" />
+            </div>
+          </div>
+          <div className="relative mt-5 grid grid-cols-3 gap-3 text-sm">
+            <div className="rounded-xl bg-white/15 backdrop-blur px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider opacity-80">Validade</p>
+              <p className="font-bold mt-0.5">{empresa.validade ?? "—"}</p>
+            </div>
+            <div className="rounded-xl bg-white/15 backdrop-blur px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider opacity-80">Níveis ativos</p>
+              <p className="font-bold mt-0.5">{(empresa.niveis ?? []).length} de 6</p>
+            </div>
+            <div className="rounded-xl bg-white/15 backdrop-blur px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider opacity-80">CNPJ</p>
+              <p className="font-bold mt-0.5 truncate">{empresa.cnpj}</p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard tone="ok" icon={<CheckCircle2 className="h-5 w-5" />} label="Validados" value={validados} />
+        <KpiCard tone="warn" icon={<ShieldCheck className="h-5 w-5" />} label="Pendentes" value={pendentes} />
+        <KpiCard tone="danger" icon={<X className="h-5 w-5" />} label="Vencidos" value={vencidos} />
+        <KpiCard tone="idle" icon={<Plus className="h-5 w-5" />} label="Não cadastrados" value={naoCad} />
+      </div>
+
+      {/* Níveis */}
+      <div>
+        <div className="flex items-baseline justify-between mb-3">
+          <h4 className="text-lg font-bold">Níveis do SICAF</h4>
+          <p className="text-xs text-muted-foreground">{validados} de 6 validados</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {niveis.map((n) => {
+            const sMeta = statusNivelMeta[n.det.status];
+            return (
+              <div
+                key={n.num}
+                className="group relative overflow-hidden rounded-2xl border bg-card p-4 transition hover:shadow-soft hover:-translate-y-0.5"
+              >
+                <div
+                  className="absolute top-0 left-0 h-full w-1.5"
+                  style={{ backgroundColor: n.color }}
+                />
+                <div className="flex items-start gap-3 pl-2">
+                  <div
+                    className="h-11 w-11 shrink-0 rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-sm"
+                    style={{ backgroundColor: n.color }}
+                  >
+                    {n.roman}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Nível {n.roman}</p>
+                        <p className="font-semibold text-sm leading-tight mt-0.5">{n.nome}</p>
+                      </div>
+                      <StatusBadge status={sMeta.tone}>{sMeta.label}</StatusBadge>
+                    </div>
+                    {n.det.vencimento && (
+                      <p className={`text-xs mt-2 ${
+                        n.det.status === "vencido" ? "text-danger font-medium" :
+                        n.det.status === "vencendo" ? "text-warning-foreground font-medium" :
+                        "text-muted-foreground"
+                      }`}>
+                        {n.det.status === "vencido" ? "Venceu em " : "Válido até "}
+                        {n.det.vencimento}
+                      </p>
+                    )}
+                    {n.det.status === "nao_cadastrado" && (
+                      <p className="text-xs text-muted-foreground mt-2">Ainda não cadastrado nesta empresa.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Certidões */}
+      <div>
+        <div className="flex items-baseline justify-between mb-3">
+          <h4 className="text-lg font-bold">Certidões</h4>
+          <p className="text-xs text-muted-foreground">
+            {certVencidas} vencida{certVencidas !== 1 ? "s" : ""} · {certPendentes} pendente{certPendentes !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {certidoes.map((c) => {
+            const cMeta = statusNivelMeta[c.status];
+            return (
+              <div
+                key={c.nome}
+                className={`rounded-2xl border bg-card p-4 transition hover:shadow-soft ${
+                  c.status === "vencido" ? "border-danger/40" :
+                  c.status === "pendente" ? "border-warning/40" : ""
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center ${
+                      c.status === "validado" ? "bg-success/15 text-success" :
+                      c.status === "vencido" ? "bg-danger/15 text-danger" :
+                      "bg-warning/15 text-warning-foreground"
+                    }`}>
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm leading-tight">{c.nome}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{c.emissor}</p>
+                    </div>
+                  </div>
+                  <StatusBadge status={cMeta.tone}>{cMeta.label}</StatusBadge>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2 pt-3 border-t border-dashed">
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Vencimento</p>
+                    <p className={`text-sm font-medium mt-0.5 truncate ${
+                      c.status === "vencido" ? "text-danger" :
+                      c.status === "pendente" ? "text-warning-foreground" : ""
+                    }`}>
+                      {c.vencimento}
+                    </p>
+                  </div>
+                  <Button size="sm" variant={c.status === "validado" ? "outline" : "default"} className="shrink-0 gap-1.5">
+                    {c.status === "validado" ? "Ver" : "Resolver"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Ações rápidas */}
+      <div className="rounded-2xl border-2 border-dashed bg-muted/20 p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <p className="font-semibold flex items-center gap-2"><Rocket className="h-4 w-4 text-primary" /> Atualize seu SICAF</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Mantemos sua empresa habilitada para licitações em todo o Brasil.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/documentos" search={{ cnpj: empresa.cnpj }}>Enviar documentos</Link>
+            </Button>
+            <Button asChild size="sm" className="gap-1.5">
+              <Link to="/sicaf"><RefreshCw className="h-3.5 w-3.5" /> Atualizar SICAF</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({
+  tone, icon, label, value,
+}: {
+  tone: "ok" | "warn" | "danger" | "idle";
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+}) {
+  const toneCls =
+    tone === "ok" ? "bg-success/10 text-success border-success/20" :
+    tone === "warn" ? "bg-warning/10 text-warning-foreground border-warning/30" :
+    tone === "danger" ? "bg-danger/10 text-danger border-danger/20" :
+    "bg-muted text-muted-foreground border-border";
+  return (
+    <div className={`rounded-2xl border p-4 ${toneCls}`}>
+      <div className="flex items-center justify-between">
+        <div className="h-9 w-9 rounded-xl bg-white/60 dark:bg-black/20 flex items-center justify-center">
+          {icon}
+        </div>
+        <p className="text-3xl font-bold tabular-nums">{value}</p>
+      </div>
+      <p className="text-xs font-medium mt-2 opacity-90">{label}</p>
+    </div>
+  );
+}
+
 
 function EmpresaDetalhesSheet({
   empresa,
@@ -439,6 +675,10 @@ function EmpresaDetalhesSheet({
                     <div className="space-y-1.5 sm:col-span-2"><Label>Responsável</Label><Input value={form.responsavel ?? ""} onChange={(e) => updateField("responsavel", e.target.value)} /></div>
                   </div>
                 </div>
+              )}
+
+              {section === "sicaf" && (
+                <MeuSicafSection empresa={empresa} meta={meta} />
               )}
 
               {section === "faltam" && (
