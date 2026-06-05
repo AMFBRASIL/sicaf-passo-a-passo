@@ -22,14 +22,25 @@ export const Route = createFileRoute("/empresas")({
 
 type SicafStatus = "ativo" | "atencao" | "vencido" | "sem_cadastro";
 
-const empresas: Array<{
+interface EmpresaData {
   nome: string;
   cnpj: string;
   sicaf: SicafStatus;
   validade?: string;
   proximoPasso: string;
   acao: { label: string; variant?: "default" | "outline"; icon: typeof Rocket };
-}> = [
+  endereco: string;
+  cidade: string;
+  uf: string;
+  telefone: string;
+  email: string;
+  responsavel: string;
+  inscricaoEstadual: string;
+  inscricaoMunicipal: string;
+  ramoAtividade: string;
+}
+
+const empresasMock: EmpresaData[] = [
   {
     nome: "Empresa Demonstração LTDA",
     cnpj: "00.000.000/0001-00",
@@ -37,6 +48,15 @@ const empresas: Array<{
     validade: "28/02/2026",
     proximoPasso: "Atualizar Nível III e IV antes do vencimento.",
     acao: { label: "Atualizar SICAF", icon: Rocket },
+    endereco: "Av. Paulista, 1000 - Sala 1201",
+    cidade: "São Paulo",
+    uf: "SP",
+    telefone: "(11) 3456-7890",
+    email: "contato@empresademo.com.br",
+    responsavel: "João da Silva",
+    inscricaoEstadual: "123.456.789.000",
+    inscricaoMunicipal: "9876543210",
+    ramoAtividade: "Serviços de Consultoria em TI",
   },
   {
     nome: "JR Comércio e Serviços ME",
@@ -45,6 +65,15 @@ const empresas: Array<{
     validade: "10/09/2026",
     proximoPasso: "Tudo em dia. Vamos monitorar por você.",
     acao: { label: "Ver detalhes", variant: "outline", icon: RefreshCw },
+    endereco: "Rua Rio de Janeiro, 450 - Centro",
+    cidade: "Belo Horizonte",
+    uf: "MG",
+    telefone: "(31) 2345-6789",
+    email: "contato@jrcomercio.com.br",
+    responsavel: "Maria Oliveira",
+    inscricaoEstadual: "987.654.321.000",
+    inscricaoMunicipal: "1234567890",
+    ramoAtividade: "Comércio Varejista",
   },
   {
     nome: "JR Construtora EIRELI",
@@ -53,6 +82,15 @@ const empresas: Array<{
     validade: "Vencido em 14/10/2025",
     proximoPasso: "Sua empresa está fora de licitações. Atualize agora.",
     acao: { label: "Resolver agora", icon: Rocket },
+    endereco: "Av. das Américas, 5000 - Bloco 2",
+    cidade: "Rio de Janeiro",
+    uf: "RJ",
+    telefone: "(21) 3456-7890",
+    email: "obras@jrconstrutora.com.br",
+    responsavel: "Pedro Costa",
+    inscricaoEstadual: "456.789.123.000",
+    inscricaoMunicipal: "5678901234",
+    ramoAtividade: "Construção Civil",
   },
   {
     nome: "Nova Filial Brasília LTDA",
@@ -60,6 +98,15 @@ const empresas: Array<{
     sicaf: "sem_cadastro",
     proximoPasso: "Esta empresa ainda não possui SICAF. Vamos cadastrar?",
     acao: { label: "Cadastrar SICAF", icon: Plus },
+    endereco: "SHS Qd. 6, Bloco C - Asa Sul",
+    cidade: "Brasília",
+    uf: "DF",
+    telefone: "(61) 3456-7890",
+    email: "filial@novabrasilia.com.br",
+    responsavel: "Ana Souza",
+    inscricaoEstadual: "N/A",
+    inscricaoMunicipal: "N/A",
+    ramoAtividade: "Prestação de Serviços Administrativos",
   },
 ];
 
