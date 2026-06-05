@@ -90,11 +90,6 @@ const CertidoesRoute = CertidoesRouteImport.update({
   path: '/certidoes',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProntidaoRoute = ProntidaoRouteImport.update({
-  id: '/prontidao',
-  path: '/prontidao',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AjudaRoute = AjudaRouteImport.update({
   id: '/ajuda',
   path: '/ajuda',
