@@ -8,6 +8,7 @@ import {
   Building2,
   Gavel,
   Sparkles,
+  Gauge,
 } from "lucide-react";
 import {
   Sidebar,
