@@ -169,7 +169,7 @@ function HomePage() {
               </div>
               <Progress value={85} className="h-3" />
               <Button asChild variant="outline" className="w-full">
-                <Link to="/missoes">Ver checklist completo</Link>
+                <Link to="/empresas">Ver checklist completo</Link>
               </Button>
             </CardContent>
           </Card>
