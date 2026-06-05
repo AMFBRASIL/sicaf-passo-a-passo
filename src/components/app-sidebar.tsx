@@ -1,10 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  FileText,
   Headphones,
-  CreditCard,
-  ClipboardCheck,
   FileSignature,
   HelpCircle,
   ShieldCheck,
@@ -30,10 +27,7 @@ const items = [
   { title: "Minhas Empresas", url: "/empresas", icon: Building2 },
   { title: "Licitações", url: "/licitacoes", icon: Gavel },
   { title: "Serviços com IA", url: "/servicos-ia", icon: Sparkles, highlight: true },
-  { title: "Meus Documentos", url: "/documentos", icon: FileText },
-  { title: "Situação das Certidões", url: "/certidoes", icon: ClipboardCheck },
   { title: "Meus Serviços", url: "/servicos", icon: FileSignature },
-  { title: "Pagamentos", url: "/pagamentos", icon: CreditCard },
   { title: "Suporte", url: "/suporte", icon: Headphones },
   { title: "Central de Ajuda", url: "/ajuda", icon: HelpCircle },
 ];
