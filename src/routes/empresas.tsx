@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
@@ -41,6 +42,7 @@ interface EmpresaData {
   inscricaoMunicipal: string;
   ramoAtividade: string;
   niveis?: number[];
+  detalhesNiveis?: Record<number, NivelDetalhe>;
 }
 
 const empresasMock: EmpresaData[] = [
@@ -123,17 +125,42 @@ const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | 
   sem_cadastro: { label: "Sem cadastro SICAF", status: "idle" },
 };
 
-const NIVEIS_SICAF: { num: number; roman: string; color: string }[] = [
-  { num: 1, roman: "I", color: "#16a34a" },
-  { num: 2, roman: "II", color: "#16a34a" },
-  { num: 3, roman: "III", color: "#f59e0b" },
-  { num: 4, roman: "IV", color: "#2563eb" },
-  { num: 5, roman: "V", color: "#dc2626" },
-  { num: 6, roman: "VI", color: "#dc2626" },
+const NIVEIS_SICAF: { num: number; roman: string; nome: string; color: string }[] = [
+  { num: 1, roman: "I", nome: "Habilitação", color: "#16a34a" },
+  { num: 2, roman: "II", nome: "Habilitação Jurídica", color: "#16a34a" },
+  { num: 3, roman: "III", nome: "Regularidade Fiscal Federal", color: "#f59e0b" },
+  { num: 4, roman: "IV", nome: "Regularidade Fiscal Estadual/Municipal", color: "#2563eb" },
+  { num: 5, roman: "V", nome: "Qualificação Técnica", color: "#dc2626" },
+  { num: 6, roman: "VI", nome: "Qualificação Econômico-Financeira", color: "#dc2626" },
 ];
 
-function NiveisSicafBadges({ niveis }: { niveis?: number[] }) {
-  const ativos = new Set(niveis ?? []);
+type NivelStatus = "validado" | "vencendo" | "vencido" | "pendente" | "nao_cadastrado";
+
+interface NivelDetalhe {
+  status: NivelStatus;
+  vencimento?: string;
+  certidao?: string;
+  observacao?: string;
+}
+
+const statusNivelMeta: Record<NivelStatus, { label: string; tone: "ok" | "warn" | "danger" | "idle"; dot: string }> = {
+  validado: { label: "Validado", tone: "ok", dot: "bg-success" },
+  vencendo: { label: "Vencendo em breve", tone: "warn", dot: "bg-warning" },
+  vencido: { label: "Vencido", tone: "danger", dot: "bg-danger" },
+  pendente: { label: "Pendente", tone: "warn", dot: "bg-warning" },
+  nao_cadastrado: { label: "Não cadastrado", tone: "idle", dot: "bg-muted-foreground/50" },
+};
+
+function detalhesPara(empresa: EmpresaData, num: number): NivelDetalhe {
+  if (empresa.detalhesNiveis?.[num]) return empresa.detalhesNiveis[num];
+  const ativo = (empresa.niveis ?? []).includes(num);
+  if (!ativo) return { status: "nao_cadastrado" };
+  if (empresa.sicaf === "vencido") return { status: "vencido", vencimento: empresa.validade };
+  if (empresa.sicaf === "atencao") return { status: "vencendo", vencimento: empresa.validade };
+  return { status: "validado", vencimento: empresa.validade };
+}
+
+function NiveisSicafBadges({ empresa }: { empresa: EmpresaData }) {
   return (
     <div className="mt-3">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
@@ -141,24 +168,88 @@ function NiveisSicafBadges({ niveis }: { niveis?: number[] }) {
       </p>
       <div className="flex items-center gap-1.5">
         {NIVEIS_SICAF.map((n) => {
-          const ativo = ativos.has(n.num);
+          const det = detalhesPara(empresa, n.num);
+          const inativo = det.status === "nao_cadastrado";
+          const meta = statusNivelMeta[det.status];
           return (
-            <div
-              key={n.num}
-              title={`Nível ${n.roman}${ativo ? "" : " — não cadastrado"}`}
-              className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white transition ${
-                ativo ? "shadow-sm" : "opacity-25 grayscale"
-              }`}
-              style={{ backgroundColor: n.color }}
-            >
-              {n.roman}
-            </div>
+            <HoverCard key={n.num} openDelay={120} closeDelay={80}>
+              <HoverCardTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`Nível ${n.roman} - ${n.nome}`}
+                  className={`relative flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white outline-none transition hover:scale-110 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                    inativo ? "opacity-25 grayscale" : "shadow-sm"
+                  }`}
+                  style={{ backgroundColor: n.color }}
+                >
+                  {n.roman}
+                  {!inativo && (
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card ${meta.dot}`}
+                    />
+                  )}
+                </button>
+              </HoverCardTrigger>
+              <HoverCardContent className="w-72 p-0" side="top" align="center">
+                <div
+                  className="flex items-center gap-2 rounded-t-md px-3 py-2 text-white"
+                  style={{ backgroundColor: n.color }}
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-[11px] font-bold">
+                    {n.roman}
+                  </span>
+                  <div className="text-xs">
+                    <p className="font-semibold leading-tight">Nível {n.roman}</p>
+                    <p className="text-[11px] opacity-90 leading-tight">{n.nome}</p>
+                  </div>
+                </div>
+                <div className="space-y-2 p-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Situação</span>
+                    <StatusBadge status={meta.tone}>{meta.label}</StatusBadge>
+                  </div>
+                  {det.certidao && (
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-muted-foreground">Certidão</span>
+                      <span className="text-right font-medium">{det.certidao}</span>
+                    </div>
+                  )}
+                  {det.vencimento && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Vencimento</span>
+                      <span
+                        className={`font-medium ${
+                          det.status === "vencido"
+                            ? "text-danger"
+                            : det.status === "vencendo"
+                            ? "text-warning-foreground"
+                            : ""
+                        }`}
+                      >
+                        {det.vencimento}
+                      </span>
+                    </div>
+                  )}
+                  {det.observacao && (
+                    <p className="rounded-md bg-muted/60 p-2 text-[11px] text-muted-foreground">
+                      {det.observacao}
+                    </p>
+                  )}
+                  {det.status === "nao_cadastrado" && (
+                    <p className="rounded-md bg-muted/60 p-2 text-[11px] text-muted-foreground">
+                      Este nível ainda não foi cadastrado para esta empresa.
+                    </p>
+                  )}
+                </div>
+              </HoverCardContent>
+            </HoverCard>
           );
         })}
       </div>
     </div>
   );
 }
+
 
 type SectionId = "visao" | "faltam" | "documentos" | "manutencao" | "certidoes" | "pagamento";
 
@@ -956,7 +1047,7 @@ function EmpresasPage() {
                       )}
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">{e.proximoPasso}</p>
-                    <NiveisSicafBadges niveis={e.niveis} />
+                    <NiveisSicafBadges empresa={e} />
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2 sm:flex-col sm:items-stretch">
