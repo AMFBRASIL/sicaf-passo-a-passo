@@ -927,7 +927,7 @@ function EmpresasPage() {
                     <Icon className="h-4 w-4" />
                     Gerenciar
                   </Button>
-                  <Button asChild variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-foreground">
+                  <Button asChild variant="default" size="sm" className="gap-1 text-xs shadow-sm">
                     <Link to="/sicaf">
                       Ir para SICAF
                       <ChevronRight className="h-3 w-3" />
