@@ -916,20 +916,19 @@ function EmpresasPage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2 sm:flex-col sm:items-stretch">
-                  <Button asChild variant={e.acao.variant ?? "default"} className="gap-2">
-                    <Link to="/sicaf">
-                      <Icon className="h-4 w-4" />
-                      {e.acao.label}
-                    </Link>
-                  </Button>
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    variant={e.acao.variant ?? "default"}
+                    className="gap-2"
                     onClick={() => abrirDetalhes(e)}
                   >
-                    Mais detalhes
-                    <ChevronRight className="h-3 w-3" />
+                    <Icon className="h-4 w-4" />
+                    Gerenciar
+                  </Button>
+                  <Button asChild variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground hover:text-foreground">
+                    <Link to="/sicaf">
+                      Ir para SICAF
+                      <ChevronRight className="h-3 w-3" />
+                    </Link>
                   </Button>
                 </div>
               </div>
