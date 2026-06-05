@@ -117,12 +117,307 @@ const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | 
   sem_cadastro: { label: "Sem cadastro SICAF", status: "idle" },
 };
 
+function EmpresaDetalhesSheet({
+  empresa,
+  open,
+  onOpenChange,
+}: {
+  empresa: EmpresaData | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [form, setForm] = useState<Partial<EmpresaData>>({});
+
+  const startEditing = () => {
+    if (!empresa) return;
+    setForm({ ...empresa });
+    setEditando(true);
+  };
+
+  const cancelEditing = () => {
+    setEditando(false);
+    setForm({});
+  };
+
+  const saveEditing = () => {
+    // Aqui viria a chamada ao backend para salvar
+    setEditando(false);
+    setForm({});
+  };
+
+  const updateField = (field: keyof EmpresaData, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  if (!empresa) return null;
+
+  const meta = statusLabel[empresa.sicaf];
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full sm:max-w-xl md:max-w-2xl p-0 flex flex-col">
+        <SheetHeader className="px-6 pt-6 pb-4 border-b">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <SheetTitle className="text-xl leading-tight">{empresa.nome}</SheetTitle>
+              <SheetDescription className="mt-1">
+                CNPJ {empresa.cnpj} · <StatusBadge status={meta.status}>{meta.label}</StatusBadge>
+              </SheetDescription>
+            </div>
+          </div>
+        </SheetHeader>
+
+        <ScrollArea className="flex-1 px-6 py-5">
+          {!editando ? (
+            <div className="space-y-6">
+              {/* SICAF */}
+              <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  Situação SICAF
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <p className="text-sm font-medium mt-0.5"><StatusBadge status={meta.status}>{meta.label}</StatusBadge></p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Validade</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.validade ?? "—"}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-muted-foreground">Próximo passo</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.proximoPasso}</p>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Dados cadastrais */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <FileText className="h-4 w-4 text-primary" />
+                  Dados Cadastrais
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Razão Social / Nome Fantasia</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.nome}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">CNPJ</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.cnpj}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Inscrição Estadual</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.inscricaoEstadual}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Inscrição Municipal</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.inscricaoMunicipal}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-muted-foreground">Ramo de Atividade</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.ramoAtividade}</p>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Endereço */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  Endereço e Contato
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-muted-foreground">Endereço</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.endereco}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Cidade / UF</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.cidade} / {empresa.uf}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Telefone</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.telefone}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-muted-foreground">E-mail</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.email}</p>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Responsável */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <User className="h-4 w-4 text-primary" />
+                  Responsável
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-muted-foreground">Nome do responsável legal</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.responsavel}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* SICAF */}
+              <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  Situação SICAF
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <p className="text-sm font-medium mt-0.5"><StatusBadge status={meta.status}>{meta.label}</StatusBadge></p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Validade</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.validade ?? "—"}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-muted-foreground">Próximo passo</p>
+                    <p className="text-sm font-medium mt-0.5">{empresa.proximoPasso}</p>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Dados cadastrais editáveis */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <FileText className="h-4 w-4 text-primary" />
+                  Dados Cadastrais
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="nome">Razão Social / Nome Fantasia</Label>
+                    <Input id="nome" value={form.nome ?? ""} onChange={(e) => updateField("nome", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cnpj">CNPJ</Label>
+                    <Input id="cnpj" value={form.cnpj ?? ""} onChange={(e) => updateField("cnpj", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ramoAtividade">Ramo de Atividade</Label>
+                    <Input id="ramoAtividade" value={form.ramoAtividade ?? ""} onChange={(e) => updateField("ramoAtividade", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="inscricaoEstadual">Inscrição Estadual</Label>
+                    <Input id="inscricaoEstadual" value={form.inscricaoEstadual ?? ""} onChange={(e) => updateField("inscricaoEstadual", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="inscricaoMunicipal">Inscrição Municipal</Label>
+                    <Input id="inscricaoMunicipal" value={form.inscricaoMunicipal ?? ""} onChange={(e) => updateField("inscricaoMunicipal", e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Endereço editável */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  Endereço e Contato
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="endereco">Endereço</Label>
+                    <Input id="endereco" value={form.endereco ?? ""} onChange={(e) => updateField("endereco", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cidade">Cidade</Label>
+                    <Input id="cidade" value={form.cidade ?? ""} onChange={(e) => updateField("cidade", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="uf">UF</Label>
+                    <Input id="uf" maxLength={2} value={form.uf ?? ""} onChange={(e) => updateField("uf", e.target.value.toUpperCase())} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="telefone">Telefone</Label>
+                    <Input id="telefone" value={form.telefone ?? ""} onChange={(e) => updateField("telefone", e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="email">E-mail</Label>
+                    <Input id="email" type="email" value={form.email ?? ""} onChange={(e) => updateField("email", e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Responsável editável */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <User className="h-4 w-4 text-primary" />
+                  Responsável
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="responsavel">Nome do responsável legal</Label>
+                  <Input id="responsavel" value={form.responsavel ?? ""} onChange={(e) => updateField("responsavel", e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+        </ScrollArea>
+
+        <SheetFooter className="px-6 py-4 border-t flex flex-col sm:flex-row gap-3">
+          {!editando ? (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)} className="gap-2">
+                <X className="h-4 w-4" />
+                Fechar
+              </Button>
+              <Button onClick={startEditing} className="gap-2">
+                <Edit3 className="h-4 w-4" />
+                Editar dados
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={cancelEditing} className="gap-2">
+                <X className="h-4 w-4" />
+                Cancelar
+              </Button>
+              <Button onClick={saveEditing} className="gap-2">
+                <Save className="h-4 w-4" />
+                Salvar alterações
+              </Button>
+            </>
+          )}
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function EmpresasPage() {
-  const total = empresas.length;
-  const ativos = empresas.filter((e) => e.sicaf === "ativo").length;
-  const precisamAcao = empresas.filter(
+  const [detalhesEmpresa, setDetalhesEmpresa] = useState<EmpresaData | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const total = empresasMock.length;
+  const ativos = empresasMock.filter((e) => e.sicaf === "ativo").length;
+  const precisamAcao = empresasMock.filter(
     (e) => e.sicaf === "vencido" || e.sicaf === "atencao" || e.sicaf === "sem_cadastro",
   ).length;
+
+  const abrirDetalhes = (empresa: EmpresaData) => {
+    setDetalhesEmpresa(empresa);
+    setSheetOpen(true);
+  };
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
@@ -164,7 +459,7 @@ function EmpresasPage() {
           <CardTitle className="text-base font-semibold">Selecione uma empresa para continuar</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {empresas.map((e) => {
+          {empresasMock.map((e) => {
             const meta = statusLabel[e.sicaf];
             const Icon = e.acao.icon;
             return (
@@ -205,8 +500,14 @@ function EmpresasPage() {
                       {e.acao.label}
                     </Link>
                   </Button>
-                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground">
-                    Definir como ativa
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => abrirDetalhes(e)}
+                  >
+                    Mais detalhes
+                    <ChevronRight className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
@@ -234,6 +535,12 @@ function EmpresasPage() {
           </Button>
         </CardContent>
       </Card>
+
+      <EmpresaDetalhesSheet
+        empresa={detalhesEmpresa}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </div>
   );
 }
