@@ -9,8 +9,62 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SuporteRouteImport } from './routes/suporte'
+import { Route as SicafRouteImport } from './routes/sicaf'
+import { Route as ServicosRouteImport } from './routes/servicos'
+import { Route as PagamentosRouteImport } from './routes/pagamentos'
+import { Route as MissoesRouteImport } from './routes/missoes'
+import { Route as DocumentosRouteImport } from './routes/documentos'
+import { Route as ConcluidoRouteImport } from './routes/concluido'
+import { Route as CertidoesRouteImport } from './routes/certidoes'
+import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SuporteRoute = SuporteRouteImport.update({
+  id: '/suporte',
+  path: '/suporte',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SicafRoute = SicafRouteImport.update({
+  id: '/sicaf',
+  path: '/sicaf',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServicosRoute = ServicosRouteImport.update({
+  id: '/servicos',
+  path: '/servicos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PagamentosRoute = PagamentosRouteImport.update({
+  id: '/pagamentos',
+  path: '/pagamentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MissoesRoute = MissoesRouteImport.update({
+  id: '/missoes',
+  path: '/missoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocumentosRoute = DocumentosRouteImport.update({
+  id: '/documentos',
+  path: '/documentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConcluidoRoute = ConcluidoRouteImport.update({
+  id: '/concluido',
+  path: '/concluido',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CertidoesRoute = CertidoesRouteImport.update({
+  id: '/certidoes',
+  path: '/certidoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AjudaRoute = AjudaRouteImport.update({
+  id: '/ajuda',
+  path: '/ajuda',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +73,158 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ajuda': typeof AjudaRoute
+  '/certidoes': typeof CertidoesRoute
+  '/concluido': typeof ConcluidoRoute
+  '/documentos': typeof DocumentosRoute
+  '/missoes': typeof MissoesRoute
+  '/pagamentos': typeof PagamentosRoute
+  '/servicos': typeof ServicosRoute
+  '/sicaf': typeof SicafRoute
+  '/suporte': typeof SuporteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ajuda': typeof AjudaRoute
+  '/certidoes': typeof CertidoesRoute
+  '/concluido': typeof ConcluidoRoute
+  '/documentos': typeof DocumentosRoute
+  '/missoes': typeof MissoesRoute
+  '/pagamentos': typeof PagamentosRoute
+  '/servicos': typeof ServicosRoute
+  '/sicaf': typeof SicafRoute
+  '/suporte': typeof SuporteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/ajuda': typeof AjudaRoute
+  '/certidoes': typeof CertidoesRoute
+  '/concluido': typeof ConcluidoRoute
+  '/documentos': typeof DocumentosRoute
+  '/missoes': typeof MissoesRoute
+  '/pagamentos': typeof PagamentosRoute
+  '/servicos': typeof ServicosRoute
+  '/sicaf': typeof SicafRoute
+  '/suporte': typeof SuporteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/ajuda'
+    | '/certidoes'
+    | '/concluido'
+    | '/documentos'
+    | '/missoes'
+    | '/pagamentos'
+    | '/servicos'
+    | '/sicaf'
+    | '/suporte'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/ajuda'
+    | '/certidoes'
+    | '/concluido'
+    | '/documentos'
+    | '/missoes'
+    | '/pagamentos'
+    | '/servicos'
+    | '/sicaf'
+    | '/suporte'
+  id:
+    | '__root__'
+    | '/'
+    | '/ajuda'
+    | '/certidoes'
+    | '/concluido'
+    | '/documentos'
+    | '/missoes'
+    | '/pagamentos'
+    | '/servicos'
+    | '/sicaf'
+    | '/suporte'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AjudaRoute: typeof AjudaRoute
+  CertidoesRoute: typeof CertidoesRoute
+  ConcluidoRoute: typeof ConcluidoRoute
+  DocumentosRoute: typeof DocumentosRoute
+  MissoesRoute: typeof MissoesRoute
+  PagamentosRoute: typeof PagamentosRoute
+  ServicosRoute: typeof ServicosRoute
+  SicafRoute: typeof SicafRoute
+  SuporteRoute: typeof SuporteRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/suporte': {
+      id: '/suporte'
+      path: '/suporte'
+      fullPath: '/suporte'
+      preLoaderRoute: typeof SuporteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sicaf': {
+      id: '/sicaf'
+      path: '/sicaf'
+      fullPath: '/sicaf'
+      preLoaderRoute: typeof SicafRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/servicos': {
+      id: '/servicos'
+      path: '/servicos'
+      fullPath: '/servicos'
+      preLoaderRoute: typeof ServicosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pagamentos': {
+      id: '/pagamentos'
+      path: '/pagamentos'
+      fullPath: '/pagamentos'
+      preLoaderRoute: typeof PagamentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/missoes': {
+      id: '/missoes'
+      path: '/missoes'
+      fullPath: '/missoes'
+      preLoaderRoute: typeof MissoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/documentos': {
+      id: '/documentos'
+      path: '/documentos'
+      fullPath: '/documentos'
+      preLoaderRoute: typeof DocumentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/concluido': {
+      id: '/concluido'
+      path: '/concluido'
+      fullPath: '/concluido'
+      preLoaderRoute: typeof ConcluidoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/certidoes': {
+      id: '/certidoes'
+      path: '/certidoes'
+      fullPath: '/certidoes'
+      preLoaderRoute: typeof CertidoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ajuda': {
+      id: '/ajuda'
+      path: '/ajuda'
+      fullPath: '/ajuda'
+      preLoaderRoute: typeof AjudaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,17 +237,16 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AjudaRoute: AjudaRoute,
+  CertidoesRoute: CertidoesRoute,
+  ConcluidoRoute: ConcluidoRoute,
+  DocumentosRoute: DocumentosRoute,
+  MissoesRoute: MissoesRoute,
+  PagamentosRoute: PagamentosRoute,
+  ServicosRoute: ServicosRoute,
+  SicafRoute: SicafRoute,
+  SuporteRoute: SuporteRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
