@@ -956,6 +956,7 @@ function EmpresasPage() {
                       )}
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">{e.proximoPasso}</p>
+                    <NiveisSicafBadges niveis={e.niveis} />
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2 sm:flex-col sm:items-stretch">
