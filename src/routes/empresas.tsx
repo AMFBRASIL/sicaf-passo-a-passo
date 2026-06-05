@@ -40,6 +40,7 @@ interface EmpresaData {
   inscricaoEstadual: string;
   inscricaoMunicipal: string;
   ramoAtividade: string;
+  niveis?: number[];
 }
 
 const empresasMock: EmpresaData[] = [
@@ -59,6 +60,7 @@ const empresasMock: EmpresaData[] = [
     inscricaoEstadual: "123.456.789.000",
     inscricaoMunicipal: "9876543210",
     ramoAtividade: "Serviços de Consultoria em TI",
+    niveis: [1, 2],
   },
   {
     nome: "JR Comércio e Serviços ME",
@@ -76,6 +78,7 @@ const empresasMock: EmpresaData[] = [
     inscricaoEstadual: "987.654.321.000",
     inscricaoMunicipal: "1234567890",
     ramoAtividade: "Comércio Varejista",
+    niveis: [1, 2, 3, 4],
   },
   {
     nome: "JR Construtora EIRELI",
@@ -93,6 +96,7 @@ const empresasMock: EmpresaData[] = [
     inscricaoEstadual: "456.789.123.000",
     inscricaoMunicipal: "5678901234",
     ramoAtividade: "Construção Civil",
+    niveis: [1, 2, 3, 4, 5, 6],
   },
   {
     nome: "Nova Filial Brasília LTDA",
@@ -118,6 +122,43 @@ const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | 
   vencido: { label: "SICAF Vencido", status: "danger" },
   sem_cadastro: { label: "Sem cadastro SICAF", status: "idle" },
 };
+
+const NIVEIS_SICAF: { num: number; roman: string; color: string }[] = [
+  { num: 1, roman: "I", color: "#16a34a" },
+  { num: 2, roman: "II", color: "#16a34a" },
+  { num: 3, roman: "III", color: "#f59e0b" },
+  { num: 4, roman: "IV", color: "#2563eb" },
+  { num: 5, roman: "V", color: "#dc2626" },
+  { num: 6, roman: "VI", color: "#dc2626" },
+];
+
+function NiveisSicafBadges({ niveis }: { niveis?: number[] }) {
+  const ativos = new Set(niveis ?? []);
+  return (
+    <div className="mt-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+        Níveis SICAF
+      </p>
+      <div className="flex items-center gap-1.5">
+        {NIVEIS_SICAF.map((n) => {
+          const ativo = ativos.has(n.num);
+          return (
+            <div
+              key={n.num}
+              title={`Nível ${n.roman}${ativo ? "" : " — não cadastrado"}`}
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white transition ${
+                ativo ? "shadow-sm" : "opacity-25 grayscale"
+              }`}
+              style={{ backgroundColor: n.color }}
+            >
+              {n.roman}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 type SectionId = "visao" | "faltam" | "documentos" | "manutencao" | "certidoes" | "pagamento";
 
@@ -915,6 +956,7 @@ function EmpresasPage() {
                       )}
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">{e.proximoPasso}</p>
+                    <NiveisSicafBadges niveis={e.niveis} />
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2 sm:flex-col sm:items-stretch">
