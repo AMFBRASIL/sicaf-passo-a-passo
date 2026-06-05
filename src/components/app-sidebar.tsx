@@ -26,7 +26,7 @@ const items = [
   { title: "Início", url: "/", icon: LayoutDashboard },
   { title: "Minhas Empresas", url: "/empresas", icon: Building2 },
   { title: "Licitações", url: "/licitacoes", icon: Gavel },
-  { title: "Serviços com IA", url: "/servicos-ia", icon: Sparkles, highlight: true },
+  { title: "Serviços com IA", url: "/servicos-ia", icon: Sparkles },
   { title: "Meus Serviços", url: "/servicos", icon: FileSignature },
   { title: "Suporte", url: "/suporte", icon: Headphones },
   { title: "Central de Ajuda", url: "/ajuda", icon: HelpCircle },
@@ -60,7 +60,7 @@ export function AppSidebar() {
                       asChild
                       isActive={active}
                       tooltip={item.title}
-                      className={item.highlight ? "bg-sidebar-primary/15 text-sidebar-primary-foreground hover:bg-sidebar-primary/25" : ""}
+                      
                     >
                       <Link to={item.url}>
                         <item.icon className="h-4 w-4" />
