@@ -14,6 +14,10 @@ import {
   Clock,
   ShieldCheck,
   FileText,
+  Gauge,
+  Gavel,
+  Bell,
+  ArrowRight,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
