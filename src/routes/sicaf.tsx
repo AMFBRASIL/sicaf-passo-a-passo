@@ -704,12 +704,89 @@ function SicafPage() {
   const tudoConcluido = etapaAtual > total;
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
       <PageHeader
         icon={<Bot className="h-5 w-5" />}
         title="Atualizar SICAF"
         subtitle="Não se preocupe — vamos fazer juntos, um passo de cada vez."
       />
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[260px_1fr]">
+        {/* Timeline lateral */}
+        <aside className="lg:sticky lg:top-6 lg:self-start">
+          <Card className="shadow-soft">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center justify-between">
+                <span>Etapas do processo</span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {Math.min(concluidas, total)}/{total}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <ol className="relative">
+                {passosBase.map((p, i) => {
+                  const status = statusDe(p.n);
+                  const isLast = i === passosBase.length - 1;
+                  return (
+                    <li key={p.n} className="relative pl-9 pb-5 last:pb-0">
+                      {!isLast && (
+                        <span
+                          className={`absolute left-[14px] top-7 bottom-0 w-0.5 ${
+                            status === "done" ? "bg-success" : "bg-border"
+                          }`}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => status !== "pending" && setModalAberto(p.n)}
+                        disabled={status === "pending"}
+                        className={`absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition ${
+                          status === "done"
+                            ? "bg-success text-success-foreground hover:scale-110"
+                            : status === "current"
+                            ? "bg-primary text-primary-foreground ring-4 ring-primary/20 animate-pulse"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                        aria-label={`Etapa ${p.n}: ${p.titulo}`}
+                      >
+                        {status === "done" ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : status === "pending" ? (
+                          <Lock className="h-3 w-3" />
+                        ) : (
+                          p.n
+                        )}
+                      </button>
+                      <div className={status === "pending" ? "opacity-60" : ""}>
+                        <p className={`text-[10px] font-semibold uppercase tracking-wider ${
+                          status === "done" ? "text-success" :
+                          status === "current" ? "text-primary" :
+                          "text-muted-foreground"
+                        }`}>
+                          {status === "done" ? "Concluída" : status === "current" ? "Em andamento" : `Etapa ${p.n}`}
+                        </p>
+                        <p className="text-xs font-semibold leading-tight mt-0.5">{p.titulo}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              <div className="mt-4 pt-4 border-t">
+                <div className="flex items-center justify-between text-[11px] mb-1.5">
+                  <span className="text-muted-foreground">Progresso</span>
+                  <span className="font-semibold text-primary">{percentual}%</span>
+                </div>
+                <Progress value={percentual} className="h-1.5" />
+              </div>
+            </CardContent>
+          </Card>
+        </aside>
+
+        {/* Conteúdo principal */}
+        <div>
+
 
       {/* Empresa em processo */}
       <Card className="mt-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent shadow-soft">
