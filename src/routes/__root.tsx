@@ -121,8 +121,33 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <SidebarProvider>
+        <div className="flex min-h-screen w-full bg-background">
+          <AppSidebar />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/80 px-3 backdrop-blur sm:px-6">
+              <div className="flex items-center gap-2">
+                <SidebarTrigger />
+                <span className="text-sm font-medium text-muted-foreground hidden sm:inline">
+                  Olá, João 👋
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button variant="ghost" size="icon" className="rounded-full" aria-label="Notificações">
+                  <Bell className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <MessageCircle className="h-4 w-4" />
+                  <span className="hidden sm:inline">WhatsApp</span>
+                </Button>
+              </div>
+            </header>
+            <main className="flex-1">
+              <Outlet />
+            </main>
+          </div>
+        </div>
+      </SidebarProvider>
     </QueryClientProvider>
   );
 }
