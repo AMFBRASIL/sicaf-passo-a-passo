@@ -527,6 +527,159 @@ function AssistenteRodandoDialog({
 }
 
 // ============================================================
+// Modal: Documentação da empresa
+// ============================================================
+function DocumentacaoDialog({
+  open,
+  onOpenChange,
+  onConcluido,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onConcluido: () => void;
+}) {
+  const [arquivos, setArquivos] = useState<Record<string, File | null>>({});
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setArquivos({});
+      setEnviando(false);
+      setEnviado(false);
+    }
+  }, [open]);
+
+  const obrigatoriosOk = documentosNecessarios
+    .filter((d) => d.obrigatorio)
+    .every((d) => arquivos[d.id]);
+
+  const enviar = () => {
+    setEnviando(true);
+    setTimeout(() => {
+      setEnviando(false);
+      setEnviado(true);
+      setTimeout(() => {
+        onConcluido();
+        onOpenChange(false);
+      }, 1100);
+    }, 1500);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <FileText className="h-6 w-6" />
+          </div>
+          <DialogTitle className="text-center text-xl">Documentação da empresa</DialogTitle>
+          <DialogDescription className="text-center">
+            Envie os documentos abaixo. Aceitamos PDF, JPG ou PNG até 10MB cada.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!enviado && !enviando && (
+          <div className="space-y-3 py-2 max-h-[55vh] overflow-y-auto pr-1">
+            {documentosNecessarios.map((doc) => {
+              const arquivo = arquivos[doc.id];
+              return (
+                <div
+                  key={doc.id}
+                  className={`rounded-xl border p-3 transition ${
+                    arquivo ? "border-success/40 bg-success/5" : "border-border bg-card"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{doc.label}</p>
+                        {doc.obrigatorio && (
+                          <span className="text-[10px] font-semibold uppercase text-danger">
+                            obrigatório
+                          </span>
+                        )}
+                      </div>
+                      {arquivo ? (
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {arquivo.name} · {(arquivo.size / 1024).toFixed(0)} KB
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-muted-foreground">Nenhum arquivo enviado</p>
+                      )}
+                    </div>
+                    <div className="shrink-0">
+                      {arquivo ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 gap-1 text-danger hover:text-danger"
+                          onClick={() => setArquivos((a) => ({ ...a, [doc.id]: null }))}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Remover
+                        </Button>
+                      ) : (
+                        <label
+                          htmlFor={`doc-${doc.id}`}
+                          className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:brightness-95"
+                        >
+                          <Upload className="h-3.5 w-3.5" /> Enviar
+                          <input
+                            id={`doc-${doc.id}`}
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            className="hidden"
+                            onChange={(e) =>
+                              setArquivos((a) => ({ ...a, [doc.id]: e.target.files?.[0] ?? null }))
+                            }
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {enviando && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="text-sm font-medium">Enviando documentos…</p>
+          </div>
+        )}
+
+        {enviado && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/15 text-success">
+              <CheckCircle2 className="h-8 w-8" />
+            </div>
+            <p className="text-base font-semibold">Documentos recebidos!</p>
+            <p className="text-center text-xs text-muted-foreground">
+              Você já pode conectar ao Compras.gov.br.
+            </p>
+          </div>
+        )}
+
+        {!enviando && !enviado && (
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={enviar} disabled={!obrigatoriosOk} className="gap-2">
+              <Send className="h-4 w-4" />
+              Enviar documentos
+            </Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
 // Página principal
 // ============================================================
 function SicafPage() {
