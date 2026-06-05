@@ -11,6 +11,8 @@ import {
   HelpCircle,
   ShieldCheck,
   Building2,
+  Gavel,
+  Sparkles,
 } from "lucide-react";
 import {
   Sidebar,
@@ -28,7 +30,9 @@ import {
 const items = [
   { title: "Início", url: "/", icon: LayoutDashboard },
   { title: "Minhas Empresas", url: "/empresas", icon: Building2 },
-  { title: "Atualizar SICAF", url: "/sicaf", icon: Bot, highlight: true },
+  { title: "Licitações", url: "/licitacoes", icon: Gavel },
+  { title: "Serviços com IA", url: "/servicos-ia", icon: Sparkles, highlight: true },
+  { title: "Atualizar SICAF", url: "/sicaf", icon: Bot },
   { title: "O que falta?", url: "/missoes", icon: Target },
   { title: "Meus Documentos", url: "/documentos", icon: FileText },
   { title: "Situação das Certidões", url: "/certidoes", icon: ClipboardCheck },
