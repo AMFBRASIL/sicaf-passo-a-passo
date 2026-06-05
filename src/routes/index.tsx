@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,10 @@ import {
   Clock,
   ShieldCheck,
   FileText,
+  Gauge,
+  Gavel,
+  Bell,
+  ArrowRight,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -155,6 +160,32 @@ function HomePage() {
             </CardContent>
           </Card>
 
+          {/* Diferenciais — Prontidão, Monitor, Feed PNCP */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <FeatureCard
+              to="/prontidao"
+              icon={<Gauge className="h-5 w-5" />}
+              tag="Novo"
+              title="Prontidão para Licitar"
+              desc="Score 0–100 por CNPJ com ranking e plano de ação."
+            />
+            <FeatureCard
+              to="/certidoes"
+              icon={<Bell className="h-5 w-5" />}
+              tag="Automático"
+              title="Monitor de Certidões"
+              desc="Alertas 30 / 15 / 5 dias por e-mail e WhatsApp."
+            />
+            <FeatureCard
+              to="/licitacoes"
+              icon={<Gavel className="h-5 w-5" />}
+              tag="PNCP"
+              title="Feed de Oportunidades"
+              desc="Licitações compatíveis com seu perfil, em tempo real."
+            />
+          </div>
+
+
           {/* Missões mini */}
           <Card>
             <CardHeader>
@@ -205,5 +236,42 @@ function HomePage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+function FeatureCard({
+  to,
+  icon,
+  tag,
+  title,
+  desc,
+}: {
+  to: "/prontidao" | "/certidoes" | "/licitacoes";
+  icon: ReactNode;
+  tag: string;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border bg-card p-4 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lift"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          {icon}
+        </div>
+        <span className="rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+          {tag}
+        </span>
+      </div>
+      <div>
+        <p className="font-semibold leading-tight">{title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{desc}</p>
+      </div>
+      <span className="mt-auto inline-flex items-center gap-1 text-xs font-medium text-primary opacity-80 group-hover:opacity-100">
+        Abrir <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
+      </span>
+    </Link>
   );
 }
