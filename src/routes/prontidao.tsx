@@ -112,7 +112,7 @@ function ProntidaoPage() {
         <HeroScore media={media} />
         <KpiCard tone="ok" icon={<CheckCircle2 className="h-4 w-4" />} label="Prontas para licitar" value={prontas} hint="Score ≥ 80" />
         <KpiCard tone="warn" icon={<TrendingUp className="h-4 w-4" />} label="Em ajuste" value={atencao} hint="Score 50–79" />
-        <KpiCard tone="danger" icon={<AlertTriangle className="h-4 w-4" />} label="Críticas" value={criticas} hint="Score &lt; 50" />
+        <KpiCard tone="danger" icon={<AlertTriangle className="h-4 w-4" />} label="Críticas" value={criticas} hint="Score abaixo de 50" />
       </div>
 
       {/* Filters */}
