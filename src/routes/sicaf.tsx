@@ -16,6 +16,12 @@ import {
   FileText,
   Sparkles,
   Send,
+  Building2,
+  MapPin,
+  Phone,
+  Mail,
+  User,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,24 +64,55 @@ const passosBase: Passo[] = [
   },
   {
     n: 2,
+    titulo: "Documentação da empresa",
+    descricao: "Envie os documentos básicos que vamos usar para o cadastro.",
+  },
+  {
+    n: 3,
     titulo: "Conectar ao Compras.gov.br",
     descricao: "Vamos instalar o Assistente CADBRASIL para automatizar o acesso.",
   },
   {
-    n: 3,
+    n: 4,
     titulo: "Atualizar Nível III — Receita Federal",
     descricao: "Encontramos documentos que precisam ser atualizados.",
   },
   {
-    n: 4,
+    n: 5,
     titulo: "Atualizar Nível IV — Qualificação técnica",
     descricao: "Envie ou confirme os documentos da sua atividade.",
   },
   {
-    n: 5,
+    n: 6,
     titulo: "Validar e enviar",
     descricao: "Confirmação final — você pronto para licitar.",
   },
+];
+
+// ============================================================
+// Empresa em processo (mock — viria de query param / contexto)
+// ============================================================
+const empresaEmProcesso = {
+  nome: "Nova Filial Brasília LTDA",
+  cnpj: "34.567.890/0001-22",
+  endereco: "SHS Qd. 6, Bloco C - Asa Sul",
+  cidade: "Brasília",
+  uf: "DF",
+  telefone: "(61) 3456-7890",
+  email: "filial@novabrasilia.com.br",
+  responsavel: "Ana Souza",
+  ramoAtividade: "Prestação de Serviços Administrativos",
+};
+
+// ============================================================
+// Documentos exigidos
+// ============================================================
+const documentosNecessarios = [
+  { id: "contrato_social", label: "Contrato Social (última alteração)", obrigatorio: true },
+  { id: "cnpj_card", label: "Cartão CNPJ atualizado", obrigatorio: true },
+  { id: "rg_socio", label: "RG e CPF do(s) sócio(s)", obrigatorio: true },
+  { id: "comprovante_endereco", label: "Comprovante de endereço da empresa", obrigatorio: true },
+  { id: "procuracao", label: "Procuração (se aplicável)", obrigatorio: false },
 ];
 
 // ============================================================
@@ -490,6 +527,159 @@ function AssistenteRodandoDialog({
 }
 
 // ============================================================
+// Modal: Documentação da empresa
+// ============================================================
+function DocumentacaoDialog({
+  open,
+  onOpenChange,
+  onConcluido,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onConcluido: () => void;
+}) {
+  const [arquivos, setArquivos] = useState<Record<string, File | null>>({});
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setArquivos({});
+      setEnviando(false);
+      setEnviado(false);
+    }
+  }, [open]);
+
+  const obrigatoriosOk = documentosNecessarios
+    .filter((d) => d.obrigatorio)
+    .every((d) => arquivos[d.id]);
+
+  const enviar = () => {
+    setEnviando(true);
+    setTimeout(() => {
+      setEnviando(false);
+      setEnviado(true);
+      setTimeout(() => {
+        onConcluido();
+        onOpenChange(false);
+      }, 1100);
+    }, 1500);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <FileText className="h-6 w-6" />
+          </div>
+          <DialogTitle className="text-center text-xl">Documentação da empresa</DialogTitle>
+          <DialogDescription className="text-center">
+            Envie os documentos abaixo. Aceitamos PDF, JPG ou PNG até 10MB cada.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!enviado && !enviando && (
+          <div className="space-y-3 py-2 max-h-[55vh] overflow-y-auto pr-1">
+            {documentosNecessarios.map((doc) => {
+              const arquivo = arquivos[doc.id];
+              return (
+                <div
+                  key={doc.id}
+                  className={`rounded-xl border p-3 transition ${
+                    arquivo ? "border-success/40 bg-success/5" : "border-border bg-card"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">{doc.label}</p>
+                        {doc.obrigatorio && (
+                          <span className="text-[10px] font-semibold uppercase text-danger">
+                            obrigatório
+                          </span>
+                        )}
+                      </div>
+                      {arquivo ? (
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {arquivo.name} · {(arquivo.size / 1024).toFixed(0)} KB
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-muted-foreground">Nenhum arquivo enviado</p>
+                      )}
+                    </div>
+                    <div className="shrink-0">
+                      {arquivo ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 gap-1 text-danger hover:text-danger"
+                          onClick={() => setArquivos((a) => ({ ...a, [doc.id]: null }))}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Remover
+                        </Button>
+                      ) : (
+                        <label
+                          htmlFor={`doc-${doc.id}`}
+                          className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:brightness-95"
+                        >
+                          <Upload className="h-3.5 w-3.5" /> Enviar
+                          <input
+                            id={`doc-${doc.id}`}
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            className="hidden"
+                            onChange={(e) =>
+                              setArquivos((a) => ({ ...a, [doc.id]: e.target.files?.[0] ?? null }))
+                            }
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {enviando && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="text-sm font-medium">Enviando documentos…</p>
+          </div>
+        )}
+
+        {enviado && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/15 text-success">
+              <CheckCircle2 className="h-8 w-8" />
+            </div>
+            <p className="text-base font-semibold">Documentos recebidos!</p>
+            <p className="text-center text-xs text-muted-foreground">
+              Você já pode conectar ao Compras.gov.br.
+            </p>
+          </div>
+        )}
+
+        {!enviando && !enviado && (
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={enviar} disabled={!obrigatoriosOk} className="gap-2">
+              <Send className="h-4 w-4" />
+              Enviar documentos
+            </Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================
 // Página principal
 // ============================================================
 function SicafPage() {
@@ -520,6 +710,48 @@ function SicafPage() {
         title="Atualizar SICAF"
         subtitle="Não se preocupe — vamos fazer juntos, um passo de cada vez."
       />
+
+      {/* Empresa em processo */}
+      <Card className="mt-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent shadow-soft">
+        <CardContent className="p-5">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Building2 className="h-6 w-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Processo em andamento para
+              </p>
+              <p className="mt-0.5 text-lg font-bold leading-tight">{empresaEmProcesso.nome}</p>
+              <p className="text-xs text-muted-foreground">CNPJ {empresaEmProcesso.cnpj}</p>
+              <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                <div className="flex items-start gap-1.5">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span>
+                    {empresaEmProcesso.endereco} — {empresaEmProcesso.cidade}/{empresaEmProcesso.uf}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span>{empresaEmProcesso.responsavel}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span>{empresaEmProcesso.telefone}</span>
+                </div>
+                <div className="flex items-center gap-1.5 truncate">
+                  <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{empresaEmProcesso.email}</span>
+                </div>
+              </div>
+            </div>
+            <Button asChild variant="ghost" size="sm" className="shrink-0 text-xs">
+              <Link to="/empresas">Trocar</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
 
       {!tudoConcluido ? (
         <Card className="mt-6 border-warning/30 bg-warning/5">
@@ -635,13 +867,18 @@ function SicafPage() {
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
       />
-      <AssistenteDialog
+      <DocumentacaoDialog
         open={modalAberto === 2}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
       />
-      <AssistenteRodandoDialog
+      <AssistenteDialog
         open={modalAberto === 3}
+        onOpenChange={(v) => !v && setModalAberto(null)}
+        onConcluido={concluirEtapa}
+      />
+      <AssistenteRodandoDialog
+        open={modalAberto === 4}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Atualizar Nível III — Receita Federal"
@@ -655,7 +892,7 @@ function SicafPage() {
         ]}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 4}
+        open={modalAberto === 5}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Atualizar Nível IV — Qualificação técnica"
@@ -668,7 +905,7 @@ function SicafPage() {
         ]}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 5}
+        open={modalAberto === 6}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Validar e enviar"
@@ -679,6 +916,7 @@ function SicafPage() {
           "Confirmando ativação no SICAF",
         ]}
       />
+
 
       {tudoConcluido && (
         <div className="fixed bottom-6 right-6 z-50 hidden sm:block">
