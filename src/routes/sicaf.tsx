@@ -711,6 +711,48 @@ function SicafPage() {
         subtitle="Não se preocupe — vamos fazer juntos, um passo de cada vez."
       />
 
+      {/* Empresa em processo */}
+      <Card className="mt-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent shadow-soft">
+        <CardContent className="p-5">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Building2 className="h-6 w-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Processo em andamento para
+              </p>
+              <p className="mt-0.5 text-lg font-bold leading-tight">{empresaEmProcesso.nome}</p>
+              <p className="text-xs text-muted-foreground">CNPJ {empresaEmProcesso.cnpj}</p>
+              <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                <div className="flex items-start gap-1.5">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span>
+                    {empresaEmProcesso.endereco} — {empresaEmProcesso.cidade}/{empresaEmProcesso.uf}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span>{empresaEmProcesso.responsavel}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span>{empresaEmProcesso.telefone}</span>
+                </div>
+                <div className="flex items-center gap-1.5 truncate">
+                  <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{empresaEmProcesso.email}</span>
+                </div>
+              </div>
+            </div>
+            <Button asChild variant="ghost" size="sm" className="shrink-0 text-xs">
+              <Link to="/empresas">Trocar</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+
       {!tudoConcluido ? (
         <Card className="mt-6 border-warning/30 bg-warning/5">
           <CardContent className="flex items-start gap-3 p-4">
