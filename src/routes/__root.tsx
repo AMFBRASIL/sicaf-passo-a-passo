@@ -81,14 +81,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Portal do Fornecedor — CADBRASIL" },
+      { name: "description", content: "Sua jornada guiada para participar de licitações públicas com segurança." },
+      { name: "author", content: "CADBRASIL" },
+      { property: "og:title", content: "Portal do Fornecedor — CADBRASIL" },
+      { property: "og:description", content: "Sua jornada guiada para participar de licitações públicas com segurança." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
