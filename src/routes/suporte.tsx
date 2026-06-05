@@ -143,7 +143,7 @@ function NovoChamadoDialog() {
         </Button>
       </DialogTrigger>
       <DialogContent
-        className="overflow-hidden p-0 sm:max-w-[960px] lg:max-w-[1080px] [&>button]:z-30 [&>button]:text-white [&>button]:opacity-80 [&>button]:hover:opacity-100"
+        className="overflow-hidden p-0 sm:max-w-[960px] lg:max-w-[1080px]"
       >
         <div className="grid h-[88vh] max-h-[760px] grid-cols-1 lg:grid-cols-[340px_1fr]">
           {/* LEFT — wizard sidebar with bg image */}
