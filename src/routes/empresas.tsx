@@ -78,6 +78,7 @@ const empresasMock: EmpresaData[] = [
     inscricaoEstadual: "987.654.321.000",
     inscricaoMunicipal: "1234567890",
     ramoAtividade: "Comércio Varejista",
+    niveis: [1, 2, 3, 4],
   },
   {
     nome: "JR Construtora EIRELI",
