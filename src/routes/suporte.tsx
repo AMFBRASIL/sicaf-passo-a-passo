@@ -1,19 +1,27 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   CreditCard,
+  File as FileIcon,
   FileText,
   Headphones,
   HelpCircle,
+  Image as ImageIcon,
   MessageCircle,
   Paperclip,
   PhoneCall,
   Plus,
+  Send,
   ShieldCheck,
   Sparkles,
+  Upload,
   Wrench,
+  X,
+  Zap,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,15 +31,12 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { PageHeader, StatusBadge } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import wizardBg from "@/assets/wizard-bg.jpg";
 
 export const Route = createFileRoute("/suporte")({
   head: () => ({
