@@ -149,6 +149,35 @@ function RootComponent() {
                   <MessageCircle className="h-4 w-4" />
                   <span className="hidden sm:inline">WhatsApp</span>
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="flex items-center gap-2 px-2">
+                      <Avatar className="h-8 w-8 border border-border">
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                          JS
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="hidden text-sm font-medium sm:inline">João Silva</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none">João Silva</p>
+                        <p className="text-xs leading-none text-muted-foreground">joao@empresa.com</p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem>
+                      <Settings className="mr-2 h-4 w-4" />
+                      Editar dados
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sair
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </header>
             <main className="flex-1">
