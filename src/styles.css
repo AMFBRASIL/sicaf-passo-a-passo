@@ -81,6 +81,8 @@
   --danger-foreground: oklch(0.99 0 0);
   --brand: oklch(0.48 0.16 248);
   --brand-foreground: oklch(0.99 0 0);
+  --accent-green: oklch(0.42 0.13 150);
+  --accent-green-foreground: oklch(0.99 0 0);
 
   --sidebar: oklch(0.22 0.06 250);
   --sidebar-foreground: oklch(0.95 0.01 240);
