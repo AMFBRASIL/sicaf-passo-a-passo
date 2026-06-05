@@ -123,6 +123,43 @@ const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | 
   sem_cadastro: { label: "Sem cadastro SICAF", status: "idle" },
 };
 
+const NIVEIS_SICAF: { num: number; roman: string; color: string }[] = [
+  { num: 1, roman: "I", color: "#16a34a" },
+  { num: 2, roman: "II", color: "#16a34a" },
+  { num: 3, roman: "III", color: "#f59e0b" },
+  { num: 4, roman: "IV", color: "#2563eb" },
+  { num: 5, roman: "V", color: "#dc2626" },
+  { num: 6, roman: "VI", color: "#dc2626" },
+];
+
+function NiveisSicafBadges({ niveis }: { niveis?: number[] }) {
+  const ativos = new Set(niveis ?? []);
+  return (
+    <div className="mt-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+        Níveis SICAF
+      </p>
+      <div className="flex items-center gap-1.5">
+        {NIVEIS_SICAF.map((n) => {
+          const ativo = ativos.has(n.num);
+          return (
+            <div
+              key={n.num}
+              title={`Nível ${n.roman}${ativo ? "" : " — não cadastrado"}`}
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white transition ${
+                ativo ? "shadow-sm" : "opacity-25 grayscale"
+              }`}
+              style={{ backgroundColor: n.color }}
+            >
+              {n.roman}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 type SectionId = "visao" | "faltam" | "documentos" | "manutencao" | "certidoes" | "pagamento";
 
 const sectionMenu: { id: SectionId; label: string; icon: typeof FileText; badge?: string; tone?: "warn" | "danger" | "ok" }[] = [
