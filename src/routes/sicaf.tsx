@@ -867,13 +867,18 @@ function SicafPage() {
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
       />
-      <AssistenteDialog
+      <DocumentacaoDialog
         open={modalAberto === 2}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
       />
-      <AssistenteRodandoDialog
+      <AssistenteDialog
         open={modalAberto === 3}
+        onOpenChange={(v) => !v && setModalAberto(null)}
+        onConcluido={concluirEtapa}
+      />
+      <AssistenteRodandoDialog
+        open={modalAberto === 4}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Atualizar Nível III — Receita Federal"
@@ -887,7 +892,7 @@ function SicafPage() {
         ]}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 4}
+        open={modalAberto === 5}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Atualizar Nível IV — Qualificação técnica"
@@ -900,7 +905,7 @@ function SicafPage() {
         ]}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 5}
+        open={modalAberto === 6}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Validar e enviar"
@@ -911,6 +916,7 @@ function SicafPage() {
           "Confirmando ativação no SICAF",
         ]}
       />
+
 
       {tudoConcluido && (
         <div className="fixed bottom-6 right-6 z-50 hidden sm:block">
