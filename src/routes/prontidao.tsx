@@ -236,7 +236,7 @@ function KpiCard({
         </div>
         <p className="mt-3 text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
         <p className="mt-1 text-3xl font-bold">{value}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground" dangerouslySetInnerHTML={{ __html: hint }} />
+        <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
       </CardContent>
     </Card>
   );
