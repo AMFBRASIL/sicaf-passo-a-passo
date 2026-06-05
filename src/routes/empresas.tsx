@@ -25,7 +25,7 @@ export const Route = createFileRoute("/empresas")({
 
 type SicafStatus = "ativo" | "atencao" | "vencido" | "sem_cadastro";
 
-interface EmpresaData {
+export interface EmpresaData {
   nome: string;
   cnpj: string;
   sicaf: SicafStatus;
@@ -45,7 +45,7 @@ interface EmpresaData {
   detalhesNiveis?: Record<number, NivelDetalhe>;
 }
 
-const empresasMock: EmpresaData[] = [
+export const empresasMock: EmpresaData[] = [
   {
     nome: "Empresa Demonstração LTDA",
     cnpj: "00.000.000/0001-00",
@@ -118,14 +118,14 @@ const empresasMock: EmpresaData[] = [
   },
 ];
 
-const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | "danger" | "idle" }> = {
+export const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | "danger" | "idle" }> = {
   ativo: { label: "SICAF Ativo", status: "ok" },
   atencao: { label: "Atualização recomendada", status: "warn" },
   vencido: { label: "SICAF Vencido", status: "danger" },
   sem_cadastro: { label: "Sem cadastro SICAF", status: "idle" },
 };
 
-const NIVEIS_SICAF: { num: number; roman: string; nome: string; color: string }[] = [
+export const NIVEIS_SICAF: { num: number; roman: string; nome: string; color: string }[] = [
   { num: 1, roman: "I", nome: "Habilitação", color: "#16a34a" },
   { num: 2, roman: "II", nome: "Habilitação Jurídica", color: "#16a34a" },
   { num: 3, roman: "III", nome: "Regularidade Fiscal Federal", color: "#f59e0b" },
@@ -462,7 +462,11 @@ function EmpresaDetalhesSheet({
                       <h4 className="text-lg font-bold">Documentos</h4>
                       <p className="text-sm text-muted-foreground">Arquivos vinculados a esta empresa.</p>
                     </div>
-                    <Button size="sm" className="gap-2"><Plus className="h-4 w-4" /> Enviar</Button>
+                    <Button asChild size="sm" className="gap-2" onClick={() => onOpenChange(false)}>
+                      <Link to="/documentos" search={{ cnpj: empresa.cnpj }}>
+                        <Plus className="h-4 w-4" /> Enviar
+                      </Link>
+                    </Button>
                   </div>
                   <div className="space-y-2">
                     <SectionItemRow status="ok" title="Contrato Social.pdf" desc="Enviado em 12/03/2025" action={{ label: "Ver" }} />
