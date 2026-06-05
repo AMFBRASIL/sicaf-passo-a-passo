@@ -823,7 +823,7 @@ function EmpresasPage() {
         title="Minhas Empresas"
         subtitle="Gerencie o SICAF de cada CNPJ — atualize ou cadastre novos."
         action={
-          <Button size="lg" className="gap-2">
+          <Button size="lg" className="gap-2" onClick={() => setWizardOpen(true)}>
             <Plus className="h-4 w-4" />
             Adicionar nova empresa
           </Button>
