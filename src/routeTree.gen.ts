@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SicafRouteImport } from './routes/sicaf'
 import { Route as MissoesRouteImport } from './routes/missoes'
+import { Route as DocumentosRouteImport } from './routes/documentos'
 import { Route as IndexRouteImport } from './routes/index'
 
 const SicafRoute = SicafRouteImport.update({
@@ -23,6 +24,11 @@ const MissoesRoute = MissoesRouteImport.update({
   path: '/missoes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocumentosRoute = DocumentosRouteImport.update({
+  id: '/documentos',
+  path: '/documentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,30 +37,34 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
   '/sicaf': typeof SicafRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
   '/sicaf': typeof SicafRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/documentos': typeof DocumentosRoute
   '/missoes': typeof MissoesRoute
   '/sicaf': typeof SicafRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/missoes' | '/sicaf'
+  fullPaths: '/' | '/documentos' | '/missoes' | '/sicaf'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/missoes' | '/sicaf'
-  id: '__root__' | '/' | '/missoes' | '/sicaf'
+  to: '/' | '/documentos' | '/missoes' | '/sicaf'
+  id: '__root__' | '/' | '/documentos' | '/missoes' | '/sicaf'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DocumentosRoute: typeof DocumentosRoute
   MissoesRoute: typeof MissoesRoute
   SicafRoute: typeof SicafRoute
 }
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MissoesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/documentos': {
+      id: '/documentos'
+      path: '/documentos'
+      fullPath: '/documentos'
+      preLoaderRoute: typeof DocumentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DocumentosRoute: DocumentosRoute,
   MissoesRoute: MissoesRoute,
   SicafRoute: SicafRoute,
 }
