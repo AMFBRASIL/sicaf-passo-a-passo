@@ -16,6 +16,12 @@ import {
   FileText,
   Sparkles,
   Send,
+  Building2,
+  MapPin,
+  Phone,
+  Mail,
+  User,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
