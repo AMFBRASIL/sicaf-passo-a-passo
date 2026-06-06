@@ -556,6 +556,8 @@ function EmpresaDetalhesSheet({
   const [form, setForm] = useState<Partial<EmpresaData>>({});
   const [section, setSection] = useState<SectionId>("visao");
   const [manutencaoModal, setManutencaoModal] = useState<"ativar" | "gerenciar" | null>(null);
+  const [taxaSicafModal, setTaxaSicafModal] = useState(false);
+  const [taxaSicafPaga, setTaxaSicafPaga] = useState<Record<string, boolean>>({});
 
   const startEditing = () => {
     if (!empresa) return;
