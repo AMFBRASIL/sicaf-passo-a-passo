@@ -870,7 +870,7 @@ function EmpresaDetalhesSheet({
       empresa={empresa}
       mode={manutencaoModal ?? "ativar"}
       diaVencimento={manutencaoAtivada[empresa.cnpj]}
-      onAtivar={(cnpj, dia) => setManutencaoAtivada((p) => ({ ...p, [cnpj]: dia }))}
+      onAtivar={onAtivar}
     />
     </>
   );
