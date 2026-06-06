@@ -747,7 +747,11 @@ function SicafPage() {
                       )}
                       <button
                         type="button"
-                        onClick={() => status !== "pending" && setModalAberto(p.n)}
+                        onClick={() => {
+                          if (status === "pending") return;
+                          if (p.n === 4) setPagamentoModal(true);
+                          else setModalAberto(p.n);
+                        }}
                         disabled={status === "pending"}
                         className={`absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition ${
                           status === "done"
