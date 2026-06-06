@@ -12,6 +12,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { PageHeader, StatusBadge } from "@/components/page-header";
+import { ManutencaoModal } from "@/components/manutencao-modal";
+import { Wrench } from "lucide-react";
 
 export const Route = createFileRoute("/empresas")({
   head: () => ({
@@ -548,6 +550,12 @@ function EmpresaDetalhesSheet({
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState<Partial<EmpresaData>>({});
   const [section, setSection] = useState<SectionId>("visao");
+  const [manutencaoAtivada, setManutencaoAtivada] = useState<Record<string, number>>({
+    "00.000.000/0001-00": 15,
+    "12.345.678/0001-99": 10,
+    "23.456.789/0001-11": 5,
+  });
+  const [manutencaoModal, setManutencaoModal] = useState<"ativar" | "gerenciar" | null>(null);
 
   const startEditing = () => {
     if (!empresa) return;
@@ -562,6 +570,7 @@ function EmpresaDetalhesSheet({
   const meta = statusLabel[empresa.sicaf];
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-3xl md:max-w-4xl p-0 flex flex-col">
         <SheetHeader className="px-6 pt-6 pb-4 border-b">
@@ -743,23 +752,44 @@ function EmpresaDetalhesSheet({
 
               {section === "manutencao" && (
                 <div className="space-y-4">
-                  <div className="rounded-xl border border-success/40 bg-success/5 p-5 flex items-start gap-3">
-                    <CheckCircle2 className="h-6 w-6 text-success shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="font-semibold">Manutenção ativa</p>
-                      <p className="text-sm text-muted-foreground">Renovação automática em 15/01/2026 — R$ 149,00/mês</p>
+                  {manutencaoAtivada[empresa.cnpj] ? (
+                    <>
+                      <div className="rounded-xl border border-success/40 bg-success/5 p-5 flex items-start gap-3">
+                        <CheckCircle2 className="h-6 w-6 text-success shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="font-semibold">Manutenção ativa</p>
+                          <p className="text-sm text-muted-foreground">
+                            Próximo boleto vence dia {manutencaoAtivada[empresa.cnpj]} · R$ 149,00/mês
+                          </p>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => setManutencaoModal("gerenciar")}>
+                          Gerenciar
+                        </Button>
+                      </div>
+                      <Separator />
+                      <div>
+                        <h4 className="text-base font-semibold mb-3">Últimas ações da CADBRASIL</h4>
+                        <div className="space-y-2">
+                          <SectionItemRow status="ok" title="Renovação SICAF Nível I e II" desc="Concluída em 02/01/2026" />
+                          <SectionItemRow status="ok" title="Atualização cadastral mensal" desc="15/12/2025" />
+                          <SectionItemRow status="ok" title="Verificação de certidões" desc="01/12/2025" />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-2xl border-2 border-dashed bg-gradient-to-br from-muted/40 to-transparent p-8 text-center">
+                      <div className="mx-auto h-14 w-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+                        <Wrench className="h-7 w-7 text-muted-foreground" />
+                      </div>
+                      <h4 className="text-lg font-bold">Sem manutenção ativa</h4>
+                      <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                        Esta empresa ainda não possui o plano de manutenção. Ative agora e deixe a CADBRASIL cuidar de tudo automaticamente.
+                      </p>
+                      <Button className="mt-5 gap-2" onClick={() => setManutencaoModal("ativar")}>
+                        <Sparkles className="h-4 w-4" /> Ativar manutenção
+                      </Button>
                     </div>
-                    <Button size="sm" variant="outline">Gerenciar</Button>
-                  </div>
-                  <Separator />
-                  <div>
-                    <h4 className="text-base font-semibold mb-3">Últimas ações da CADBRASIL</h4>
-                    <div className="space-y-2">
-                      <SectionItemRow status="ok" title="Renovação SICAF Nível I e II" desc="Concluída em 02/01/2026" />
-                      <SectionItemRow status="ok" title="Atualização cadastral mensal" desc="15/12/2025" />
-                      <SectionItemRow status="ok" title="Verificação de certidões" desc="01/12/2025" />
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -835,6 +865,15 @@ function EmpresaDetalhesSheet({
         </SheetFooter>
       </SheetContent>
     </Sheet>
+    <ManutencaoModal
+      open={manutencaoModal !== null}
+      onOpenChange={(v) => !v && setManutencaoModal(null)}
+      empresa={empresa}
+      mode={manutencaoModal ?? "ativar"}
+      diaVencimento={manutencaoAtivada[empresa.cnpj]}
+      onAtivar={(cnpj, dia) => setManutencaoAtivada((p) => ({ ...p, [cnpj]: dia }))}
+    />
+    </>
   );
 }
 
