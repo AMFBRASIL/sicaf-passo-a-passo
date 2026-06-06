@@ -97,6 +97,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:description", content: "Sua jornada guiada para participar de licitações públicas com segurança." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Portal do Fornecedor — CADBRASIL" },
+      { name: "twitter:description", content: "Sua jornada guiada para participar de licitações públicas com segurança." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b35a7b14-25b8-4fe2-8c03-778f60bd888f/id-preview-bd8ede95--bf80494b-f599-4b88-ae31-bea7f48e2c0f.lovable.app-1780712564332.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b35a7b14-25b8-4fe2-8c03-778f60bd888f/id-preview-bd8ede95--bf80494b-f599-4b88-ae31-bea7f48e2c0f.lovable.app-1780712564332.png" },
     ],
     links: [
       {
