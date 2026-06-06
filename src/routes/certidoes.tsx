@@ -90,10 +90,31 @@ function CertPage() {
   const empresa = cnpj ? empresasMock.find((e) => e.cnpj === cnpj) : undefined;
 
   const [canais, setCanais] = useState({ email: true, whatsapp: true, push: true, sms: false });
+  const [modalCert, setModalCert] = useState<Cert | null>(null);
+  const [dataCertidao, setDataCertidao] = useState<Date | undefined>(undefined);
+  const [codigoCertidao, setCodigoCertidao] = useState("");
+
   const validas = certs.filter((c) => c.status === "ok").length;
   const venceBreve = certs.filter((c) => c.status === "warn").length;
   const vencidas = certs.filter((c) => c.status === "danger").length;
   const score = Math.round((validas / certs.length) * 100);
+
+  const handleOpenModal = (cert: Cert) => {
+    setModalCert(cert);
+    setDataCertidao(undefined);
+    setCodigoCertidao("");
+  };
+
+  const handleCloseModal = () => {
+    setModalCert(null);
+    setDataCertidao(undefined);
+    setCodigoCertidao("");
+  };
+
+  const handleSalvar = () => {
+    // Aqui seria feita a lógica de salvar a certidão
+    handleCloseModal();
+  };
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
