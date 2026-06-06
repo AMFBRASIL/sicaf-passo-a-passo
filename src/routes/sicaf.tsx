@@ -60,23 +60,23 @@ interface Passo {
 const passosBase: Passo[] = [
   {
     n: 1,
+    titulo: "Pagamento da taxa CADBRASIL",
+    descricao: "Confirme o pagamento para liberar a atualização dos seus níveis.",
+  },
+  {
+    n: 2,
     titulo: "Verificar certificado digital",
     descricao: "Vamos checar se seu certificado e-CNPJ A1 ou A3 está conectado.",
   },
   {
-    n: 2,
+    n: 3,
     titulo: "Documentação da empresa",
     descricao: "Envie os documentos básicos que vamos usar para o cadastro.",
   },
   {
-    n: 3,
+    n: 4,
     titulo: "Conectar ao Compras.gov.br",
     descricao: "Vamos instalar o Assistente CADBRASIL para automatizar o acesso.",
-  },
-  {
-    n: 4,
-    titulo: "Pagamento da taxa CADBRASIL",
-    descricao: "Confirme o pagamento para liberar a atualização dos seus níveis.",
   },
   {
     n: 5,
@@ -749,7 +749,7 @@ function SicafPage() {
                         type="button"
                         onClick={() => {
                           if (status === "pending") return;
-                          if (p.n === 4) setPagamentoModal(true);
+                        if (p.n === 1) setPagamentoModal(true);
                           else setModalAberto(p.n);
                         }}
                         disabled={status === "pending"}
@@ -919,7 +919,7 @@ function SicafPage() {
                   <p className="mt-0.5 text-sm text-muted-foreground">{p.descricao}</p>
                   {status === "current" && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => p.n === 4 ? setPagamentoModal(true) : setModalAberto(p.n)}>
+                      <Button size="sm" onClick={() => p.n === 1 ? setPagamentoModal(true) : setModalAberto(p.n)}>
                         Resolver agora
                         <ArrowRight className="ml-1.5 h-4 w-4" />
                       </Button>
@@ -954,17 +954,17 @@ function SicafPage() {
 
       {/* Modais */}
       <CertificadoDialog
-        open={modalAberto === 1}
-        onOpenChange={(v) => !v && setModalAberto(null)}
-        onConcluido={concluirEtapa}
-      />
-      <DocumentacaoDialog
         open={modalAberto === 2}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
       />
-      <AssistenteDialog
+      <DocumentacaoDialog
         open={modalAberto === 3}
+        onOpenChange={(v) => !v && setModalAberto(null)}
+        onConcluido={concluirEtapa}
+      />
+      <AssistenteDialog
+        open={modalAberto === 4}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
       />
