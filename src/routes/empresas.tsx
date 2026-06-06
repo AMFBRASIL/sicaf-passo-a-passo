@@ -1346,7 +1346,7 @@ function EmpresasPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8 sm:py-10">
       <PageHeader
         icon={<Building2 className="h-5 w-5" />}
         title="Minhas Empresas"
