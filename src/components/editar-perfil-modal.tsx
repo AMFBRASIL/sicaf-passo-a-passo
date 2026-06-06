@@ -77,10 +77,7 @@ export function EditarPerfilModal({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        showCloseButton
-        className="overflow-hidden border-0 p-0 sm:max-w-[980px]"
-      >
+      <DialogContent className="overflow-hidden border-0 p-0 sm:max-w-[980px]">
         <div className="grid h-[640px] grid-cols-1 md:grid-cols-[320px_1fr]">
           {/* Sidebar com imagem */}
           <aside
