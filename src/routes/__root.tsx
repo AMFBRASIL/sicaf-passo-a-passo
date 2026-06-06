@@ -15,7 +15,6 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Bell, MessageCircle, User, Settings, LogOut, ChevronDown } from "lucide-react";
 import { EditarPerfilModal } from "@/components/editar-perfil-modal";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
