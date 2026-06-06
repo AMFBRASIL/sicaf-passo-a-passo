@@ -29,6 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import type { EmpresaData } from "@/routes/empresas";
+import { PagamentoModal } from "@/components/pagamento-modal";
 
 const DIAS = [1, 5, 10, 15, 20, 25];
 const VALOR = 149;
@@ -428,6 +429,7 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
       status: pago ? "pago" : atual ? "aberto" : "futuro",
     };
   });
+  const [pagBoleto, setPagBoleto] = useState<{ data: Date } | null>(null);
 
   return (
     <div className="space-y-6">
@@ -495,7 +497,7 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
                 </Button>
               )}
               {b.status === "aberto" && (
-                <Button size="sm" className="gap-1.5">Pagar agora</Button>
+                <Button size="sm" className="gap-1.5" onClick={() => setPagBoleto({ data: b.data })}>Pagar agora</Button>
               )}
               {b.status === "futuro" && (
                 <Badge variant="secondary">Programado</Badge>
@@ -545,6 +547,14 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
           </ol>
         </TabsContent>
       </Tabs>
+      <PagamentoModal
+        open={!!pagBoleto}
+        onOpenChange={(v) => !v && setPagBoleto(null)}
+        empresa={empresa}
+        descricao={pagBoleto ? `Mensalidade ${format(pagBoleto.data, "MMM/yyyy", { locale: ptBR })}` : "mensalidade"}
+        valor={VALOR}
+        vencimentoPadrao={pagBoleto ? format(pagBoleto.data, "yyyy-MM-dd") : undefined}
+      />
     </div>
   );
 }
