@@ -741,9 +741,17 @@ function EmpresaDetalhesSheet({
 
               {section === "certidoes" && (
                 <div className="space-y-4">
-                  <div>
-                    <h4 className="text-lg font-bold">Situação das certidões</h4>
-                    <p className="text-sm text-muted-foreground">Monitoramos a validade de todas as certidões obrigatórias.</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-lg font-bold">Situação das certidões</h4>
+                      <p className="text-sm text-muted-foreground">Monitoramos a validade de todas as certidões obrigatórias.</p>
+                    </div>
+                    <Button asChild className="gap-2">
+                      <Link to="/certidoes" search={{ cnpj: empresa.cnpj }}>
+                        <ShieldCheck className="h-4 w-4" />
+                        Gerenciar Certidões
+                      </Link>
+                    </Button>
                   </div>
                   <div className="space-y-2">
                     <SectionItemRow status="ok" title="Receita Federal (Conjunta)" desc="Válida até 12/05/2026" action={{ label: "Baixar" }} />
