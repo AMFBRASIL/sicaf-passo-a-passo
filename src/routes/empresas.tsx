@@ -864,6 +864,15 @@ function EmpresaDetalhesSheet({
         </SheetFooter>
       </SheetContent>
     </Sheet>
+    <ManutencaoModal
+      open={manutencaoModal !== null}
+      onOpenChange={(v) => !v && setManutencaoModal(null)}
+      empresa={empresa}
+      mode={manutencaoModal ?? "ativar"}
+      diaVencimento={manutencaoAtivada[empresa.cnpj]}
+      onAtivar={(cnpj, dia) => setManutencaoAtivada((p) => ({ ...p, [cnpj]: dia }))}
+    />
+    </>
   );
 }
 
