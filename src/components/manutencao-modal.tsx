@@ -547,6 +547,14 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
           </ol>
         </TabsContent>
       </Tabs>
+      <PagamentoModal
+        open={!!pagBoleto}
+        onOpenChange={(v) => !v && setPagBoleto(null)}
+        empresa={empresa}
+        descricao={pagBoleto ? `Mensalidade ${format(pagBoleto.data, "MMM/yyyy", { locale: ptBR })}` : "mensalidade"}
+        valor={VALOR}
+        vencimentoPadrao={pagBoleto ? format(pagBoleto.data, "yyyy-MM-dd") : undefined}
+      />
     </div>
   );
 }
