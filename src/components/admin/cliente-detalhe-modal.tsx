@@ -294,24 +294,6 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
   );
 }
 
-function HeroStat({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-lg bg-white/10 px-3 py-2 backdrop-blur">
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/70">
-        <Icon className="h-3 w-3" /> {label}
-      </div>
-      <p className="mt-0.5 text-lg font-bold leading-tight">{value}</p>
-    </div>
-  );
-}
 
 /* ---------- TABS ---------- */
 
