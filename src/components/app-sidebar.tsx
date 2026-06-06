@@ -9,6 +9,7 @@ import {
   Gavel,
   Sparkles,
   Gauge,
+  ClipboardList,
 } from "lucide-react";
 import {
   Sidebar,
