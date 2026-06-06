@@ -22,6 +22,7 @@ import {
   MapPin,
   User,
   Phone,
+  CalendarIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,20 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { PageHeader, StatusBadge, StatusDot } from "@/components/page-header";
 import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const certidoesSearchSchema = z.object({
   cnpj: fallback(z.string(), "").default(""),
@@ -75,10 +90,31 @@ function CertPage() {
   const empresa = cnpj ? empresasMock.find((e) => e.cnpj === cnpj) : undefined;
 
   const [canais, setCanais] = useState({ email: true, whatsapp: true, push: true, sms: false });
+  const [modalCert, setModalCert] = useState<Cert | null>(null);
+  const [dataCertidao, setDataCertidao] = useState<Date | undefined>(undefined);
+  const [codigoCertidao, setCodigoCertidao] = useState("");
+
   const validas = certs.filter((c) => c.status === "ok").length;
   const venceBreve = certs.filter((c) => c.status === "warn").length;
   const vencidas = certs.filter((c) => c.status === "danger").length;
   const score = Math.round((validas / certs.length) * 100);
+
+  const handleOpenModal = (cert: Cert) => {
+    setModalCert(cert);
+    setDataCertidao(undefined);
+    setCodigoCertidao("");
+  };
+
+  const handleCloseModal = () => {
+    setModalCert(null);
+    setDataCertidao(undefined);
+    setCodigoCertidao("");
+  };
+
+  const handleSalvar = () => {
+    // Aqui seria feita a lógica de salvar a certidão
+    handleCloseModal();
+  };
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
@@ -192,7 +228,9 @@ function CertPage() {
                       Baixar
                     </Button>
                   ) : (
-                    <Button size="sm">Resolver agora</Button>
+                    <Button size="sm" onClick={() => handleOpenModal(c)}>
+                      Resolver agora
+                    </Button>
                   )}
                 </div>
               </CardContent>
@@ -295,6 +333,70 @@ function CertPage() {
           </Card>
         </aside>
       </div>
+
+      {/* Modal Resolver Certidão */}
+      <Dialog open={!!modalCert} onOpenChange={(open) => !open && handleCloseModal()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary" />
+              Resolver certidão
+            </DialogTitle>
+            <DialogDescription>
+              Preencha os dados da nova certidão para <strong>{modalCert?.nome}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="data-validade">Data de validade</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="data-validade"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !dataCertidao && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dataCertidao ? format(dataCertidao, "dd/MM/yyyy") : <span>Selecione a data</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dataCertidao}
+                    onSelect={setDataCertidao}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="codigo-certidao">Código / Número da certidão</Label>
+              <Input
+                id="codigo-certidao"
+                placeholder="Ex: 12345678901234567890"
+                value={codigoCertidao}
+                onChange={(e) => setCodigoCertidao(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleCloseModal}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSalvar} disabled={!dataCertidao || !codigoCertidao}>
+              Salvar certidão
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
