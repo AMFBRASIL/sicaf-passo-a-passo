@@ -918,6 +918,12 @@ function EmpresaDetalhesSheet({
       diaVencimento={manutencaoAtivada[empresa.cnpj]}
       onAtivar={onAtivar}
     />
+    <PagamentoSicafModal
+      open={taxaSicafModal}
+      onOpenChange={setTaxaSicafModal}
+      empresa={{ nome: empresa.nome, cnpj: empresa.cnpj }}
+      onPago={() => setTaxaSicafPaga((p) => ({ ...p, [empresa.cnpj]: true }))}
+    />
     </>
   );
 }
