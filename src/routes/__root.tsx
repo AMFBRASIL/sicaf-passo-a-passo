@@ -158,13 +158,17 @@ function RootComponent() {
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="flex items-center gap-2 px-2">
+                    <Button
+                      variant="ghost"
+                      className="group flex items-center gap-2 rounded-full border border-transparent px-2 py-1 transition-all hover:border-border hover:bg-accent/40 data-[state=open]:border-border data-[state=open]:bg-accent/60"
+                    >
                       <Avatar className="h-8 w-8 border border-border">
                         <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                           JS
                         </AvatarFallback>
                       </Avatar>
                       <span className="hidden text-sm font-medium sm:inline">João Silva</span>
+                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-52">
@@ -175,7 +179,7 @@ function RootComponent() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setEditarOpen(true)}>
                       <Settings className="mr-2 h-4 w-4" />
                       Editar dados
                     </DropdownMenuItem>
@@ -192,6 +196,7 @@ function RootComponent() {
             </main>
           </div>
         </div>
+        <EditarPerfilModal open={editarOpen} onOpenChange={setEditarOpen} />
       </SidebarProvider>
     </QueryClientProvider>
   );
