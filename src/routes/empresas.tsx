@@ -581,6 +581,30 @@ function EmpresaDetalhesSheet({
             {sectionMenu.map((s) => {
               const Icon = s.icon;
               const active = s.id === section;
+              if (s.id === "certidoes") {
+                return (
+                  <Link
+                    key={s.id}
+                    to="/certidoes"
+                    search={{ cnpj: empresa.cnpj }}
+                    className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm text-left transition hover:bg-muted text-foreground`}
+                    onClick={() => onOpenChange(false)}
+                  >
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{s.label}</span>
+                    </span>
+                    {s.badge && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                        s.tone === "danger" ? "bg-danger/15 text-danger" :
+                        s.tone === "warn" ? "bg-warning/20 text-warning-foreground" :
+                        s.tone === "ok" ? "bg-success/15 text-success" :
+                        "bg-muted text-muted-foreground"
+                      }`}>{s.badge}</span>
+                    )}
+                  </Link>
+                );
+              }
               return (
                 <button
                   key={s.id}
