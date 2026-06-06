@@ -883,26 +883,26 @@ function SicafPage() {
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Processo em andamento para
               </p>
-              <p className="mt-0.5 text-lg font-bold leading-tight">{empresaEmProcesso.nome}</p>
-              <p className="text-xs text-muted-foreground">CNPJ {empresaEmProcesso.cnpj}</p>
+              <p className="mt-0.5 text-lg font-bold leading-tight">{cliente.nome}</p>
+              <p className="text-xs text-muted-foreground">CNPJ {cliente.cnpj}</p>
               <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
                 <div className="flex items-start gap-1.5">
                   <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span>
-                    {empresaEmProcesso.endereco} — {empresaEmProcesso.cidade}/{empresaEmProcesso.uf}
+                    {cliente.endereco} — {cliente.cidade}/{cliente.uf}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span>{empresaEmProcesso.responsavel}</span>
+                  <span>{cliente.responsavel}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Phone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span>{empresaEmProcesso.telefone}</span>
+                  <span>{cliente.telefone}</span>
                 </div>
                 <div className="flex items-center gap-1.5 truncate">
                   <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{empresaEmProcesso.email}</span>
+                  <span className="truncate">{cliente.email}</span>
                 </div>
               </div>
             </div>
@@ -1093,7 +1093,7 @@ function SicafPage() {
       <PagamentoSicafModal
         open={pagamentoModal && !pagamentoPago}
         onOpenChange={setPagamentoModal}
-        empresa={{ nome: empresaEmProcesso.nome, cnpj: empresaEmProcesso.cnpj }}
+        empresa={{ nome: cliente.nome, cnpj: cliente.cnpj }}
         onPago={() => { setPagamentoPago(true); concluirEtapa(); }}
       />
     </div>
