@@ -1420,6 +1420,8 @@ function EmpresasPage() {
         empresa={detalhesEmpresa}
         open={Boolean(detalhesEmpresa)}
         onOpenChange={handleDetalhesOpenChange}
+        manutencaoAtivada={manutencaoAtivada}
+        onAtivar={(cnpj, dia) => setManutencaoAtivada((p) => ({ ...p, [cnpj]: dia }))}
       />
       <NovaEmpresaWizard open={wizardOpen} onOpenChange={setWizardOpen} />
     </div>
