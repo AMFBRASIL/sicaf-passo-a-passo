@@ -1455,7 +1455,7 @@ function EmpresasPage() {
                     className="gap-1 text-xs shadow-sm hover:brightness-90"
                     style={{ backgroundColor: 'var(--accent-green)', color: 'var(--accent-green-foreground)' }}
                   >
-                    <Link to="/sicaf">
+                    <Link to="/sicaf" search={{ cnpj: e.cnpj }}>
                       Ir para SICAF
                       <ChevronRight className="h-3 w-3" />
                     </Link>

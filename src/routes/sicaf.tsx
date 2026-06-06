@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import {
   Bot,
   ArrowRight,
@@ -22,6 +23,9 @@ import {
   Mail,
   User,
   Trash2,
+  AlertTriangle,
+  RefreshCw,
+  Calendar,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,7 +43,12 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 
+const searchSchema = z.object({
+  cnpj: z.string().optional(),
+});
+
 export const Route = createFileRoute("/sicaf")({
+  validateSearch: searchSchema,
   head: () => ({
     meta: [
       { title: "Atualizar SICAF — CADBRASIL" },
@@ -98,17 +107,57 @@ const passosBase: Passo[] = [
 // ============================================================
 // Empresa em processo (mock — viria de query param / contexto)
 // ============================================================
-const empresaEmProcesso = {
-  nome: "Nova Filial Brasília LTDA",
-  cnpj: "34.567.890/0001-22",
-  endereco: "SHS Qd. 6, Bloco C - Asa Sul",
-  cidade: "Brasília",
-  uf: "DF",
-  telefone: "(61) 3456-7890",
-  email: "filial@novabrasilia.com.br",
-  responsavel: "Ana Souza",
-  ramoAtividade: "Prestação de Serviços Administrativos",
+// ============================================================
+// Empresas em processo (mock — viria de query param / contexto)
+// ============================================================
+type EstadoSicaf = "novo" | "vencido";
+
+type ClienteEmProcesso = {
+  nome: string;
+  cnpj: string;
+  endereco: string;
+  cidade: string;
+  uf: string;
+  telefone: string;
+  email: string;
+  responsavel: string;
+  ramoAtividade: string;
+  estado: EstadoSicaf;
+  validade?: string;
+  vencidoEm?: string;
+  niveis?: number[];
 };
+
+const clientes: Record<string, ClienteEmProcesso> = {
+  "34.567.890/0001-22": {
+    nome: "Nova Filial Brasília LTDA",
+    cnpj: "34.567.890/0001-22",
+    endereco: "SHS Qd. 6, Bloco C - Asa Sul",
+    cidade: "Brasília",
+    uf: "DF",
+    telefone: "(61) 3456-7890",
+    email: "filial@novabrasilia.com.br",
+    responsavel: "Ana Souza",
+    ramoAtividade: "Prestação de Serviços Administrativos",
+    estado: "novo",
+  },
+  "23.456.789/0001-11": {
+    nome: "JR Construtora EIRELI",
+    cnpj: "23.456.789/0001-11",
+    endereco: "Av. das Américas, 5000 - Bloco 2",
+    cidade: "Rio de Janeiro",
+    uf: "RJ",
+    telefone: "(21) 3456-7890",
+    email: "obras@jrconstrutora.com.br",
+    responsavel: "Pedro Costa",
+    ramoAtividade: "Construção Civil",
+    estado: "vencido",
+    vencidoEm: "14/10/2025",
+    niveis: [1, 2, 3, 4, 5, 6],
+  },
+};
+
+const clienteDefault = clientes["34.567.890/0001-22"];
 
 // ============================================================
 // Documentos exigidos
@@ -689,13 +738,27 @@ function DocumentacaoDialog({
 // Página principal
 // ============================================================
 function SicafPage() {
-  // Cliente NOVO: nenhuma etapa concluída
-  const [etapaAtual, setEtapaAtual] = useState(1);
+  const { cnpj } = Route.useSearch();
+  const cliente = (cnpj && clientes[cnpj]) || clienteDefault;
+  const total = passosBase.length;
+
+  // Vencido: começa com todas etapas concluídas até clicar em "Renovar"
+  const [renovando, setRenovando] = useState(false);
+  const [renovacaoModal, setRenovacaoModal] = useState(false);
+  const [etapaAtual, setEtapaAtual] = useState(
+    cliente.estado === "vencido" ? total + 1 : 1,
+  );
   const [modalAberto, setModalAberto] = useState<number | null>(null);
   const [pagamentoPago, setPagamentoPago] = useState(false);
   const [pagamentoModal, setPagamentoModal] = useState(false);
 
-  const total = passosBase.length;
+  // Resetar estado quando trocar de empresa via search param
+  useEffect(() => {
+    setRenovando(false);
+    setPagamentoPago(false);
+    setEtapaAtual(cliente.estado === "vencido" ? total + 1 : 1);
+  }, [cliente.cnpj, cliente.estado, total]);
+
   const concluidas = etapaAtual - 1;
   const percentual = Math.round((concluidas / total) * 100);
 
@@ -708,6 +771,15 @@ function SicafPage() {
   const concluirEtapa = () => {
     setEtapaAtual((n) => Math.min(n + 1, total + 1));
   };
+
+  const iniciarRenovacao = () => {
+    setRenovando(true);
+    setPagamentoPago(false);
+    setEtapaAtual(1);
+    setRenovacaoModal(false);
+  };
+
+
 
   const tudoConcluido = etapaAtual > total;
 
@@ -811,26 +883,26 @@ function SicafPage() {
               <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Processo em andamento para
               </p>
-              <p className="mt-0.5 text-lg font-bold leading-tight">{empresaEmProcesso.nome}</p>
-              <p className="text-xs text-muted-foreground">CNPJ {empresaEmProcesso.cnpj}</p>
+              <p className="mt-0.5 text-lg font-bold leading-tight">{cliente.nome}</p>
+              <p className="text-xs text-muted-foreground">CNPJ {cliente.cnpj}</p>
               <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
                 <div className="flex items-start gap-1.5">
                   <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span>
-                    {empresaEmProcesso.endereco} — {empresaEmProcesso.cidade}/{empresaEmProcesso.uf}
+                    {cliente.endereco} — {cliente.cidade}/{cliente.uf}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span>{empresaEmProcesso.responsavel}</span>
+                  <span>{cliente.responsavel}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Phone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span>{empresaEmProcesso.telefone}</span>
+                  <span>{cliente.telefone}</span>
                 </div>
                 <div className="flex items-center gap-1.5 truncate">
                   <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{empresaEmProcesso.email}</span>
+                  <span className="truncate">{cliente.email}</span>
                 </div>
               </div>
             </div>
@@ -842,13 +914,50 @@ function SicafPage() {
       </Card>
 
 
-      {!tudoConcluido ? (
+      {cliente.estado === "vencido" && !renovando && tudoConcluido ? (
+        <Card className="mt-6 border-danger/40 bg-gradient-to-br from-danger/10 via-danger/5 to-transparent shadow-soft overflow-hidden">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-4 flex-wrap">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-danger/15 text-danger">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div className="flex-1 min-w-[240px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-danger px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-danger-foreground">
+                    SICAF Vencido
+                  </span>
+                  <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Venceu em {cliente.vencidoEm}
+                  </span>
+                </div>
+                <p className="mt-2 font-semibold">
+                  Todos os níveis foram validados, mas o cadastro venceu.
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Sua empresa está temporariamente fora das licitações. Renove agora para reativar o SICAF — nós fazemos a atualização para você.
+                </p>
+              </div>
+              <Button
+                size="lg"
+                className="gap-2 shadow-lift"
+                onClick={() => setRenovacaoModal(true)}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Renovar SICAF agora
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : !tudoConcluido ? (
         <Card className="mt-6 border-warning/30 bg-warning/5">
           <CardContent className="flex items-start gap-3 p-4">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-warning-foreground" />
             <div className="text-sm">
               <p className="font-semibold">
-                Sua empresa ainda não possui SICAF ativo. Vamos cadastrar agora?
+                {renovando
+                  ? "Renovação do SICAF em andamento — vamos juntos atualizar tudo."
+                  : "Sua empresa ainda não possui SICAF ativo. Vamos cadastrar agora?"}
               </p>
               <p className="mt-1 text-muted-foreground">
                 Leva cerca de 5 minutos. Comece pela próxima etapa em destaque abaixo.
@@ -861,7 +970,11 @@ function SicafPage() {
           <CardContent className="flex items-start gap-3 p-4">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
             <div className="text-sm">
-              <p className="font-semibold">Parabéns! Seu SICAF foi atualizado com sucesso 🎉</p>
+              <p className="font-semibold">
+                {renovando
+                  ? "SICAF renovado com sucesso! 🎉"
+                  : "Parabéns! Seu SICAF foi atualizado com sucesso 🎉"}
+              </p>
               <p className="mt-1 text-muted-foreground">
                 Sua empresa está apta a participar de licitações. Vamos monitorar tudo por você.
               </p>
@@ -1011,17 +1124,66 @@ function SicafPage() {
 
       {tudoConcluido && (
         <div className="fixed bottom-6 right-6 z-50 hidden sm:block">
-          <div className="flex items-center gap-2 rounded-full bg-success px-4 py-2 text-sm font-medium text-success-foreground shadow-lift">
-            <Send className="h-4 w-4" />
-            SICAF ativo
-          </div>
+          {cliente.estado === "vencido" && !renovando ? (
+            <button
+              onClick={() => setRenovacaoModal(true)}
+              className="flex items-center gap-2 rounded-full bg-danger px-4 py-2 text-sm font-semibold text-danger-foreground shadow-lift hover:brightness-110 transition"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              SICAF Vencido · Renovar
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 rounded-full bg-success px-4 py-2 text-sm font-medium text-success-foreground shadow-lift">
+              <Send className="h-4 w-4" />
+              SICAF ativo
+            </div>
+          )}
         </div>
       )}
+
+      {/* Modal: Confirmar renovação */}
+      <Dialog open={renovacaoModal} onOpenChange={setRenovacaoModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <RefreshCw className="h-6 w-6" />
+            </div>
+            <DialogTitle className="text-center text-xl">Renovar SICAF</DialogTitle>
+            <DialogDescription className="text-center">
+              Vamos reativar o SICAF de <span className="font-semibold text-foreground">{cliente.nome}</span>.
+              O processo é idêntico ao cadastro inicial — pagamento da taxa, verificação dos documentos e atualização automática dos níveis.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border bg-muted/30 p-4 text-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Vencido em</span>
+              <span className="font-semibold">{cliente.vencidoEm}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Taxa de renovação</span>
+              <span className="font-semibold">R$ 985,00</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Tempo estimado</span>
+              <span className="font-semibold">Até 24h</span>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setRenovacaoModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={iniciarRenovacao} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Iniciar renovação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <PagamentoSicafModal
         open={pagamentoModal && !pagamentoPago}
         onOpenChange={setPagamentoModal}
-        empresa={{ nome: empresaEmProcesso.nome, cnpj: empresaEmProcesso.cnpj }}
+        empresa={{ nome: cliente.nome, cnpj: cliente.cnpj }}
         onPago={() => { setPagamentoPago(true); concluirEtapa(); }}
       />
     </div>
