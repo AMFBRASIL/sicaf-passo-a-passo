@@ -919,7 +919,7 @@ function SicafPage() {
                   <p className="mt-0.5 text-sm text-muted-foreground">{p.descricao}</p>
                   {status === "current" && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => p.n === 4 ? setPagamentoModal(true) : setModalAberto(p.n)}>
+                      <Button size="sm" onClick={() => p.n === 1 ? setPagamentoModal(true) : setModalAberto(p.n)}>
                         Resolver agora
                         <ArrowRight className="ml-1.5 h-4 w-4" />
                       </Button>
