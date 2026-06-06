@@ -996,7 +996,7 @@ function SicafPage() {
         ]}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 6}
+        open={modalAberto === 7}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Validar e enviar"
