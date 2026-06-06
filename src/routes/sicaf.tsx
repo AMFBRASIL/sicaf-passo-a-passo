@@ -37,6 +37,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
+import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 
 export const Route = createFileRoute("/sicaf")({
   head: () => ({
