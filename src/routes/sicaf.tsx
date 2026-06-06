@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import {
   Bot,
   ArrowRight,
@@ -22,6 +23,9 @@ import {
   Mail,
   User,
   Trash2,
+  AlertTriangle,
+  RefreshCw,
+  Calendar,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,7 +43,12 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 
+const searchSchema = z.object({
+  cnpj: z.string().optional(),
+});
+
 export const Route = createFileRoute("/sicaf")({
+  validateSearch: searchSchema,
   head: () => ({
     meta: [
       { title: "Atualizar SICAF — CADBRASIL" },
