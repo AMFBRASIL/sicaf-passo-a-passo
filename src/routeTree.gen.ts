@@ -17,6 +17,7 @@ import { Route as ProntidaoRouteImport } from './routes/prontidao'
 import { Route as Pagamentos_naoefetuadoRouteImport } from './routes/pagamentos_naoefetuado'
 import { Route as PagamentosRouteImport } from './routes/pagamentos'
 import { Route as MissoesRouteImport } from './routes/missoes'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as LicitacoesRouteImport } from './routes/licitacoes'
 import { Route as FaltamRouteImport } from './routes/faltam'
 import { Route as EmpresasRouteImport } from './routes/empresas'
@@ -64,6 +65,11 @@ const PagamentosRoute = PagamentosRouteImport.update({
 const MissoesRoute = MissoesRouteImport.update({
   id: '/missoes',
   path: '/missoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LicitacoesRoute = LicitacoesRouteImport.update({
@@ -116,6 +122,7 @@ export interface FileRoutesByFullPath {
   '/empresas': typeof EmpresasRoute
   '/faltam': typeof FaltamRoute
   '/licitacoes': typeof LicitacoesRoute
+  '/login': typeof LoginRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
   '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByTo {
   '/empresas': typeof EmpresasRoute
   '/faltam': typeof FaltamRoute
   '/licitacoes': typeof LicitacoesRoute
+  '/login': typeof LoginRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
   '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
@@ -153,6 +161,7 @@ export interface FileRoutesById {
   '/empresas': typeof EmpresasRoute
   '/faltam': typeof FaltamRoute
   '/licitacoes': typeof LicitacoesRoute
+  '/login': typeof LoginRoute
   '/missoes': typeof MissoesRoute
   '/pagamentos': typeof PagamentosRoute
   '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
@@ -173,6 +182,7 @@ export interface FileRouteTypes {
     | '/empresas'
     | '/faltam'
     | '/licitacoes'
+    | '/login'
     | '/missoes'
     | '/pagamentos'
     | '/pagamentos_naoefetuado'
@@ -191,6 +201,7 @@ export interface FileRouteTypes {
     | '/empresas'
     | '/faltam'
     | '/licitacoes'
+    | '/login'
     | '/missoes'
     | '/pagamentos'
     | '/pagamentos_naoefetuado'
@@ -209,6 +220,7 @@ export interface FileRouteTypes {
     | '/empresas'
     | '/faltam'
     | '/licitacoes'
+    | '/login'
     | '/missoes'
     | '/pagamentos'
     | '/pagamentos_naoefetuado'
@@ -228,6 +240,7 @@ export interface RootRouteChildren {
   EmpresasRoute: typeof EmpresasRoute
   FaltamRoute: typeof FaltamRoute
   LicitacoesRoute: typeof LicitacoesRoute
+  LoginRoute: typeof LoginRoute
   MissoesRoute: typeof MissoesRoute
   PagamentosRoute: typeof PagamentosRoute
   Pagamentos_naoefetuadoRoute: typeof Pagamentos_naoefetuadoRoute
@@ -294,6 +307,13 @@ declare module '@tanstack/react-router' {
       path: '/missoes'
       fullPath: '/missoes'
       preLoaderRoute: typeof MissoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/licitacoes': {
@@ -364,6 +384,7 @@ const rootRouteChildren: RootRouteChildren = {
   EmpresasRoute: EmpresasRoute,
   FaltamRoute: FaltamRoute,
   LicitacoesRoute: LicitacoesRoute,
+  LoginRoute: LoginRoute,
   MissoesRoute: MissoesRoute,
   PagamentosRoute: PagamentosRoute,
   Pagamentos_naoefetuadoRoute: Pagamentos_naoefetuadoRoute,
