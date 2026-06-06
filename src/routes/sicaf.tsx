@@ -738,13 +738,27 @@ function DocumentacaoDialog({
 // Página principal
 // ============================================================
 function SicafPage() {
-  // Cliente NOVO: nenhuma etapa concluída
-  const [etapaAtual, setEtapaAtual] = useState(1);
+  const { cnpj } = Route.useSearch();
+  const cliente = (cnpj && clientes[cnpj]) || clienteDefault;
+  const total = passosBase.length;
+
+  // Vencido: começa com todas etapas concluídas até clicar em "Renovar"
+  const [renovando, setRenovando] = useState(false);
+  const [renovacaoModal, setRenovacaoModal] = useState(false);
+  const [etapaAtual, setEtapaAtual] = useState(
+    cliente.estado === "vencido" ? total + 1 : 1,
+  );
   const [modalAberto, setModalAberto] = useState<number | null>(null);
   const [pagamentoPago, setPagamentoPago] = useState(false);
   const [pagamentoModal, setPagamentoModal] = useState(false);
 
-  const total = passosBase.length;
+  // Resetar estado quando trocar de empresa via search param
+  useEffect(() => {
+    setRenovando(false);
+    setPagamentoPago(false);
+    setEtapaAtual(cliente.estado === "vencido" ? total + 1 : 1);
+  }, [cliente.cnpj, cliente.estado, total]);
+
   const concluidas = etapaAtual - 1;
   const percentual = Math.round((concluidas / total) * 100);
 
@@ -757,6 +771,15 @@ function SicafPage() {
   const concluirEtapa = () => {
     setEtapaAtual((n) => Math.min(n + 1, total + 1));
   };
+
+  const iniciarRenovacao = () => {
+    setRenovando(true);
+    setPagamentoPago(false);
+    setEtapaAtual(1);
+    setRenovacaoModal(false);
+  };
+
+
 
   const tudoConcluido = etapaAtual > total;
 
