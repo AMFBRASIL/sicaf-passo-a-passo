@@ -18,7 +18,6 @@ import {
   MoreVertical,
   FileCheck2,
   DollarSign,
-  Wrench,
   Sparkles,
   Plus,
   Download,
@@ -28,6 +27,12 @@ import {
   Ticket,
   ShieldCheck,
 } from "lucide-react";
+import { NivelDots } from "@/components/admin/nivel-dots";
+import {
+  ClienteDetalheModal,
+  type ClienteDetalhe,
+} from "@/components/admin/cliente-detalhe-modal";
+import type { NivelStatus } from "@/components/admin/nivel-dots";
 
 export const Route = createFileRoute("/admin/clientes")({
   component: ClientesPage,
@@ -47,17 +52,144 @@ interface Cliente {
   novo: boolean;
   mrr: number;
   ultimoContato: string;
+  niveis: Record<number, NivelStatus>;
+  plano?: string;
+  desde?: string;
+  validadeSicaf?: string;
+  email?: string;
+  telefone?: string;
 }
 
 const clientes: Cliente[] = [
-  { id: "1", razao: "JR Construtora EIRELI", cnpj: "12.345.678/0001-90", responsavel: "João Silva", cidade: "Brasília/DF", sicaf: "vencido", pagou: true, manutencao: true, novo: false, mrr: 890, ultimoContato: "Hoje 14:22" },
-  { id: "2", razao: "Nova Filial Brasília LTDA", cnpj: "98.765.432/0001-10", responsavel: "Maria Souza", cidade: "Taguatinga/DF", sicaf: "pendente", pagou: false, manutencao: false, novo: true, mrr: 0, ultimoContato: "Ontem 09:10" },
-  { id: "3", razao: "Engemax Serviços", cnpj: "55.111.222/0001-44", responsavel: "Carlos Lima", cidade: "Goiânia/GO", sicaf: "pendente", pagou: true, manutencao: true, novo: false, mrr: 1290, ultimoContato: "2 dias" },
-  { id: "4", razao: "Pavimar Obras", cnpj: "33.444.555/0001-77", responsavel: "Ana Paula", cidade: "Anápolis/GO", sicaf: "ok", pagou: true, manutencao: false, novo: false, mrr: 590, ultimoContato: "1 semana" },
-  { id: "5", razao: "Construtora Aurora", cnpj: "22.333.444/0001-88", responsavel: "Pedro Henrique", cidade: "Brasília/DF", sicaf: "ok", pagou: true, manutencao: true, novo: false, mrr: 1490, ultimoContato: "Hoje 11:05" },
-  { id: "6", razao: "MEI José Roberto", cnpj: "44.555.666/0001-22", responsavel: "José Roberto", cidade: "Luziânia/GO", sicaf: "vencido", pagou: false, manutencao: false, novo: true, mrr: 0, ultimoContato: "3 dias" },
-  { id: "7", razao: "Solar Brasil Energia", cnpj: "77.888.999/0001-11", responsavel: "Larissa Mendes", cidade: "Brasília/DF", sicaf: "ok", pagou: true, manutencao: true, novo: false, mrr: 2100, ultimoContato: "Hoje 16:40" },
-  { id: "8", razao: "TecnoLimp Servicos", cnpj: "11.222.333/0001-55", responsavel: "Rafael Costa", cidade: "Águas Claras/DF", sicaf: "pendente", pagou: true, manutencao: false, novo: true, mrr: 690, ultimoContato: "Ontem 17:30" },
+  {
+    id: "1",
+    razao: "JR Construtora EIRELI",
+    cnpj: "12.345.678/0001-90",
+    responsavel: "João Silva",
+    cidade: "Brasília/DF",
+    sicaf: "vencido",
+    pagou: true,
+    manutencao: true,
+    novo: false,
+    mrr: 890,
+    ultimoContato: "Hoje 14:22",
+    niveis: { 1: "validado", 2: "validado", 3: "vencido", 4: "vencido", 5: "validado", 6: "vencendo" },
+    plano: "Manutenção SICAF",
+    desde: "03/2023",
+    validadeSicaf: "Vencido 22/05/2026",
+    email: "contato@jrconstrutora.com.br",
+    telefone: "(61) 99812-4422",
+  },
+  {
+    id: "2",
+    razao: "Nova Filial Brasília LTDA",
+    cnpj: "98.765.432/0001-10",
+    responsavel: "Maria Souza",
+    cidade: "Taguatinga/DF",
+    sicaf: "pendente",
+    pagou: false,
+    manutencao: false,
+    novo: true,
+    mrr: 0,
+    ultimoContato: "Ontem 09:10",
+    niveis: { 1: "validado", 2: "pendente", 3: "pendente", 4: "nao_cadastrado", 5: "nao_cadastrado", 6: "nao_cadastrado" },
+    plano: "Onboarding",
+    desde: "05/2026",
+  },
+  {
+    id: "3",
+    razao: "Engemax Serviços",
+    cnpj: "55.111.222/0001-44",
+    responsavel: "Carlos Lima",
+    cidade: "Goiânia/GO",
+    sicaf: "pendente",
+    pagou: true,
+    manutencao: true,
+    novo: false,
+    mrr: 1290,
+    ultimoContato: "2 dias",
+    niveis: { 1: "validado", 2: "validado", 3: "validado", 4: "vencendo", 5: "pendente", 6: "nao_cadastrado" },
+    plano: "Manutenção SICAF Plus",
+    desde: "11/2022",
+  },
+  {
+    id: "4",
+    razao: "Pavimar Obras",
+    cnpj: "33.444.555/0001-77",
+    responsavel: "Ana Paula",
+    cidade: "Anápolis/GO",
+    sicaf: "ok",
+    pagou: true,
+    manutencao: false,
+    novo: false,
+    mrr: 590,
+    ultimoContato: "1 semana",
+    niveis: { 1: "validado", 2: "validado", 3: "validado", 4: "validado", 5: "validado", 6: "nao_cadastrado" },
+    plano: "Essencial",
+    desde: "08/2024",
+  },
+  {
+    id: "5",
+    razao: "Construtora Aurora",
+    cnpj: "22.333.444/0001-88",
+    responsavel: "Pedro Henrique",
+    cidade: "Brasília/DF",
+    sicaf: "ok",
+    pagou: true,
+    manutencao: true,
+    novo: false,
+    mrr: 1490,
+    ultimoContato: "Hoje 11:05",
+    niveis: { 1: "validado", 2: "validado", 3: "validado", 4: "validado", 5: "validado", 6: "validado" },
+    plano: "Premium",
+    desde: "02/2021",
+  },
+  {
+    id: "6",
+    razao: "MEI José Roberto",
+    cnpj: "44.555.666/0001-22",
+    responsavel: "José Roberto",
+    cidade: "Luziânia/GO",
+    sicaf: "vencido",
+    pagou: false,
+    manutencao: false,
+    novo: true,
+    mrr: 0,
+    ultimoContato: "3 dias",
+    niveis: { 1: "vencido", 2: "vencido", 3: "nao_cadastrado", 4: "nao_cadastrado", 5: "nao_cadastrado", 6: "nao_cadastrado" },
+  },
+  {
+    id: "7",
+    razao: "Solar Brasil Energia",
+    cnpj: "77.888.999/0001-11",
+    responsavel: "Larissa Mendes",
+    cidade: "Brasília/DF",
+    sicaf: "ok",
+    pagou: true,
+    manutencao: true,
+    novo: false,
+    mrr: 2100,
+    ultimoContato: "Hoje 16:40",
+    niveis: { 1: "validado", 2: "validado", 3: "validado", 4: "validado", 5: "validado", 6: "vencendo" },
+    plano: "Premium",
+    desde: "07/2022",
+  },
+  {
+    id: "8",
+    razao: "TecnoLimp Servicos",
+    cnpj: "11.222.333/0001-55",
+    responsavel: "Rafael Costa",
+    cidade: "Águas Claras/DF",
+    sicaf: "pendente",
+    pagou: true,
+    manutencao: false,
+    novo: true,
+    mrr: 690,
+    ultimoContato: "Ontem 17:30",
+    niveis: { 1: "validado", 2: "validado", 3: "pendente", 4: "pendente", 5: "nao_cadastrado", 6: "nao_cadastrado" },
+    plano: "Essencial",
+    desde: "04/2026",
+  },
 ];
 
 const sicafBadge: Record<Status, { txt: string; cls: string }> = {
@@ -92,6 +224,8 @@ const filtros: { key: FiltroKey; label: string }[] = [
 function ClientesPage() {
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<FiltroKey>("todos");
+  const [selecionado, setSelecionado] = useState<ClienteDetalhe | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const lista = useMemo(() => {
     return clientes.filter((c) => {
@@ -119,6 +253,11 @@ function ClientesPage() {
   const ativos = clientes.filter((c) => c.pagou && c.manutencao).length;
   const risco = clientes.filter((c) => !c.pagou || c.sicaf === "vencido").length;
   const mrr = clientes.reduce((s, c) => s + c.mrr, 0);
+
+  const abrir = (c: Cliente) => {
+    setSelecionado(c as ClienteDetalhe);
+    setModalOpen(true);
+  };
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -181,7 +320,7 @@ function ClientesPage() {
               <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <th className="px-3 py-2 font-medium">Cliente</th>
                 <th className="px-3 py-2 font-medium">CNPJ</th>
-                <th className="px-3 py-2 font-medium">SICAF</th>
+                <th className="px-3 py-2 font-medium">Níveis SICAF</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium text-right">MRR</th>
                 <th className="px-3 py-2 font-medium">Último contato</th>
@@ -190,7 +329,11 @@ function ClientesPage() {
             </thead>
             <tbody>
               {lista.map((c) => (
-                <tr key={c.id} className="border-b border-border/40 hover:bg-muted/30">
+                <tr
+                  key={c.id}
+                  onClick={() => abrir(c)}
+                  className="cursor-pointer border-b border-border/40 transition hover:bg-muted/40"
+                >
                   <td className="px-3 py-3">
                     <div className="font-medium">{c.razao}</div>
                     <div className="text-xs text-muted-foreground">
@@ -199,9 +342,12 @@ function ClientesPage() {
                   </td>
                   <td className="px-3 py-3 font-mono text-xs">{c.cnpj}</td>
                   <td className="px-3 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${sicafBadge[c.sicaf].cls}`}>
-                      {sicafBadge[c.sicaf].txt}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <NivelDots niveis={c.niveis} />
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${sicafBadge[c.sicaf].cls}`}>
+                        {sicafBadge[c.sicaf].txt}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap gap-1">
@@ -218,7 +364,7 @@ function ClientesPage() {
                     {c.mrr ? `R$ ${c.mrr}` : "—"}
                   </td>
                   <td className="px-3 py-3 text-xs text-muted-foreground">{c.ultimoContato}</td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-3 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -228,7 +374,9 @@ function ClientesPage() {
                       <DropdownMenuContent align="end" className="w-48">
                         <DropdownMenuLabel className="text-xs">Ações rápidas</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem><Sparkles className="mr-2 h-4 w-4" /> Abrir cliente</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => abrir(c)}>
+                          <Sparkles className="mr-2 h-4 w-4" /> Abrir cliente
+                        </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                           <Link to="/admin/suporte"><Ticket className="mr-2 h-4 w-4" /> Abrir suporte</Link>
                         </DropdownMenuItem>
@@ -267,6 +415,12 @@ function ClientesPage() {
           </div>
         </div>
       </Card>
+
+      <ClienteDetalheModal
+        cliente={selecionado}
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+      />
     </div>
   );
 }
