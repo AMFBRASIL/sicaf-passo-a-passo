@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { z } from "zod";
+import { zodValidator, fallback } from "@tanstack/zod-adapter";
+import { empresasMock, type EmpresaData } from "@/routes/empresas";
 import {
   ClipboardCheck,
   RefreshCw,
