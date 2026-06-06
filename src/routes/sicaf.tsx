@@ -37,6 +37,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
+import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 
 export const Route = createFileRoute("/sicaf")({
   head: () => ({
@@ -686,6 +687,8 @@ function SicafPage() {
   // Cliente NOVO: nenhuma etapa concluída
   const [etapaAtual, setEtapaAtual] = useState(1);
   const [modalAberto, setModalAberto] = useState<number | null>(null);
+  const [pagamentoPago, setPagamentoPago] = useState(false);
+  const [pagamentoModal, setPagamentoModal] = useState(true);
 
   const total = passosBase.length;
   const concluidas = etapaAtual - 1;
@@ -1005,6 +1008,13 @@ function SicafPage() {
           </div>
         </div>
       )}
+
+      <PagamentoSicafModal
+        open={pagamentoModal && !pagamentoPago}
+        onOpenChange={setPagamentoModal}
+        empresa={{ nome: empresaEmProcesso.nome, cnpj: empresaEmProcesso.cnpj }}
+        onPago={() => setPagamentoPago(true)}
+      />
     </div>
   );
 }
