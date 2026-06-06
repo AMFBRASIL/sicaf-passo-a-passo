@@ -983,7 +983,7 @@ function SicafPage() {
         ]}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 5}
+        open={modalAberto === 6}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Atualizar Nível IV — Qualificação técnica"
