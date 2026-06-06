@@ -76,8 +76,20 @@ const sicafTone: Record<string, string> = {
   vencido: "bg-danger/10 text-danger ring-1 ring-danger/30",
 };
 
+const STEPS = [
+  { key: "resumo", label: "Resumo", desc: "Visão geral e saúde", icon: Sparkles },
+  { key: "sicaf", label: "SICAF", desc: "Níveis I a VI", icon: FileCheck2 },
+  { key: "financeiro", label: "Financeiro", desc: "Faturas e MRR", icon: DollarSign },
+  { key: "documentos", label: "Documentos", desc: "Certidões e contratos", icon: FolderOpen },
+  { key: "suporte", label: "Suporte", desc: "Tickets e SLA", icon: Ticket },
+  { key: "historico", label: "Histórico", desc: "Linha do tempo", icon: History },
+  { key: "notas", label: "Notas", desc: "Internas da equipe", icon: StickyNote },
+] as const;
+
+type StepKey = (typeof STEPS)[number]["key"];
+
 export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
-  const [tab, setTab] = useState("resumo");
+  const [step, setStep] = useState<StepKey>("resumo");
   if (!cliente) return null;
 
   const iniciais = cliente.razao
@@ -90,28 +102,113 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
   const totalNiveis = NIVEIS_SICAF.length;
   const completude = Math.round((validados / totalNiveis) * 100);
 
+  const stepIndex = STEPS.findIndex((s) => s.key === step);
+  const progress = Math.round(((stepIndex + 1) / STEPS.length) * 100);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl p-0 overflow-hidden gap-0">
         <DialogTitle className="sr-only">{cliente.razao}</DialogTitle>
 
-        {/* HERO */}
-        <div className="relative bg-gradient-to-br from-primary/95 via-primary to-primary/80 p-6 text-primary-foreground">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-4">
-              <Avatar className="h-14 w-14 ring-2 ring-white/30">
-                <AvatarFallback className="bg-white/15 text-base font-bold text-white">
+        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] min-h-[640px]">
+          {/* LEFT WIZARD RAIL */}
+          <aside
+            className="relative hidden md:flex flex-col p-5 text-white overflow-hidden"
+            style={{
+              backgroundImage: `linear-gradient(180deg, oklch(0.28 0.12 248 / 0.92), oklch(0.18 0.08 250 / 0.96)), url(${wizardBg})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            <div className="flex items-center gap-2.5">
+              <Avatar className="h-10 w-10 ring-2 ring-white/30">
+                <AvatarFallback className="bg-white/15 text-sm font-bold text-white">
                   {iniciais}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{cliente.razao}</p>
+                <p className="text-[11px] font-mono text-white/70 truncate">{cliente.cnpj}</p>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/70">
+                <span>Progresso</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/15">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-white/90 to-white/60 transition-all"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+
+            <nav className="mt-5 space-y-1 flex-1 overflow-y-auto pr-1 -mr-1">
+              {STEPS.map((s, i) => {
+                const active = s.key === step;
+                const done = i < stepIndex;
+                return (
+                  <button
+                    key={s.key}
+                    onClick={() => setStep(s.key)}
+                    className={`group flex w-full items-start gap-3 rounded-lg px-2.5 py-2 text-left transition ${
+                      active
+                        ? "bg-white text-foreground shadow-lg"
+                        : "text-white/85 hover:bg-white/10"
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition ${
+                        active
+                          ? "bg-primary text-primary-foreground"
+                          : done
+                            ? "bg-white/90 text-primary"
+                            : "bg-white/15 text-white"
+                      }`}
+                    >
+                      {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-[13px] font-semibold leading-tight ${active ? "text-foreground" : ""}`}>
+                        {s.label}
+                      </p>
+                      <p
+                        className={`text-[11px] leading-tight ${
+                          active ? "text-muted-foreground" : "text-white/60"
+                        }`}
+                      >
+                        {s.desc}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="mt-4 rounded-lg bg-white/10 p-3 backdrop-blur">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/70">
+                <ShieldCheck className="h-3 w-3" /> SICAF
+              </div>
+              <p className="mt-0.5 text-lg font-bold">{completude}% completo</p>
+              <div className="mt-2">
+                <NivelDots niveis={cliente.niveis} size="sm" />
+              </div>
+            </div>
+          </aside>
+
+          {/* RIGHT CONTENT */}
+          <section className="flex min-w-0 flex-col">
+            {/* Header */}
+            <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-5 py-3">
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-xl font-bold tracking-tight">{cliente.razao}</h2>
-                  {cliente.novo && (
-                    <Badge className="bg-blue-500 text-white border-0">Novo</Badge>
-                  )}
+                  <h2 className="text-base font-bold tracking-tight truncate">
+                    {STEPS[stepIndex].label}
+                  </h2>
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${sicafTone[cliente.sicaf]}`}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sicafTone[cliente.sicaf]}`}
                   >
                     SICAF{" "}
                     {cliente.sicaf === "ok"
@@ -120,124 +217,77 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                         ? "Pendente"
                         : "Vencido"}
                   </span>
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/85">
-                  <span className="font-mono">{cliente.cnpj}</span>
-                  <span className="flex items-center gap-1">
-                    <Building2 className="h-3 w-3" /> {cliente.responsavel}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-3 w-3" /> {cliente.cidade}
-                  </span>
-                  {cliente.desde && (
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" /> Cliente desde {cliente.desde}
-                    </span>
+                  {cliente.novo && (
+                    <Badge className="bg-blue-500 text-white border-0 text-[10px]">Novo</Badge>
                   )}
                 </div>
-                <div className="mt-3">
-                  <NivelDots niveis={cliente.niveis} size="md" />
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Etapa {stepIndex + 1} de {STEPS.length} · {STEPS[stepIndex].desc}
+                </p>
               </div>
-            </div>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" className="h-8 gap-1.5">
+                  <Phone className="h-3.5 w-3.5" /> Ligar
+                </Button>
+                <Button size="sm" variant="ghost" className="h-8 gap-1.5">
+                  <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                </Button>
+                <Button size="sm" variant="ghost" className="h-8 gap-1.5">
+                  <Mail className="h-3.5 w-3.5" /> E-mail
+                </Button>
+              </div>
+            </header>
 
-            {/* Quick actions */}
-            <div className="flex flex-col gap-1.5">
-              <Button size="sm" variant="secondary" className="h-8 justify-start gap-1.5">
-                <Phone className="h-3.5 w-3.5" /> Ligar
-              </Button>
-              <Button size="sm" variant="secondary" className="h-8 justify-start gap-1.5">
-                <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
-              </Button>
-              <Button size="sm" variant="secondary" className="h-8 justify-start gap-1.5">
-                <Mail className="h-3.5 w-3.5" /> E-mail
-              </Button>
-            </div>
-          </div>
+            {/* Content */}
+            <ScrollArea className="flex-1 max-h-[520px]">
+              <div className="p-5">
+                {step === "resumo" && <ResumoTab cliente={cliente} completude={completude} />}
+                {step === "sicaf" && <SicafTab cliente={cliente} />}
+                {step === "financeiro" && <FinanceiroTab cliente={cliente} />}
+                {step === "documentos" && <DocumentosTab />}
+                {step === "suporte" && <SuporteTab />}
+                {step === "historico" && <HistoricoTab />}
+                {step === "notas" && <NotasTab />}
+              </div>
+            </ScrollArea>
 
-          {/* Hero stats */}
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <HeroStat
-              icon={DollarSign}
-              label="MRR"
-              value={cliente.mrr ? `R$ ${cliente.mrr.toLocaleString("pt-BR")}` : "—"}
-            />
-            <HeroStat
-              icon={TrendingUp}
-              label="LTV estimado"
-              value={`R$ ${(cliente.ltv ?? cliente.mrr * 18).toLocaleString("pt-BR")}`}
-            />
-            <HeroStat
-              icon={FileCheck2}
-              label="SICAF Completude"
-              value={`${completude}%`}
-            />
-            <HeroStat
-              icon={Clock}
-              label="Último contato"
-              value={cliente.ultimoContato}
-            />
-          </div>
-        </div>
-
-        {/* TABS */}
-        <Tabs value={tab} onValueChange={setTab} className="flex flex-col">
-          <div className="border-b bg-muted/30 px-4">
-            <TabsList className="h-11 bg-transparent gap-1">
-              <TabsTrigger value="resumo">Resumo</TabsTrigger>
-              <TabsTrigger value="sicaf">SICAF</TabsTrigger>
-              <TabsTrigger value="financeiro">Financeiro</TabsTrigger>
-              <TabsTrigger value="documentos">Documentos</TabsTrigger>
-              <TabsTrigger value="suporte">Suporte</TabsTrigger>
-              <TabsTrigger value="historico">Histórico</TabsTrigger>
-              <TabsTrigger value="notas">Notas</TabsTrigger>
-            </TabsList>
-          </div>
-
-          <ScrollArea className="max-h-[60vh]">
-            <div className="p-5">
-              <TabsContent value="resumo" className="mt-0 space-y-4">
-                <ResumoTab cliente={cliente} completude={completude} />
-              </TabsContent>
-              <TabsContent value="sicaf" className="mt-0 space-y-4">
-                <SicafTab cliente={cliente} />
-              </TabsContent>
-              <TabsContent value="financeiro" className="mt-0 space-y-4">
-                <FinanceiroTab cliente={cliente} />
-              </TabsContent>
-              <TabsContent value="documentos" className="mt-0">
-                <DocumentosTab />
-              </TabsContent>
-              <TabsContent value="suporte" className="mt-0">
-                <SuporteTab />
-              </TabsContent>
-              <TabsContent value="historico" className="mt-0">
-                <HistoricoTab />
-              </TabsContent>
-              <TabsContent value="notas" className="mt-0">
-                <NotasTab />
-              </TabsContent>
-            </div>
-          </ScrollArea>
-        </Tabs>
-
-        {/* FOOTER */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/20 px-5 py-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5 text-success" />
-            Auditoria: ações são registradas automaticamente
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <Edit3 className="h-3.5 w-3.5" /> Editar cadastro
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <Wrench className="h-3.5 w-3.5" /> Solicitar manutenção
-            </Button>
-            <Button size="sm" className="gap-1.5">
-              <RefreshCw className="h-3.5 w-3.5" /> Renovar SICAF
-            </Button>
-          </div>
+            {/* Footer */}
+            <footer className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/20 px-5 py-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={stepIndex === 0}
+                  onClick={() => setStep(STEPS[Math.max(0, stepIndex - 1)].key)}
+                >
+                  Voltar
+                </Button>
+                {stepIndex < STEPS.length - 1 ? (
+                  <Button
+                    size="sm"
+                    onClick={() => setStep(STEPS[stepIndex + 1].key)}
+                  >
+                    Próxima etapa
+                  </Button>
+                ) : (
+                  <Button size="sm" className="gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Concluir revisão
+                  </Button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Edit3 className="h-3.5 w-3.5" /> Editar
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Wrench className="h-3.5 w-3.5" /> Manutenção
+                </Button>
+                <Button size="sm" className="gap-1.5">
+                  <RefreshCw className="h-3.5 w-3.5" /> Renovar SICAF
+                </Button>
+              </div>
+            </footer>
+          </section>
         </div>
       </DialogContent>
     </Dialog>
