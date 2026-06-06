@@ -686,6 +686,8 @@ function SicafPage() {
   // Cliente NOVO: nenhuma etapa concluída
   const [etapaAtual, setEtapaAtual] = useState(1);
   const [modalAberto, setModalAberto] = useState<number | null>(null);
+  const [pagamentoPago, setPagamentoPago] = useState(false);
+  const [pagamentoModal, setPagamentoModal] = useState(true);
 
   const total = passosBase.length;
   const concluidas = etapaAtual - 1;
