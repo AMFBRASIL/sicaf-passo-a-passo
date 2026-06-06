@@ -1022,7 +1022,7 @@ function SicafPage() {
         open={pagamentoModal && !pagamentoPago}
         onOpenChange={setPagamentoModal}
         empresa={{ nome: empresaEmProcesso.nome, cnpj: empresaEmProcesso.cnpj }}
-        onPago={() => setPagamentoPago(true)}
+        onPago={() => { setPagamentoPago(true); concluirEtapa(); }}
       />
     </div>
   );
