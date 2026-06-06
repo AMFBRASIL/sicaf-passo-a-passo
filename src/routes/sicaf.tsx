@@ -914,13 +914,50 @@ function SicafPage() {
       </Card>
 
 
-      {!tudoConcluido ? (
+      {cliente.estado === "vencido" && !renovando && tudoConcluido ? (
+        <Card className="mt-6 border-danger/40 bg-gradient-to-br from-danger/10 via-danger/5 to-transparent shadow-soft overflow-hidden">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-4 flex-wrap">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-danger/15 text-danger">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div className="flex-1 min-w-[240px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-danger px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-danger-foreground">
+                    SICAF Vencido
+                  </span>
+                  <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Venceu em {cliente.vencidoEm}
+                  </span>
+                </div>
+                <p className="mt-2 font-semibold">
+                  Todos os níveis foram validados, mas o cadastro venceu.
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Sua empresa está temporariamente fora das licitações. Renove agora para reativar o SICAF — nós fazemos a atualização para você.
+                </p>
+              </div>
+              <Button
+                size="lg"
+                className="gap-2 shadow-lift"
+                onClick={() => setRenovacaoModal(true)}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Renovar SICAF agora
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : !tudoConcluido ? (
         <Card className="mt-6 border-warning/30 bg-warning/5">
           <CardContent className="flex items-start gap-3 p-4">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-warning-foreground" />
             <div className="text-sm">
               <p className="font-semibold">
-                Sua empresa ainda não possui SICAF ativo. Vamos cadastrar agora?
+                {renovando
+                  ? "Renovação do SICAF em andamento — vamos juntos atualizar tudo."
+                  : "Sua empresa ainda não possui SICAF ativo. Vamos cadastrar agora?"}
               </p>
               <p className="mt-1 text-muted-foreground">
                 Leva cerca de 5 minutos. Comece pela próxima etapa em destaque abaixo.
@@ -933,7 +970,11 @@ function SicafPage() {
           <CardContent className="flex items-start gap-3 p-4">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
             <div className="text-sm">
-              <p className="font-semibold">Parabéns! Seu SICAF foi atualizado com sucesso 🎉</p>
+              <p className="font-semibold">
+                {renovando
+                  ? "SICAF renovado com sucesso! 🎉"
+                  : "Parabéns! Seu SICAF foi atualizado com sucesso 🎉"}
+              </p>
               <p className="mt-1 text-muted-foreground">
                 Sua empresa está apta a participar de licitações. Vamos monitorar tudo por você.
               </p>
