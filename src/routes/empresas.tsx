@@ -593,11 +593,12 @@ function EmpresaDetalhesSheet({
             {sectionMenu.map((s) => {
               const Icon = s.icon;
               const active = s.id === section;
-              if (s.id === "certidoes") {
+              if (s.id === "certidoes" || s.id === "colaboradores") {
+                const to = s.id === "certidoes" ? "/certidoes" : "/colaboradores";
                 return (
                   <Link
                     key={s.id}
-                    to="/certidoes"
+                    to={to}
                     search={{ cnpj: empresa.cnpj }}
                     className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-sm text-left transition hover:bg-muted text-foreground`}
                     onClick={() => onOpenChange(false)}
