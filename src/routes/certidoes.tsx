@@ -228,7 +228,9 @@ function CertPage() {
                       Baixar
                     </Button>
                   ) : (
-                    <Button size="sm">Resolver agora</Button>
+                    <Button size="sm" onClick={() => handleOpenModal(c)}>
+                      Resolver agora
+                    </Button>
                   )}
                 </div>
               </CardContent>
