@@ -60,23 +60,23 @@ interface Passo {
 const passosBase: Passo[] = [
   {
     n: 1,
+    titulo: "Pagamento da taxa CADBRASIL",
+    descricao: "Confirme o pagamento para liberar a atualização dos seus níveis.",
+  },
+  {
+    n: 2,
     titulo: "Verificar certificado digital",
     descricao: "Vamos checar se seu certificado e-CNPJ A1 ou A3 está conectado.",
   },
   {
-    n: 2,
+    n: 3,
     titulo: "Documentação da empresa",
     descricao: "Envie os documentos básicos que vamos usar para o cadastro.",
   },
   {
-    n: 3,
+    n: 4,
     titulo: "Conectar ao Compras.gov.br",
     descricao: "Vamos instalar o Assistente CADBRASIL para automatizar o acesso.",
-  },
-  {
-    n: 4,
-    titulo: "Pagamento da taxa CADBRASIL",
-    descricao: "Confirme o pagamento para liberar a atualização dos seus níveis.",
   },
   {
     n: 5,
