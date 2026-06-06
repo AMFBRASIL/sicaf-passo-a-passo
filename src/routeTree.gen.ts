@@ -23,6 +23,7 @@ import { Route as FaltamRouteImport } from './routes/faltam'
 import { Route as EmpresasRouteImport } from './routes/empresas'
 import { Route as DocumentosRouteImport } from './routes/documentos'
 import { Route as ConcluidoRouteImport } from './routes/concluido'
+import { Route as ColaboradoresRouteImport } from './routes/colaboradores'
 import { Route as CertidoesRouteImport } from './routes/certidoes'
 import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as IndexRouteImport } from './routes/index'
@@ -97,6 +98,11 @@ const ConcluidoRoute = ConcluidoRouteImport.update({
   path: '/concluido',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ColaboradoresRoute = ColaboradoresRouteImport.update({
+  id: '/colaboradores',
+  path: '/colaboradores',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CertidoesRoute = CertidoesRouteImport.update({
   id: '/certidoes',
   path: '/certidoes',
@@ -117,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ajuda': typeof AjudaRoute
   '/certidoes': typeof CertidoesRoute
+  '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
@@ -136,6 +143,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ajuda': typeof AjudaRoute
   '/certidoes': typeof CertidoesRoute
+  '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
@@ -156,6 +164,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/ajuda': typeof AjudaRoute
   '/certidoes': typeof CertidoesRoute
+  '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
@@ -177,6 +186,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ajuda'
     | '/certidoes'
+    | '/colaboradores'
     | '/concluido'
     | '/documentos'
     | '/empresas'
@@ -196,6 +206,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ajuda'
     | '/certidoes'
+    | '/colaboradores'
     | '/concluido'
     | '/documentos'
     | '/empresas'
@@ -215,6 +226,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ajuda'
     | '/certidoes'
+    | '/colaboradores'
     | '/concluido'
     | '/documentos'
     | '/empresas'
@@ -235,6 +247,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AjudaRoute: typeof AjudaRoute
   CertidoesRoute: typeof CertidoesRoute
+  ColaboradoresRoute: typeof ColaboradoresRoute
   ConcluidoRoute: typeof ConcluidoRoute
   DocumentosRoute: typeof DocumentosRoute
   EmpresasRoute: typeof EmpresasRoute
@@ -351,6 +364,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConcluidoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/colaboradores': {
+      id: '/colaboradores'
+      path: '/colaboradores'
+      fullPath: '/colaboradores'
+      preLoaderRoute: typeof ColaboradoresRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/certidoes': {
       id: '/certidoes'
       path: '/certidoes'
@@ -379,6 +399,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AjudaRoute: AjudaRoute,
   CertidoesRoute: CertidoesRoute,
+  ColaboradoresRoute: ColaboradoresRoute,
   ConcluidoRoute: ConcluidoRoute,
   DocumentosRoute: DocumentosRoute,
   EmpresasRoute: EmpresasRoute,
@@ -397,3 +418,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
