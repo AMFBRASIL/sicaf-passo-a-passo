@@ -12,6 +12,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { PageHeader, StatusBadge } from "@/components/page-header";
+import { ManutencaoModal } from "@/components/manutencao-modal";
+import { Wrench } from "lucide-react";
 
 export const Route = createFileRoute("/empresas")({
   head: () => ({
