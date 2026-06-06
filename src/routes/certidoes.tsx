@@ -333,6 +333,70 @@ function CertPage() {
           </Card>
         </aside>
       </div>
+
+      {/* Modal Resolver Certidão */}
+      <Dialog open={!!modalCert} onOpenChange={(open) => !open && handleCloseModal()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary" />
+              Resolver certidão
+            </DialogTitle>
+            <DialogDescription>
+              Preencha os dados da nova certidão para <strong>{modalCert?.nome}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="data-validade">Data de validade</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="data-validade"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !dataCertidao && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dataCertidao ? format(dataCertidao, "dd/MM/yyyy") : <span>Selecione a data</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dataCertidao}
+                    onSelect={setDataCertidao}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="codigo-certidao">Código / Número da certidão</Label>
+              <Input
+                id="codigo-certidao"
+                placeholder="Ex: 12345678901234567890"
+                value={codigoCertidao}
+                onChange={(e) => setCodigoCertidao(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={handleCloseModal}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSalvar} disabled={!dataCertidao || !codigoCertidao}>
+              Salvar certidão
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
