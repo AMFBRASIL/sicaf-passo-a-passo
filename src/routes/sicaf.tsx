@@ -75,16 +75,21 @@ const passosBase: Passo[] = [
   },
   {
     n: 4,
+    titulo: "Pagamento da taxa CADBRASIL",
+    descricao: "Confirme o pagamento para liberar a atualização dos seus níveis.",
+  },
+  {
+    n: 5,
     titulo: "Atualizar Nível III — Receita Federal",
     descricao: "Encontramos documentos que precisam ser atualizados.",
   },
   {
-    n: 5,
+    n: 6,
     titulo: "Atualizar Nível IV — Qualificação técnica",
     descricao: "Envie ou confirme os documentos da sua atividade.",
   },
   {
-    n: 6,
+    n: 7,
     titulo: "Validar e enviar",
     descricao: "Confirmação final — você pronto para licitar.",
   },
@@ -688,7 +693,7 @@ function SicafPage() {
   const [etapaAtual, setEtapaAtual] = useState(1);
   const [modalAberto, setModalAberto] = useState<number | null>(null);
   const [pagamentoPago, setPagamentoPago] = useState(false);
-  const [pagamentoModal, setPagamentoModal] = useState(true);
+  const [pagamentoModal, setPagamentoModal] = useState(false);
 
   const total = passosBase.length;
   const concluidas = etapaAtual - 1;
@@ -742,7 +747,11 @@ function SicafPage() {
                       )}
                       <button
                         type="button"
-                        onClick={() => status !== "pending" && setModalAberto(p.n)}
+                        onClick={() => {
+                          if (status === "pending") return;
+                          if (p.n === 4) setPagamentoModal(true);
+                          else setModalAberto(p.n);
+                        }}
                         disabled={status === "pending"}
                         className={`absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition ${
                           status === "done"
@@ -910,7 +919,7 @@ function SicafPage() {
                   <p className="mt-0.5 text-sm text-muted-foreground">{p.descricao}</p>
                   {status === "current" && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => setModalAberto(p.n)}>
+                      <Button size="sm" onClick={() => p.n === 4 ? setPagamentoModal(true) : setModalAberto(p.n)}>
                         Resolver agora
                         <ArrowRight className="ml-1.5 h-4 w-4" />
                       </Button>
@@ -960,7 +969,7 @@ function SicafPage() {
         onConcluido={concluirEtapa}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 4}
+        open={modalAberto === 5}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Atualizar Nível III — Receita Federal"
@@ -974,7 +983,7 @@ function SicafPage() {
         ]}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 5}
+        open={modalAberto === 6}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Atualizar Nível IV — Qualificação técnica"
@@ -987,7 +996,7 @@ function SicafPage() {
         ]}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 6}
+        open={modalAberto === 7}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Validar e enviar"
@@ -1013,7 +1022,7 @@ function SicafPage() {
         open={pagamentoModal && !pagamentoPago}
         onOpenChange={setPagamentoModal}
         empresa={{ nome: empresaEmProcesso.nome, cnpj: empresaEmProcesso.cnpj }}
-        onPago={() => setPagamentoPago(true)}
+        onPago={() => { setPagamentoPago(true); concluirEtapa(); }}
       />
     </div>
   );
