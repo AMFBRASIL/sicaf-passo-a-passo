@@ -28,7 +28,12 @@ import { Separator } from "@/components/ui/separator";
 import { PageHeader, StatusBadge, StatusDot } from "@/components/page-header";
 import { useState } from "react";
 
+const certidoesSearchSchema = z.object({
+  cnpj: fallback(z.string(), "").default(""),
+});
+
 export const Route = createFileRoute("/certidoes")({
+  validateSearch: zodValidator(certidoesSearchSchema),
   head: () => ({
     meta: [
       { title: "Monitoramento de Certidões — CADBRASIL" },
