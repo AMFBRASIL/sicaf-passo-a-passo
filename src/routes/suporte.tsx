@@ -49,10 +49,79 @@ export const Route = createFileRoute("/suporte")({
   component: SupportPage,
 });
 
-const chamados = [
-  { titulo: "Dúvida sobre Nível IV", data: "02/12/2025", status: "warn" as const, label: "Em atendimento" },
-  { titulo: "Renovação de certidão estadual", data: "20/11/2025", status: "ok" as const, label: "Resolvido" },
+type ChamadoMsg = {
+  autor: "voce" | "suporte";
+  nome: string;
+  data: string;
+  texto: string;
+};
+
+type Chamado = {
+  codigo: string;
+  titulo: string;
+  data: string;
+  status: "ok" | "warn" | "danger";
+  label: string;
+  categoria: string;
+  prioridade: "Baixa" | "Média" | "Alta";
+  responsavel: string;
+  mensagens: ChamadoMsg[];
+};
+
+const chamadosIniciais: Chamado[] = [
+  {
+    codigo: "CB-2025-0482",
+    titulo: "Dúvida sobre Nível IV",
+    data: "02/12/2025",
+    status: "warn",
+    label: "Em atendimento",
+    categoria: "SICAF / Cadastro",
+    prioridade: "Média",
+    responsavel: "Marina Costa",
+    mensagens: [
+      {
+        autor: "voce",
+        nome: "Você",
+        data: "02/12/2025 09:14",
+        texto:
+          "Olá! Tentei avançar para o Nível IV do SICAF mas o sistema retorna um erro de qualificação técnica. Podem me ajudar a entender o que falta?",
+      },
+      {
+        autor: "suporte",
+        nome: "Marina • Suporte CADBRASIL",
+        data: "02/12/2025 10:02",
+        texto:
+          "Oi! Já estou analisando seu cadastro. Notei que faltam 2 atestados de capacidade técnica vigentes. Posso te enviar o modelo padrão aceito pelo SICAF?",
+      },
+    ],
+  },
+  {
+    codigo: "CB-2025-0471",
+    titulo: "Renovação de certidão estadual",
+    data: "20/11/2025",
+    status: "ok",
+    label: "Resolvido",
+    categoria: "Documentos & Certidões",
+    prioridade: "Baixa",
+    responsavel: "Rafael Lima",
+    mensagens: [
+      {
+        autor: "voce",
+        nome: "Você",
+        data: "20/11/2025 14:22",
+        texto: "Minha certidão estadual venceu, como faço para renovar pelo portal?",
+      },
+      {
+        autor: "suporte",
+        nome: "Rafael • Suporte CADBRASIL",
+        data: "20/11/2025 14:41",
+        texto:
+          "Já emitimos a nova certidão e anexamos ao seu cadastro. Tudo regularizado!",
+      },
+    ],
+  },
 ];
+
 
 type Categoria = {
   id: string;
