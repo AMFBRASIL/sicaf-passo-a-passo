@@ -1358,6 +1358,15 @@ function EmpresasPage() {
                     <p className="text-xs text-muted-foreground">CNPJ {e.cnpj}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <StatusBadge status={meta.status}>{meta.label}</StatusBadge>
+                      {manutencaoAtivada[e.cnpj] ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
+                          <RefreshCw className="h-3 w-3" /> Manutenção ativa
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                          <RefreshCw className="h-3 w-3" /> Sem manutenção
+                        </span>
+                      )}
                       {e.validade && (
                         <span className="text-xs text-muted-foreground">
                           {e.sicaf === "vencido" ? e.validade : `Validade: ${e.validade}`}
