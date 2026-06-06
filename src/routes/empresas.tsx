@@ -542,19 +542,18 @@ function EmpresaDetalhesSheet({
   empresa,
   open,
   onOpenChange,
+  manutencaoAtivada,
+  onAtivar,
 }: {
   empresa: EmpresaData | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  manutencaoAtivada: Record<string, number>;
+  onAtivar: (cnpj: string, dia: number) => void;
 }) {
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState<Partial<EmpresaData>>({});
   const [section, setSection] = useState<SectionId>("visao");
-  const [manutencaoAtivada, setManutencaoAtivada] = useState<Record<string, number>>({
-    "00.000.000/0001-00": 15,
-    "12.345.678/0001-99": 10,
-    "23.456.789/0001-11": 5,
-  });
   const [manutencaoModal, setManutencaoModal] = useState<"ativar" | "gerenciar" | null>(null);
 
   const startEditing = () => {
@@ -871,7 +870,7 @@ function EmpresaDetalhesSheet({
       empresa={empresa}
       mode={manutencaoModal ?? "ativar"}
       diaVencimento={manutencaoAtivada[empresa.cnpj]}
-      onAtivar={(cnpj, dia) => setManutencaoAtivada((p) => ({ ...p, [cnpj]: dia }))}
+      onAtivar={onAtivar}
     />
     </>
   );
@@ -1274,7 +1273,11 @@ function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpenChange
 function EmpresasPage() {
   const [detalhesEmpresa, setDetalhesEmpresa] = useState<EmpresaData | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
-
+  const [manutencaoAtivada, setManutencaoAtivada] = useState<Record<string, number>>({
+    "00.000.000/0001-00": 15,
+    "12.345.678/0001-99": 10,
+    "23.456.789/0001-11": 5,
+  });
 
   const total = empresasMock.length;
   const ativos = empresasMock.filter((e) => e.sicaf === "ativo").length;
@@ -1355,6 +1358,15 @@ function EmpresasPage() {
                     <p className="text-xs text-muted-foreground">CNPJ {e.cnpj}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <StatusBadge status={meta.status}>{meta.label}</StatusBadge>
+                      {manutencaoAtivada[e.cnpj] ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
+                          <RefreshCw className="h-3 w-3" /> Manutenção ativa
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                          <RefreshCw className="h-3 w-3" /> Sem manutenção
+                        </span>
+                      )}
                       {e.validade && (
                         <span className="text-xs text-muted-foreground">
                           {e.sicaf === "vencido" ? e.validade : `Validade: ${e.validade}`}
@@ -1417,6 +1429,8 @@ function EmpresasPage() {
         empresa={detalhesEmpresa}
         open={Boolean(detalhesEmpresa)}
         onOpenChange={handleDetalhesOpenChange}
+        manutencaoAtivada={manutencaoAtivada}
+        onAtivar={(cnpj, dia) => setManutencaoAtivada((p) => ({ ...p, [cnpj]: dia }))}
       />
       <NovaEmpresaWizard open={wizardOpen} onOpenChange={setWizardOpen} />
     </div>
