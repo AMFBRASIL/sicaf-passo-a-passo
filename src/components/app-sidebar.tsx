@@ -28,6 +28,7 @@ const items = [
   { title: "Início", url: "/", icon: LayoutDashboard },
   { title: "Minhas Empresas", url: "/empresas", icon: Building2 },
   { title: "Prontidão", url: "/prontidao", icon: Gauge },
+  { title: "O que falta", url: "/faltam", icon: ClipboardList },
   { title: "Licitações", url: "/licitacoes", icon: Gavel },
   { title: "Serviços com IA", url: "/servicos-ia", icon: Sparkles },
   { title: "Meus Serviços", url: "/servicos", icon: FileSignature },
