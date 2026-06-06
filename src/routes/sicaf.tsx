@@ -954,17 +954,17 @@ function SicafPage() {
 
       {/* Modais */}
       <CertificadoDialog
-        open={modalAberto === 1}
-        onOpenChange={(v) => !v && setModalAberto(null)}
-        onConcluido={concluirEtapa}
-      />
-      <DocumentacaoDialog
         open={modalAberto === 2}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
       />
-      <AssistenteDialog
+      <DocumentacaoDialog
         open={modalAberto === 3}
+        onOpenChange={(v) => !v && setModalAberto(null)}
+        onConcluido={concluirEtapa}
+      />
+      <AssistenteDialog
+        open={modalAberto === 4}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
       />
