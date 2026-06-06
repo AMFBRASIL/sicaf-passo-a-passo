@@ -94,6 +94,29 @@ function CertPage() {
         }
       />
 
+      {empresa && (
+        <Card className="mt-4 border-l-4 border-l-primary">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold leading-tight">{empresa.nome}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{empresa.cidade}, {empresa.uf}</span>
+                  <span className="inline-flex items-center gap-1"><User className="h-3 w-3" />{empresa.responsavel}</span>
+                  <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{empresa.telefone}</span>
+                </div>
+              </div>
+            </div>
+            <div className="shrink-0 text-xs font-mono text-muted-foreground bg-muted rounded-lg px-3 py-1.5">
+              {empresa.cnpj}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Hero monitoring card */}
       <Card className="mt-6 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background shadow-lift">
         <CardContent className="grid gap-6 p-6 lg:grid-cols-[1fr_auto] lg:items-center">
