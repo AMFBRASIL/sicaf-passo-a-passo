@@ -1441,6 +1441,12 @@ function EmpresasPage() {
                     <Icon className="h-4 w-4" />
                     Gerenciar
                   </Button>
+                  <Button asChild variant="outline" size="sm" className="gap-1 text-xs">
+                    <Link to="/colaboradores" search={{ cnpj: e.cnpj }}>
+                      <Users className="h-3 w-3" />
+                      Colaboradores
+                    </Link>
+                  </Button>
                   <Button
                     asChild
                     size="sm"
