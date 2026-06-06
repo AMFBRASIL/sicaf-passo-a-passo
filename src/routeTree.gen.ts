@@ -29,6 +29,21 @@ import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminSuporteRouteImport } from './routes/admin.suporte'
+import { Route as AdminSicafRouteImport } from './routes/admin.sicaf'
+import { Route as AdminRelatoriosRouteImport } from './routes/admin.relatorios'
+import { Route as AdminIaRouteImport } from './routes/admin.ia'
+import { Route as AdminGoogleAdsRouteImport } from './routes/admin.google-ads'
+import { Route as AdminFunilRouteImport } from './routes/admin.funil'
+import { Route as AdminFinanceiroRouteImport } from './routes/admin.financeiro'
+import { Route as AdminEquipeRouteImport } from './routes/admin.equipe'
+import { Route as AdminDocumentosRouteImport } from './routes/admin.documentos'
+import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
+import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
+import { Route as AdminAutomacoesRouteImport } from './routes/admin.automacoes'
+import { Route as AdminAuditoriaRouteImport } from './routes/admin.auditoria'
+import { Route as AdminAtendimentoRouteImport } from './routes/admin.atendimento'
+import { Route as AdminAlertasRouteImport } from './routes/admin.alertas'
 
 const SuporteRoute = SuporteRouteImport.update({
   id: '/suporte',
@@ -130,6 +145,81 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminSuporteRoute = AdminSuporteRouteImport.update({
+  id: '/suporte',
+  path: '/suporte',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSicafRoute = AdminSicafRouteImport.update({
+  id: '/sicaf',
+  path: '/sicaf',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminRelatoriosRoute = AdminRelatoriosRouteImport.update({
+  id: '/relatorios',
+  path: '/relatorios',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminIaRoute = AdminIaRouteImport.update({
+  id: '/ia',
+  path: '/ia',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminGoogleAdsRoute = AdminGoogleAdsRouteImport.update({
+  id: '/google-ads',
+  path: '/google-ads',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminFunilRoute = AdminFunilRouteImport.update({
+  id: '/funil',
+  path: '/funil',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminFinanceiroRoute = AdminFinanceiroRouteImport.update({
+  id: '/financeiro',
+  path: '/financeiro',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminEquipeRoute = AdminEquipeRouteImport.update({
+  id: '/equipe',
+  path: '/equipe',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminDocumentosRoute = AdminDocumentosRouteImport.update({
+  id: '/documentos',
+  path: '/documentos',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminConfiguracoesRoute = AdminConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminClientesRoute = AdminClientesRouteImport.update({
+  id: '/clientes',
+  path: '/clientes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAutomacoesRoute = AdminAutomacoesRouteImport.update({
+  id: '/automacoes',
+  path: '/automacoes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAuditoriaRoute = AdminAuditoriaRouteImport.update({
+  id: '/auditoria',
+  path: '/auditoria',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAtendimentoRoute = AdminAtendimentoRouteImport.update({
+  id: '/atendimento',
+  path: '/atendimento',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAlertasRoute = AdminAlertasRouteImport.update({
+  id: '/alertas',
+  path: '/alertas',
+  getParentRoute: () => AdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -151,6 +241,21 @@ export interface FileRoutesByFullPath {
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
   '/suporte': typeof SuporteRoute
+  '/admin/alertas': typeof AdminAlertasRoute
+  '/admin/atendimento': typeof AdminAtendimentoRoute
+  '/admin/auditoria': typeof AdminAuditoriaRoute
+  '/admin/automacoes': typeof AdminAutomacoesRoute
+  '/admin/clientes': typeof AdminClientesRoute
+  '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/documentos': typeof AdminDocumentosRoute
+  '/admin/equipe': typeof AdminEquipeRoute
+  '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/funil': typeof AdminFunilRoute
+  '/admin/google-ads': typeof AdminGoogleAdsRoute
+  '/admin/ia': typeof AdminIaRoute
+  '/admin/relatorios': typeof AdminRelatoriosRoute
+  '/admin/sicaf': typeof AdminSicafRoute
+  '/admin/suporte': typeof AdminSuporteRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
@@ -172,6 +277,21 @@ export interface FileRoutesByTo {
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
   '/suporte': typeof SuporteRoute
+  '/admin/alertas': typeof AdminAlertasRoute
+  '/admin/atendimento': typeof AdminAtendimentoRoute
+  '/admin/auditoria': typeof AdminAuditoriaRoute
+  '/admin/automacoes': typeof AdminAutomacoesRoute
+  '/admin/clientes': typeof AdminClientesRoute
+  '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/documentos': typeof AdminDocumentosRoute
+  '/admin/equipe': typeof AdminEquipeRoute
+  '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/funil': typeof AdminFunilRoute
+  '/admin/google-ads': typeof AdminGoogleAdsRoute
+  '/admin/ia': typeof AdminIaRoute
+  '/admin/relatorios': typeof AdminRelatoriosRoute
+  '/admin/sicaf': typeof AdminSicafRoute
+  '/admin/suporte': typeof AdminSuporteRoute
   '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
@@ -195,6 +315,21 @@ export interface FileRoutesById {
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
   '/suporte': typeof SuporteRoute
+  '/admin/alertas': typeof AdminAlertasRoute
+  '/admin/atendimento': typeof AdminAtendimentoRoute
+  '/admin/auditoria': typeof AdminAuditoriaRoute
+  '/admin/automacoes': typeof AdminAutomacoesRoute
+  '/admin/clientes': typeof AdminClientesRoute
+  '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/documentos': typeof AdminDocumentosRoute
+  '/admin/equipe': typeof AdminEquipeRoute
+  '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/funil': typeof AdminFunilRoute
+  '/admin/google-ads': typeof AdminGoogleAdsRoute
+  '/admin/ia': typeof AdminIaRoute
+  '/admin/relatorios': typeof AdminRelatoriosRoute
+  '/admin/sicaf': typeof AdminSicafRoute
+  '/admin/suporte': typeof AdminSuporteRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -219,6 +354,21 @@ export interface FileRouteTypes {
     | '/servicos-ia'
     | '/sicaf'
     | '/suporte'
+    | '/admin/alertas'
+    | '/admin/atendimento'
+    | '/admin/auditoria'
+    | '/admin/automacoes'
+    | '/admin/clientes'
+    | '/admin/configuracoes'
+    | '/admin/documentos'
+    | '/admin/equipe'
+    | '/admin/financeiro'
+    | '/admin/funil'
+    | '/admin/google-ads'
+    | '/admin/ia'
+    | '/admin/relatorios'
+    | '/admin/sicaf'
+    | '/admin/suporte'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -240,6 +390,21 @@ export interface FileRouteTypes {
     | '/servicos-ia'
     | '/sicaf'
     | '/suporte'
+    | '/admin/alertas'
+    | '/admin/atendimento'
+    | '/admin/auditoria'
+    | '/admin/automacoes'
+    | '/admin/clientes'
+    | '/admin/configuracoes'
+    | '/admin/documentos'
+    | '/admin/equipe'
+    | '/admin/financeiro'
+    | '/admin/funil'
+    | '/admin/google-ads'
+    | '/admin/ia'
+    | '/admin/relatorios'
+    | '/admin/sicaf'
+    | '/admin/suporte'
     | '/admin'
   id:
     | '__root__'
@@ -262,6 +427,21 @@ export interface FileRouteTypes {
     | '/servicos-ia'
     | '/sicaf'
     | '/suporte'
+    | '/admin/alertas'
+    | '/admin/atendimento'
+    | '/admin/auditoria'
+    | '/admin/automacoes'
+    | '/admin/clientes'
+    | '/admin/configuracoes'
+    | '/admin/documentos'
+    | '/admin/equipe'
+    | '/admin/financeiro'
+    | '/admin/funil'
+    | '/admin/google-ads'
+    | '/admin/ia'
+    | '/admin/relatorios'
+    | '/admin/sicaf'
+    | '/admin/suporte'
     | '/admin/'
   fileRoutesById: FileRoutesById
 }
@@ -429,14 +609,149 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/suporte': {
+      id: '/admin/suporte'
+      path: '/suporte'
+      fullPath: '/admin/suporte'
+      preLoaderRoute: typeof AdminSuporteRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/sicaf': {
+      id: '/admin/sicaf'
+      path: '/sicaf'
+      fullPath: '/admin/sicaf'
+      preLoaderRoute: typeof AdminSicafRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/relatorios': {
+      id: '/admin/relatorios'
+      path: '/relatorios'
+      fullPath: '/admin/relatorios'
+      preLoaderRoute: typeof AdminRelatoriosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/ia': {
+      id: '/admin/ia'
+      path: '/ia'
+      fullPath: '/admin/ia'
+      preLoaderRoute: typeof AdminIaRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/google-ads': {
+      id: '/admin/google-ads'
+      path: '/google-ads'
+      fullPath: '/admin/google-ads'
+      preLoaderRoute: typeof AdminGoogleAdsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/funil': {
+      id: '/admin/funil'
+      path: '/funil'
+      fullPath: '/admin/funil'
+      preLoaderRoute: typeof AdminFunilRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/financeiro': {
+      id: '/admin/financeiro'
+      path: '/financeiro'
+      fullPath: '/admin/financeiro'
+      preLoaderRoute: typeof AdminFinanceiroRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/equipe': {
+      id: '/admin/equipe'
+      path: '/equipe'
+      fullPath: '/admin/equipe'
+      preLoaderRoute: typeof AdminEquipeRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/documentos': {
+      id: '/admin/documentos'
+      path: '/documentos'
+      fullPath: '/admin/documentos'
+      preLoaderRoute: typeof AdminDocumentosRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/configuracoes': {
+      id: '/admin/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/admin/configuracoes'
+      preLoaderRoute: typeof AdminConfiguracoesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/clientes': {
+      id: '/admin/clientes'
+      path: '/clientes'
+      fullPath: '/admin/clientes'
+      preLoaderRoute: typeof AdminClientesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/automacoes': {
+      id: '/admin/automacoes'
+      path: '/automacoes'
+      fullPath: '/admin/automacoes'
+      preLoaderRoute: typeof AdminAutomacoesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/auditoria': {
+      id: '/admin/auditoria'
+      path: '/auditoria'
+      fullPath: '/admin/auditoria'
+      preLoaderRoute: typeof AdminAuditoriaRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/atendimento': {
+      id: '/admin/atendimento'
+      path: '/atendimento'
+      fullPath: '/admin/atendimento'
+      preLoaderRoute: typeof AdminAtendimentoRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/alertas': {
+      id: '/admin/alertas'
+      path: '/alertas'
+      fullPath: '/admin/alertas'
+      preLoaderRoute: typeof AdminAlertasRouteImport
+      parentRoute: typeof AdminRoute
+    }
   }
 }
 
 interface AdminRouteChildren {
+  AdminAlertasRoute: typeof AdminAlertasRoute
+  AdminAtendimentoRoute: typeof AdminAtendimentoRoute
+  AdminAuditoriaRoute: typeof AdminAuditoriaRoute
+  AdminAutomacoesRoute: typeof AdminAutomacoesRoute
+  AdminClientesRoute: typeof AdminClientesRoute
+  AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
+  AdminDocumentosRoute: typeof AdminDocumentosRoute
+  AdminEquipeRoute: typeof AdminEquipeRoute
+  AdminFinanceiroRoute: typeof AdminFinanceiroRoute
+  AdminFunilRoute: typeof AdminFunilRoute
+  AdminGoogleAdsRoute: typeof AdminGoogleAdsRoute
+  AdminIaRoute: typeof AdminIaRoute
+  AdminRelatoriosRoute: typeof AdminRelatoriosRoute
+  AdminSicafRoute: typeof AdminSicafRoute
+  AdminSuporteRoute: typeof AdminSuporteRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAlertasRoute: AdminAlertasRoute,
+  AdminAtendimentoRoute: AdminAtendimentoRoute,
+  AdminAuditoriaRoute: AdminAuditoriaRoute,
+  AdminAutomacoesRoute: AdminAutomacoesRoute,
+  AdminClientesRoute: AdminClientesRoute,
+  AdminConfiguracoesRoute: AdminConfiguracoesRoute,
+  AdminDocumentosRoute: AdminDocumentosRoute,
+  AdminEquipeRoute: AdminEquipeRoute,
+  AdminFinanceiroRoute: AdminFinanceiroRoute,
+  AdminFunilRoute: AdminFunilRoute,
+  AdminGoogleAdsRoute: AdminGoogleAdsRoute,
+  AdminIaRoute: AdminIaRoute,
+  AdminRelatoriosRoute: AdminRelatoriosRoute,
+  AdminSicafRoute: AdminSicafRoute,
+  AdminSuporteRoute: AdminSuporteRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
