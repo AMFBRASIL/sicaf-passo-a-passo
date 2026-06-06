@@ -1124,12 +1124,61 @@ function SicafPage() {
 
       {tudoConcluido && (
         <div className="fixed bottom-6 right-6 z-50 hidden sm:block">
-          <div className="flex items-center gap-2 rounded-full bg-success px-4 py-2 text-sm font-medium text-success-foreground shadow-lift">
-            <Send className="h-4 w-4" />
-            SICAF ativo
-          </div>
+          {cliente.estado === "vencido" && !renovando ? (
+            <button
+              onClick={() => setRenovacaoModal(true)}
+              className="flex items-center gap-2 rounded-full bg-danger px-4 py-2 text-sm font-semibold text-danger-foreground shadow-lift hover:brightness-110 transition"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              SICAF Vencido · Renovar
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 rounded-full bg-success px-4 py-2 text-sm font-medium text-success-foreground shadow-lift">
+              <Send className="h-4 w-4" />
+              SICAF ativo
+            </div>
+          )}
         </div>
       )}
+
+      {/* Modal: Confirmar renovação */}
+      <Dialog open={renovacaoModal} onOpenChange={setRenovacaoModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <RefreshCw className="h-6 w-6" />
+            </div>
+            <DialogTitle className="text-center text-xl">Renovar SICAF</DialogTitle>
+            <DialogDescription className="text-center">
+              Vamos reativar o SICAF de <span className="font-semibold text-foreground">{cliente.nome}</span>.
+              O processo é idêntico ao cadastro inicial — pagamento da taxa, verificação dos documentos e atualização automática dos níveis.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border bg-muted/30 p-4 text-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Vencido em</span>
+              <span className="font-semibold">{cliente.vencidoEm}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Taxa de renovação</span>
+              <span className="font-semibold">R$ 985,00</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Tempo estimado</span>
+              <span className="font-semibold">Até 24h</span>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setRenovacaoModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={iniciarRenovacao} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Iniciar renovação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <PagamentoSicafModal
         open={pagamentoModal && !pagamentoPago}
