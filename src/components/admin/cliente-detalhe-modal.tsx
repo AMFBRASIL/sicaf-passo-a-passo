@@ -40,6 +40,8 @@ import {
   StickyNote,
 } from "lucide-react";
 import { useState } from "react";
+import wizardBg from "@/assets/wizard-bg.jpg";
+import { Check } from "lucide-react";
 
 export interface ClienteDetalhe {
   id: string;
