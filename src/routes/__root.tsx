@@ -132,6 +132,8 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const [editarOpen, setEditarOpen] = useState(false);
+
 
   return (
     <QueryClientProvider client={queryClient}>
