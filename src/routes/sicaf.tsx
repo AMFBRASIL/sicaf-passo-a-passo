@@ -693,7 +693,7 @@ function SicafPage() {
   const [etapaAtual, setEtapaAtual] = useState(1);
   const [modalAberto, setModalAberto] = useState<number | null>(null);
   const [pagamentoPago, setPagamentoPago] = useState(false);
-  const [pagamentoModal, setPagamentoModal] = useState(true);
+  const [pagamentoModal, setPagamentoModal] = useState(false);
 
   const total = passosBase.length;
   const concluidas = etapaAtual - 1;
