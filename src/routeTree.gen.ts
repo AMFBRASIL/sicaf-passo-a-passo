@@ -28,6 +28,7 @@ import { Route as CertidoesRouteImport } from './routes/certidoes'
 import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminIndexRouteImport } from './routes/admin.index'
 
 const SuporteRoute = SuporteRouteImport.update({
   id: '/suporte',
@@ -124,10 +125,15 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
@@ -145,10 +151,10 @@ export interface FileRoutesByFullPath {
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
   '/suporte': typeof SuporteRoute
+  '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
   '/ajuda': typeof AjudaRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
@@ -166,11 +172,12 @@ export interface FileRoutesByTo {
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
   '/suporte': typeof SuporteRoute
+  '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
@@ -188,6 +195,7 @@ export interface FileRoutesById {
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
   '/suporte': typeof SuporteRoute
+  '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -211,10 +219,10 @@ export interface FileRouteTypes {
     | '/servicos-ia'
     | '/sicaf'
     | '/suporte'
+    | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/admin'
     | '/ajuda'
     | '/certidoes'
     | '/colaboradores'
@@ -232,6 +240,7 @@ export interface FileRouteTypes {
     | '/servicos-ia'
     | '/sicaf'
     | '/suporte'
+    | '/admin'
   id:
     | '__root__'
     | '/'
@@ -253,11 +262,12 @@ export interface FileRouteTypes {
     | '/servicos-ia'
     | '/sicaf'
     | '/suporte'
+    | '/admin/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
+  AdminRoute: typeof AdminRouteWithChildren
   AjudaRoute: typeof AjudaRoute
   CertidoesRoute: typeof CertidoesRoute
   ColaboradoresRoute: typeof ColaboradoresRoute
@@ -412,12 +422,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
   }
 }
 
+interface AdminRouteChildren {
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
+  AdminRoute: AdminRouteWithChildren,
   AjudaRoute: AjudaRoute,
   CertidoesRoute: CertidoesRoute,
   ColaboradoresRoute: ColaboradoresRoute,
@@ -439,3 +466,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
