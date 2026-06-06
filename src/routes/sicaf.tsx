@@ -969,7 +969,7 @@ function SicafPage() {
         onConcluido={concluirEtapa}
       />
       <AssistenteRodandoDialog
-        open={modalAberto === 4}
+        open={modalAberto === 5}
         onOpenChange={(v) => !v && setModalAberto(null)}
         onConcluido={concluirEtapa}
         titulo="Atualizar Nível III — Receita Federal"
