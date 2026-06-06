@@ -107,17 +107,57 @@ const passosBase: Passo[] = [
 // ============================================================
 // Empresa em processo (mock — viria de query param / contexto)
 // ============================================================
-const empresaEmProcesso = {
-  nome: "Nova Filial Brasília LTDA",
-  cnpj: "34.567.890/0001-22",
-  endereco: "SHS Qd. 6, Bloco C - Asa Sul",
-  cidade: "Brasília",
-  uf: "DF",
-  telefone: "(61) 3456-7890",
-  email: "filial@novabrasilia.com.br",
-  responsavel: "Ana Souza",
-  ramoAtividade: "Prestação de Serviços Administrativos",
+// ============================================================
+// Empresas em processo (mock — viria de query param / contexto)
+// ============================================================
+type EstadoSicaf = "novo" | "vencido";
+
+type ClienteEmProcesso = {
+  nome: string;
+  cnpj: string;
+  endereco: string;
+  cidade: string;
+  uf: string;
+  telefone: string;
+  email: string;
+  responsavel: string;
+  ramoAtividade: string;
+  estado: EstadoSicaf;
+  validade?: string;
+  vencidoEm?: string;
+  niveis?: number[];
 };
+
+const clientes: Record<string, ClienteEmProcesso> = {
+  "34.567.890/0001-22": {
+    nome: "Nova Filial Brasília LTDA",
+    cnpj: "34.567.890/0001-22",
+    endereco: "SHS Qd. 6, Bloco C - Asa Sul",
+    cidade: "Brasília",
+    uf: "DF",
+    telefone: "(61) 3456-7890",
+    email: "filial@novabrasilia.com.br",
+    responsavel: "Ana Souza",
+    ramoAtividade: "Prestação de Serviços Administrativos",
+    estado: "novo",
+  },
+  "23.456.789/0001-11": {
+    nome: "JR Construtora EIRELI",
+    cnpj: "23.456.789/0001-11",
+    endereco: "Av. das Américas, 5000 - Bloco 2",
+    cidade: "Rio de Janeiro",
+    uf: "RJ",
+    telefone: "(21) 3456-7890",
+    email: "obras@jrconstrutora.com.br",
+    responsavel: "Pedro Costa",
+    ramoAtividade: "Construção Civil",
+    estado: "vencido",
+    vencidoEm: "14/10/2025",
+    niveis: [1, 2, 3, 4, 5, 6],
+  },
+};
+
+const clienteDefault = clientes["34.567.890/0001-22"];
 
 // ============================================================
 // Documentos exigidos
