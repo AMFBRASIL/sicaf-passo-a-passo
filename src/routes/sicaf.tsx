@@ -75,16 +75,21 @@ const passosBase: Passo[] = [
   },
   {
     n: 4,
+    titulo: "Pagamento da taxa CADBRASIL",
+    descricao: "Confirme o pagamento para liberar a atualização dos seus níveis.",
+  },
+  {
+    n: 5,
     titulo: "Atualizar Nível III — Receita Federal",
     descricao: "Encontramos documentos que precisam ser atualizados.",
   },
   {
-    n: 5,
+    n: 6,
     titulo: "Atualizar Nível IV — Qualificação técnica",
     descricao: "Envie ou confirme os documentos da sua atividade.",
   },
   {
-    n: 6,
+    n: 7,
     titulo: "Validar e enviar",
     descricao: "Confirmação final — você pronto para licitar.",
   },
