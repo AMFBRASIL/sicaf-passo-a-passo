@@ -1007,6 +1007,13 @@ function SicafPage() {
           </div>
         </div>
       )}
+
+      <PagamentoSicafModal
+        open={pagamentoModal && !pagamentoPago}
+        onOpenChange={setPagamentoModal}
+        empresa={{ nome: empresaEmProcesso.nome, cnpj: empresaEmProcesso.cnpj }}
+        onPago={() => setPagamentoPago(true)}
+      />
     </div>
   );
 }
