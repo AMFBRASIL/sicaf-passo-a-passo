@@ -570,6 +570,7 @@ function EmpresaDetalhesSheet({
   const meta = statusLabel[empresa.sicaf];
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-3xl md:max-w-4xl p-0 flex flex-col">
         <SheetHeader className="px-6 pt-6 pb-4 border-b">
