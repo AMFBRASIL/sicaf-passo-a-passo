@@ -749,7 +749,7 @@ function SicafPage() {
                         type="button"
                         onClick={() => {
                           if (status === "pending") return;
-                          if (p.n === 4) setPagamentoModal(true);
+                        if (p.n === 1) setPagamentoModal(true);
                           else setModalAberto(p.n);
                         }}
                         disabled={status === "pending"}
