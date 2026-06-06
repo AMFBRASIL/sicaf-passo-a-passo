@@ -67,6 +67,9 @@ const historico = [
 ];
 
 function CertPage() {
+  const { cnpj } = Route.useSearch();
+  const empresa = cnpj ? empresasMock.find((e) => e.cnpj === cnpj) : undefined;
+
   const [canais, setCanais] = useState({ email: true, whatsapp: true, push: true, sms: false });
   const validas = certs.filter((c) => c.status === "ok").length;
   const venceBreve = certs.filter((c) => c.status === "warn").length;
