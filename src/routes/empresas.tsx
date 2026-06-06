@@ -1354,10 +1354,18 @@ function EmpresasPage() {
         title="Minhas Empresas"
         subtitle="Gerencie o SICAF de cada CNPJ — atualize ou cadastre novos."
         action={
-          <Button size="lg" className="gap-2" onClick={() => setWizardOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Adicionar nova empresa
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="lg" variant="outline" className="gap-2">
+              <Link to="/colaboradores">
+                <Users className="h-4 w-4" />
+                Colaboradores
+              </Link>
+            </Button>
+            <Button size="lg" className="gap-2" onClick={() => setWizardOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Adicionar nova empresa
+            </Button>
+          </div>
         }
       />
 
@@ -1440,12 +1448,6 @@ function EmpresasPage() {
                   >
                     <Icon className="h-4 w-4" />
                     Gerenciar
-                  </Button>
-                  <Button asChild variant="outline" size="sm" className="gap-1 text-xs">
-                    <Link to="/colaboradores" search={{ cnpj: e.cnpj }}>
-                      <Users className="h-3 w-3" />
-                      Colaboradores
-                    </Link>
                   </Button>
                   <Button
                     asChild
