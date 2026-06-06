@@ -13,7 +13,9 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { Bell, MessageCircle, User, Settings, LogOut } from "lucide-react";
+import { Bell, MessageCircle, User, Settings, LogOut, ChevronDown } from "lucide-react";
+import { EditarPerfilModal } from "@/components/editar-perfil-modal";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
