@@ -49,10 +49,79 @@ export const Route = createFileRoute("/suporte")({
   component: SupportPage,
 });
 
-const chamados = [
-  { titulo: "Dúvida sobre Nível IV", data: "02/12/2025", status: "warn" as const, label: "Em atendimento" },
-  { titulo: "Renovação de certidão estadual", data: "20/11/2025", status: "ok" as const, label: "Resolvido" },
+type ChamadoMsg = {
+  autor: "voce" | "suporte";
+  nome: string;
+  data: string;
+  texto: string;
+};
+
+type Chamado = {
+  codigo: string;
+  titulo: string;
+  data: string;
+  status: "ok" | "warn" | "danger";
+  label: string;
+  categoria: string;
+  prioridade: "Baixa" | "Média" | "Alta";
+  responsavel: string;
+  mensagens: ChamadoMsg[];
+};
+
+const chamadosIniciais: Chamado[] = [
+  {
+    codigo: "CB-2025-0482",
+    titulo: "Dúvida sobre Nível IV",
+    data: "02/12/2025",
+    status: "warn",
+    label: "Em atendimento",
+    categoria: "SICAF / Cadastro",
+    prioridade: "Média",
+    responsavel: "Marina Costa",
+    mensagens: [
+      {
+        autor: "voce",
+        nome: "Você",
+        data: "02/12/2025 09:14",
+        texto:
+          "Olá! Tentei avançar para o Nível IV do SICAF mas o sistema retorna um erro de qualificação técnica. Podem me ajudar a entender o que falta?",
+      },
+      {
+        autor: "suporte",
+        nome: "Marina • Suporte CADBRASIL",
+        data: "02/12/2025 10:02",
+        texto:
+          "Oi! Já estou analisando seu cadastro. Notei que faltam 2 atestados de capacidade técnica vigentes. Posso te enviar o modelo padrão aceito pelo SICAF?",
+      },
+    ],
+  },
+  {
+    codigo: "CB-2025-0471",
+    titulo: "Renovação de certidão estadual",
+    data: "20/11/2025",
+    status: "ok",
+    label: "Resolvido",
+    categoria: "Documentos & Certidões",
+    prioridade: "Baixa",
+    responsavel: "Rafael Lima",
+    mensagens: [
+      {
+        autor: "voce",
+        nome: "Você",
+        data: "20/11/2025 14:22",
+        texto: "Minha certidão estadual venceu, como faço para renovar pelo portal?",
+      },
+      {
+        autor: "suporte",
+        nome: "Rafael • Suporte CADBRASIL",
+        data: "20/11/2025 14:41",
+        texto:
+          "Já emitimos a nova certidão e anexamos ao seu cadastro. Tudo regularizado!",
+      },
+    ],
+  },
 ];
+
 
 type Categoria = {
   id: string;
@@ -641,6 +710,40 @@ function formatBytes(b: number) {
 
 
 function SupportPage() {
+  const [chamados, setChamados] = useState<Chamado[]>(chamadosIniciais);
+  const [aberto, setAberto] = useState<string | null>(null);
+  const ticket = chamados.find((c) => c.codigo === aberto) ?? null;
+
+  const responder = (codigo: string, texto: string) => {
+    setChamados((prev) =>
+      prev.map((c) =>
+        c.codigo === codigo
+          ? {
+              ...c,
+              status: "warn",
+              label: "Aguardando suporte",
+              mensagens: [
+                ...c.mensagens,
+                {
+                  autor: "voce",
+                  nome: "Você",
+                  data: new Date().toLocaleString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  texto,
+                },
+              ],
+            }
+          : c,
+      ),
+    );
+    toast.success("Resposta enviada!");
+  };
+
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
       <PageHeader
@@ -679,17 +782,161 @@ function SupportPage() {
         <CardContent>
           <ul className="divide-y divide-border">
             {chamados.map((c) => (
-              <li key={c.titulo} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
-                <div>
-                  <p className="font-medium">{c.titulo}</p>
-                  <p className="text-xs text-muted-foreground">Aberto em {c.data}</p>
-                </div>
-                <StatusBadge status={c.status}>{c.label}</StatusBadge>
+              <li key={c.codigo}>
+                <button
+                  type="button"
+                  onClick={() => setAberto(c.codigo)}
+                  className="group flex w-full items-center justify-between gap-3 py-3 text-left transition hover:bg-muted/40 rounded-lg px-2 -mx-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-primary">
+                        #{c.codigo}
+                      </span>
+                      <p className="font-medium truncate">{c.titulo}</p>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Aberto em {c.data} • {c.categoria}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <StatusBadge status={c.status}>{c.label}</StatusBadge>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
+                  </div>
+                </button>
               </li>
             ))}
           </ul>
         </CardContent>
       </Card>
+
+      <TicketDetalheDialog
+        ticket={ticket}
+        open={!!ticket}
+        onOpenChange={(v) => !v && setAberto(null)}
+        onResponder={responder}
+      />
     </div>
   );
 }
+
+function TicketDetalheDialog({
+  ticket,
+  open,
+  onOpenChange,
+  onResponder,
+}: {
+  ticket: Chamado | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onResponder: (codigo: string, texto: string) => void;
+}) {
+  const [resposta, setResposta] = useState("");
+
+  if (!ticket) return null;
+
+  const enviar = () => {
+    if (resposta.trim().length < 2) return;
+    onResponder(ticket.codigo, resposta.trim());
+    setResposta("");
+  };
+
+  const prioCor =
+    ticket.prioridade === "Alta"
+      ? "bg-destructive/15 text-destructive"
+      : ticket.prioridade === "Média"
+        ? "bg-warning/15 text-warning-foreground"
+        : "bg-success/15 text-success";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="overflow-hidden p-0 sm:max-w-[760px]">
+        <DialogTitle className="sr-only">Chamado {ticket.codigo}</DialogTitle>
+        <div className="flex h-[88vh] max-h-[760px] flex-col">
+          {/* Header */}
+          <header className="border-b bg-gradient-to-br from-primary/10 via-card to-card px-6 py-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-0.5 font-mono text-[11px] font-bold text-primary-foreground">
+                    #{ticket.codigo}
+                  </span>
+                  <StatusBadge status={ticket.status}>{ticket.label}</StatusBadge>
+                  <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold", prioCor)}>
+                    <Zap className="h-3 w-3" />
+                    {ticket.prioridade}
+                  </span>
+                </div>
+                <h3 className="mt-2 text-xl font-bold tracking-tight">{ticket.titulo}</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {ticket.categoria} • Aberto em {ticket.data} • Responsável: <strong className="text-foreground">{ticket.responsavel}</strong>
+                </p>
+              </div>
+            </div>
+          </header>
+
+          {/* Thread */}
+          <div className="flex-1 space-y-4 overflow-y-auto bg-muted/20 px-6 py-6">
+            {ticket.mensagens.map((m, i) => {
+              const eu = m.autor === "voce";
+              return (
+                <div key={i} className={cn("flex gap-3", eu && "flex-row-reverse")}>
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                      eu ? "bg-primary text-primary-foreground" : "bg-success/15 text-success",
+                    )}
+                  >
+                    {eu ? "EU" : <Headphones className="h-4 w-4" />}
+                  </div>
+                  <div className={cn("max-w-[78%] min-w-0", eu && "items-end")}>
+                    <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", eu && "justify-end")}>
+                      <span className="font-semibold text-foreground">{m.nome}</span>
+                      <span>•</span>
+                      <span>{m.data}</span>
+                    </div>
+                    <div
+                      className={cn(
+                        "mt-1 rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-sm",
+                        eu
+                          ? "rounded-tr-sm border-primary/20 bg-primary/10"
+                          : "rounded-tl-sm border-border bg-card",
+                      )}
+                    >
+                      {m.texto}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Reply box */}
+          <footer className="border-t bg-card px-6 py-4">
+            <Label htmlFor="resposta" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Sua resposta
+            </Label>
+            <Textarea
+              id="resposta"
+              placeholder="Digite sua resposta..."
+              value={resposta}
+              onChange={(e) => setResposta(e.target.value)}
+              className="mt-2 min-h-[88px] resize-none text-sm"
+            />
+            <div className="mt-3 flex items-center justify-between">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+                <Paperclip className="h-4 w-4" />
+                Anexar
+              </Button>
+              <Button onClick={enviar} disabled={resposta.trim().length < 2} className="gap-2">
+                <Send className="h-4 w-4" />
+                Enviar resposta
+              </Button>
+            </div>
+          </footer>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
