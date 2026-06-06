@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Building2, ChevronRight, Edit3, FileText, MapPin, Plus, Rocket, Save, RefreshCw, ShieldCheck, User, X, Search, Loader2, QrCode, Receipt, Check, ArrowRight, ArrowLeft, Sparkles, CheckCircle2, Mail, Phone, Briefcase, Zap } from "lucide-react";
+import { Building2, ChevronRight, Edit3, FileText, MapPin, Plus, Rocket, Save, RefreshCw, ShieldCheck, User, X, Search, Loader2, QrCode, Receipt, Check, ArrowRight, ArrowLeft, Sparkles, CheckCircle2, Mail, Phone, Briefcase, Zap, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -254,7 +254,7 @@ function NiveisSicafBadges({ empresa }: { empresa: EmpresaData }) {
 }
 
 
-type SectionId = "visao" | "sicaf" | "faltam" | "documentos" | "manutencao" | "certidoes" | "pagamento";
+type SectionId = "visao" | "sicaf" | "faltam" | "documentos" | "manutencao" | "certidoes" | "colaboradores" | "pagamento";
 
 const sectionMenu: { id: SectionId; label: string; icon: typeof FileText; badge?: string; tone?: "warn" | "danger" | "ok" }[] = [
   { id: "visao", label: "Visão geral", icon: Building2 },
@@ -263,6 +263,7 @@ const sectionMenu: { id: SectionId; label: string; icon: typeof FileText; badge?
   { id: "documentos", label: "Documentos", icon: FileText },
   { id: "manutencao", label: "Manutenção", icon: RefreshCw, badge: "ativo", tone: "ok" },
   { id: "certidoes", label: "Certidões", icon: ShieldCheck, badge: "1", tone: "danger" },
+  { id: "colaboradores", label: "Colaboradores", icon: Users },
   { id: "pagamento", label: "Pagamento", icon: Receipt },
 ];
 
