@@ -821,6 +821,49 @@ function EmpresaDetalhesSheet({
 
               {section === "pagamento" && (
                 <div className="space-y-4">
+                  {empresa.sicaf === "sem_cadastro" && !taxaSicafPaga[empresa.cnpj] && (
+                    <div className="rounded-2xl border-2 border-warning/40 bg-gradient-to-br from-warning/10 to-warning/5 p-5">
+                      <div className="flex items-start gap-3">
+                        <div className="h-11 w-11 shrink-0 rounded-xl bg-warning/20 text-warning-foreground flex items-center justify-center">
+                          <Receipt className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-bold">Taxa SICAF pendente</p>
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-danger/15 text-danger uppercase tracking-wider">
+                              Não pago
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Esta empresa ainda não possui o pagamento da taxa CADBRASIL.
+                            Sem ela não conseguimos iniciar a atualização do SICAF.
+                          </p>
+                          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                            <span className="font-semibold">A partir de R$ 985,00</span>
+                            <span className="text-muted-foreground">· Liberação em até 24h</span>
+                          </div>
+                          <Button
+                            className="mt-4 gap-2"
+                            onClick={() => setTaxaSicafModal(true)}
+                          >
+                            <Sparkles className="h-4 w-4" />
+                            Ativar taxa SICAF
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {taxaSicafPaga[empresa.cnpj] && (
+                    <div className="rounded-xl border border-success/40 bg-success/5 p-4 flex items-start gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-success shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm">Taxa SICAF paga</p>
+                        <p className="text-xs text-muted-foreground">
+                          Pagamento confirmado. Atualização do SICAF liberada.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="rounded-xl border bg-card p-4">
                       <p className="text-xs uppercase tracking-wider text-muted-foreground">Próxima cobrança</p>
