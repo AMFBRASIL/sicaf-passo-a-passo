@@ -550,6 +550,12 @@ function EmpresaDetalhesSheet({
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState<Partial<EmpresaData>>({});
   const [section, setSection] = useState<SectionId>("visao");
+  const [manutencaoAtivada, setManutencaoAtivada] = useState<Record<string, number>>({
+    "00.000.000/0001-00": 15,
+    "12.345.678/0001-99": 10,
+    "23.456.789/0001-11": 5,
+  });
+  const [manutencaoModal, setManutencaoModal] = useState<"ativar" | "gerenciar" | null>(null);
 
   const startEditing = () => {
     if (!empresa) return;
