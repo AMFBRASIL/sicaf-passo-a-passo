@@ -38,6 +38,8 @@ import {
 import { useState } from "react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { Check } from "lucide-react";
+import { PagamentoModal } from "@/components/pagamento-modal";
+import type { EmpresaData } from "@/routes/empresas";
 
 export interface ClienteDetalhe {
   id: string;
