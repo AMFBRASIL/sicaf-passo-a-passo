@@ -61,6 +61,7 @@ export function ManutencaoModal({
   onAtivar: (cnpj: string, dia: number) => void;
 }) {
   const [step, setStep] = useState<Step>("plano");
+  const [gerStep, setGerStep] = useState<GerStep>("visao");
   const [dia, setDia] = useState<number | null>(null);
   const [dataInicio, setDataInicio] = useState<Date | undefined>(new Date());
 
@@ -70,6 +71,7 @@ export function ManutencaoModal({
       setDia(null);
       setDataInicio(new Date());
     }
+    if (open && mode === "gerenciar") setGerStep("visao");
   }, [open, mode]);
 
   if (!empresa) return null;
