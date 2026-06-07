@@ -330,6 +330,30 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
         descricao="Renovação SICAF Anual"
         valor={985}
       />
+      <EditarClienteModal cliente={cliente} open={editarOpen} onOpenChange={setEditarOpen} />
+      <ManutencaoModal
+        open={manutOpen}
+        onOpenChange={setManutOpen}
+        mode={cliente.manutencao ? "gerenciar" : "ativar"}
+        diaVencimento={10}
+        onAtivar={() => setManutOpen(false)}
+        empresa={{
+          nome: cliente.razao,
+          cnpj: cliente.cnpj,
+          sicaf: "ativo",
+          proximoPasso: "",
+          acao: { label: "", icon: CreditCard as never },
+          endereco: "",
+          cidade: cliente.cidade,
+          uf: "",
+          telefone: cliente.telefone ?? "",
+          email: cliente.email ?? "",
+          responsavel: cliente.responsavel,
+          inscricaoEstadual: "",
+          inscricaoMunicipal: "",
+          ramoAtividade: "",
+        } as unknown as EmpresaData}
+      />
     </Dialog>
   );
 }
