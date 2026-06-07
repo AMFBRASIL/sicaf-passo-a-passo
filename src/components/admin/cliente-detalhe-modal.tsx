@@ -485,15 +485,29 @@ function SicafTab({ cliente }: { cliente: ClienteDetalhe }) {
   );
 }
 
+type FaturaItem = {
+  id: string;
+  desc: string;
+  valor: number;
+  venc: string;
+  forma: "Boleto" | "PIX";
+  status: "pago" | "aberto" | "cancelado";
+};
+
 function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
   const [pagOpen, setPagOpen] = useState(false);
+  const [autorizarOpen, setAutorizarOpen] = useState(false);
+  const [faturaAtiva, setFaturaAtiva] = useState<FaturaItem | null>(null);
   const valorCobranca = cliente.mrr || 890;
-  const fatura = [
-    { id: "#4821", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/06/2026", status: cliente.pagou ? "pago" : "aberto" },
-    { id: "#4720", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/05/2026", status: "pago" },
-    { id: "#4612", desc: "Renovação SICAF anual", valor: 1290, venc: "15/04/2026", status: "pago" },
-    { id: "#4501", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/03/2026", status: "pago" },
-  ];
+
+  const [faturas, setFaturas] = useState<FaturaItem[]>([
+    { id: "#4830", desc: "Renovação SICAF 2026", valor: 985, venc: "12/06/2026", forma: "Boleto", status: "aberto" },
+    { id: "#4821", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/06/2026", forma: "PIX", status: cliente.pagou ? "pago" : "aberto" },
+    { id: "#4720", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/05/2026", forma: "PIX", status: "pago" },
+    { id: "#4612", desc: "Renovação SICAF anual", valor: 1290, venc: "15/04/2026", forma: "Boleto", status: "pago" },
+    { id: "#4501", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/03/2026", forma: "PIX", status: "pago" },
+  ]);
+
   const empresaPagto = {
     nome: cliente.razao,
     cnpj: cliente.cnpj,
@@ -510,6 +524,25 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
     inscricaoMunicipal: "",
     ramoAtividade: "",
   } as unknown as EmpresaData;
+
+  const abrirAutorizar = (f: FaturaItem) => {
+    setFaturaAtiva(f);
+    setAutorizarOpen(true);
+  };
+  const cancelarFatura = (id: string) => {
+    setFaturas((prev) => prev.map((f) => (f.id === id ? { ...f, status: "cancelado" } : f)));
+  };
+  const confirmarAutorizacao = () => {
+    if (!faturaAtiva) return;
+    setFaturas((prev) => prev.map((f) => (f.id === faturaAtiva.id ? { ...f, status: "pago" } : f)));
+  };
+
+  const statusMeta: Record<FaturaItem["status"], { cls: string; txt: string }> = {
+    pago: { cls: "bg-success/10 text-success", txt: "Pago" },
+    aberto: { cls: "bg-danger/10 text-danger", txt: "Em aberto" },
+    cancelado: { cls: "bg-muted text-muted-foreground line-through", txt: "Cancelado" },
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -539,25 +572,43 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
                 <th className="py-2 font-medium">Vencimento</th>
                 <th className="py-2 font-medium text-right">Valor</th>
                 <th className="py-2 font-medium">Status</th>
+                <th className="py-2 font-medium text-right">Ações</th>
               </tr>
             </thead>
             <tbody>
-              {fatura.map((f) => (
+              {faturas.map((f) => (
                 <tr key={f.id} className="border-b border-border/40">
                   <td className="py-2 font-mono text-xs">{f.id}</td>
                   <td className="py-2">{f.desc}</td>
                   <td className="py-2 text-xs">{f.venc}</td>
                   <td className="py-2 text-right font-medium">R$ {f.valor.toLocaleString("pt-BR")}</td>
                   <td className="py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        f.status === "pago"
-                          ? "bg-success/10 text-success"
-                          : "bg-danger/10 text-danger"
-                      }`}
-                    >
-                      {f.status === "pago" ? "Pago" : "Em aberto"}
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusMeta[f.status].cls}`}>
+                      {statusMeta[f.status].txt}
                     </span>
+                  </td>
+                  <td className="py-2 text-right">
+                    {f.status === "aberto" ? (
+                      <div className="flex justify-end gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs gap-1 border-danger/30 text-danger hover:bg-danger/10 hover:text-danger"
+                          onClick={() => cancelarFatura(f.id)}
+                        >
+                          <XIcon className="h-3 w-3" /> Cancelar
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
+                          onClick={() => abrirAutorizar(f)}
+                        >
+                          <ShieldCheck className="h-3 w-3" /> Autorizar
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -572,8 +623,32 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
         descricao="cobrança"
         valor={valorCobranca}
       />
+      <AutorizarPagamentoModal
+        open={autorizarOpen}
+        onOpenChange={setAutorizarOpen}
+        dados={
+          faturaAtiva
+            ? {
+                descricao: `${faturaAtiva.desc} — ${cliente.razao}`,
+                cliente: cliente.razao,
+                valor: faturaAtiva.valor,
+                ano: new Date().getFullYear(),
+                forma: faturaAtiva.forma,
+                dataGeracao: faturaAtiva.venc,
+                novaValidade: nextYearDate(faturaAtiva.venc),
+                diasRenovados: 365,
+              }
+            : null
+        }
+        onConfirmar={confirmarAutorizacao}
+      />
     </div>
   );
+}
+
+function nextYearDate(d: string) {
+  const [dd, mm, yyyy] = d.split("/");
+  return `${dd}/${mm}/${Number(yyyy) + 1}`;
 }
 
 function MiniStat({
