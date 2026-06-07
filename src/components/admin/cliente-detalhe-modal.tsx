@@ -38,6 +38,8 @@ import {
 import { useState } from "react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { Check } from "lucide-react";
+import { PagamentoModal } from "@/components/pagamento-modal";
+import type { EmpresaData } from "@/routes/empresas";
 
 export interface ClienteDetalhe {
   id: string;
@@ -484,12 +486,30 @@ function SicafTab({ cliente }: { cliente: ClienteDetalhe }) {
 }
 
 function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
+  const [pagOpen, setPagOpen] = useState(false);
+  const valorCobranca = cliente.mrr || 890;
   const fatura = [
     { id: "#4821", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/06/2026", status: cliente.pagou ? "pago" : "aberto" },
     { id: "#4720", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/05/2026", status: "pago" },
     { id: "#4612", desc: "Renovação SICAF anual", valor: 1290, venc: "15/04/2026", status: "pago" },
     { id: "#4501", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/03/2026", status: "pago" },
   ];
+  const empresaPagto = {
+    nome: cliente.razao,
+    cnpj: cliente.cnpj,
+    sicaf: "ativo",
+    proximoPasso: "",
+    acao: { label: "", icon: CreditCard as never },
+    endereco: "",
+    cidade: cliente.cidade,
+    uf: "",
+    telefone: cliente.telefone ?? "",
+    email: cliente.email ?? "",
+    responsavel: cliente.responsavel,
+    inscricaoEstadual: "",
+    inscricaoMunicipal: "",
+    ramoAtividade: "",
+  } as unknown as EmpresaData;
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -505,7 +525,7 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
             <Button variant="outline" size="sm" className="gap-1.5">
               <Download className="h-3.5 w-3.5" /> Exportar
             </Button>
-            <Button size="sm" className="gap-1.5">
+            <Button size="sm" className="gap-1.5" onClick={() => setPagOpen(true)}>
               <CreditCard className="h-3.5 w-3.5" /> Gerar cobrança
             </Button>
           </div>
@@ -545,6 +565,13 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
           </table>
         </div>
       </Card>
+      <PagamentoModal
+        open={pagOpen}
+        onOpenChange={setPagOpen}
+        empresa={empresaPagto}
+        descricao="cobrança"
+        valor={valorCobranca}
+      />
     </div>
   );
 }
