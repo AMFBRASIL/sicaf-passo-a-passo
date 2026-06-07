@@ -42,6 +42,7 @@ import { PagamentoModal } from "@/components/pagamento-modal";
 import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-modal";
 import { CancelarFaturaModal } from "@/components/admin/cancelar-fatura-modal";
 import { TicketRespostaModal, type TicketItem } from "@/components/admin/ticket-resposta-modal";
+import { RenovarSicafModal } from "@/components/admin/renovar-sicaf-modal";
 import type { EmpresaData } from "@/routes/empresas";
 
 export interface ClienteDetalhe {
@@ -91,6 +92,8 @@ type StepKey = (typeof STEPS)[number]["key"];
 
 export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
   const [step, setStep] = useState<StepKey>("resumo");
+  const [renovarOpen, setRenovarOpen] = useState(false);
+  const [renovarPagOpen, setRenovarPagOpen] = useState(false);
   if (!cliente) return null;
 
   const iniciais = cliente.razao
@@ -243,7 +246,7 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
             <ScrollArea className="flex-1 max-h-[520px]">
               <div className="p-5">
                 {step === "resumo" && <ResumoTab cliente={cliente} completude={completude} />}
-                {step === "sicaf" && <SicafTab cliente={cliente} />}
+                {step === "sicaf" && <SicafTab cliente={cliente} onRenovar={() => setRenovarOpen(true)} />}
                 {step === "financeiro" && <FinanceiroTab cliente={cliente} />}
                 {step === "documentos" && <DocumentosTab />}
                 {step === "suporte" && <SuporteTab cliente={cliente} />}
@@ -283,7 +286,7 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Wrench className="h-3.5 w-3.5" /> Manutenção
                 </Button>
-                <Button size="sm" className="gap-1.5">
+                <Button size="sm" className="gap-1.5" onClick={() => setRenovarOpen(true)}>
                   <RefreshCw className="h-3.5 w-3.5" /> Renovar SICAF
                 </Button>
               </div>
@@ -291,6 +294,38 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
           </section>
         </div>
       </DialogContent>
+      <RenovarSicafModal
+        open={renovarOpen}
+        onOpenChange={setRenovarOpen}
+        cliente={{ razao: cliente.razao, cnpj: cliente.cnpj }}
+        validade={cliente.validadeSicaf ?? "05/06/2027"}
+        onGerarTaxa={() => {
+          setRenovarOpen(false);
+          setRenovarPagOpen(true);
+        }}
+      />
+      <PagamentoModal
+        open={renovarPagOpen}
+        onOpenChange={setRenovarPagOpen}
+        empresa={{
+          nome: cliente.razao,
+          cnpj: cliente.cnpj,
+          sicaf: "ativo",
+          proximoPasso: "",
+          acao: { label: "", icon: CreditCard as never },
+          endereco: "",
+          cidade: cliente.cidade,
+          uf: "",
+          telefone: cliente.telefone ?? "",
+          email: cliente.email ?? "",
+          responsavel: cliente.responsavel,
+          inscricaoEstadual: "",
+          inscricaoMunicipal: "",
+          ramoAtividade: "",
+        } as unknown as EmpresaData}
+        descricao="Renovação SICAF Anual"
+        valor={985}
+      />
     </Dialog>
   );
 }
@@ -426,7 +461,7 @@ function HealthBar({
   );
 }
 
-function SicafTab({ cliente }: { cliente: ClienteDetalhe }) {
+function SicafTab({ cliente, onRenovar }: { cliente: ClienteDetalhe; onRenovar?: () => void }) {
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between">
@@ -436,7 +471,7 @@ function SicafTab({ cliente }: { cliente: ClienteDetalhe }) {
             Status detalhado por nível — clique em renovar quando vencido.
           </p>
         </div>
-        <Button size="sm" className="gap-1.5">
+        <Button size="sm" className="gap-1.5" onClick={onRenovar}>
           <RefreshCw className="h-3.5 w-3.5" /> Renovar agora
         </Button>
       </div>
