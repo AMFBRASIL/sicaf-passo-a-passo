@@ -76,7 +76,7 @@ export function PagamentoSicafModal({
   onPago?: () => void;
 }) {
   const [step, setStep] = useState<Step>("plano");
-  const [plano, setPlano] = useState<Plano | null>(null);
+  const [plano, setPlano] = useState<Plano | null>("padrao");
   const [pagamento, setPagamento] = useState<Pagamento | null>(null);
 
   const vencimento = addDays(new Date(), 4);
@@ -85,7 +85,7 @@ export function PagamentoSicafModal({
   useEffect(() => {
     if (open) {
       setStep("plano");
-      setPlano(null);
+      setPlano("padrao");
       setPagamento(null);
     }
   }, [open]);
