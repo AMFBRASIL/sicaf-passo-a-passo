@@ -42,6 +42,7 @@ import { PagamentoModal } from "@/components/pagamento-modal";
 import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-modal";
 import { CancelarFaturaModal } from "@/components/admin/cancelar-fatura-modal";
 import { TicketRespostaModal, type TicketItem } from "@/components/admin/ticket-resposta-modal";
+import { RenovarSicafModal } from "@/components/admin/renovar-sicaf-modal";
 import type { EmpresaData } from "@/routes/empresas";
 
 export interface ClienteDetalhe {
