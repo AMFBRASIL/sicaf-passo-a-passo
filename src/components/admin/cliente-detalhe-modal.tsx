@@ -92,6 +92,8 @@ type StepKey = (typeof STEPS)[number]["key"];
 
 export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
   const [step, setStep] = useState<StepKey>("resumo");
+  const [renovarOpen, setRenovarOpen] = useState(false);
+  const [renovarPagOpen, setRenovarPagOpen] = useState(false);
   if (!cliente) return null;
 
   const iniciais = cliente.razao
