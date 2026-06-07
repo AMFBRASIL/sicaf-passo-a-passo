@@ -18,24 +18,32 @@ import {
   TrendingUp,
   FileText,
 } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import type { EmpresaData } from "@/routes/empresas";
 import { PagamentoModal } from "@/components/pagamento-modal";
+import wizardBg from "@/assets/wizard-bg.jpg";
 
 const DIAS = [1, 5, 10, 15, 20, 25];
 const VALOR = 149;
 
 type Mode = "ativar" | "gerenciar";
 type Step = "plano" | "vencimento" | "confirmar" | "sucesso";
+type GerStep = "visao" | "boletos" | "atualizacoes" | "historico";
+
+const GER_STEPS: { id: GerStep; label: string; desc: string; icon: typeof Receipt }[] = [
+  { id: "visao", label: "Visão geral", desc: "Resumo do plano", icon: TrendingUp },
+  { id: "boletos", label: "Boletos", desc: "Cobranças mensais", icon: Receipt },
+  { id: "atualizacoes", label: "Atualizações", desc: "Ações realizadas", icon: Sparkles },
+  { id: "historico", label: "Histórico", desc: "Linha do tempo", icon: History },
+];
 
 export function ManutencaoModal({
   open,
@@ -53,6 +61,7 @@ export function ManutencaoModal({
   onAtivar: (cnpj: string, dia: number) => void;
 }) {
   const [step, setStep] = useState<Step>("plano");
+  const [gerStep, setGerStep] = useState<GerStep>("visao");
   const [dia, setDia] = useState<number | null>(null);
   const [dataInicio, setDataInicio] = useState<Date | undefined>(new Date());
 
@@ -62,6 +71,7 @@ export function ManutencaoModal({
       setDia(null);
       setDataInicio(new Date());
     }
+    if (open && mode === "gerenciar") setGerStep("visao");
   }, [open, mode]);
 
   if (!empresa) return null;
@@ -82,68 +92,115 @@ export function ManutencaoModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl p-0 overflow-hidden gap-0 sm:rounded-2xl">
-        <div className="grid md:grid-cols-[260px_1fr] min-h-[560px]">
-          {/* Sidebar */}
-          <aside className="relative hidden md:flex flex-col justify-between bg-gradient-to-br from-primary via-primary to-primary/70 text-primary-foreground p-6 overflow-hidden">
-            <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,white,transparent_55%)]" />
-            <div className="absolute -bottom-12 -left-12 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-            <div className="relative">
-              <div className="flex items-center gap-2 mb-6">
-                <div className="h-9 w-9 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-                  <Wrench className="h-5 w-5" />
-                </div>
-                <span className="text-xs uppercase tracking-wider font-semibold opacity-90">
-                  CADBRASIL
-                </span>
+        <DialogTitle className="sr-only">
+          {mode === "ativar" ? "Ativar manutenção" : "Gerenciar manutenção"}
+        </DialogTitle>
+        <div className="grid md:grid-cols-[280px_1fr] min-h-[600px]">
+          {/* Sidebar wizard */}
+          <aside
+            className="relative hidden md:flex flex-col p-6 text-white overflow-hidden"
+            style={{
+              backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.86), rgba(15,23,42,0.96)), url(${wizardBg})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur">
+                <Wrench className="h-4 w-4" />
               </div>
-              <h2 className="text-2xl font-bold leading-tight">
-                {mode === "ativar" ? "Ativar Manutenção" : "Gerenciar Manutenção"}
-              </h2>
-              <p className="text-sm opacity-90 mt-2">
-                {mode === "ativar"
-                  ? "Tudo automático. Você nunca mais se preocupa com SICAF."
-                  : "Plano ativo. Acompanhe boletos, histórico e atualizações."}
-              </p>
-
-              {mode === "ativar" && (
-                <ol className="mt-8 space-y-3">
-                  {steps.map((s, i) => {
-                    const done = i < stepIdx || step === "sucesso";
-                    const active = i === stepIdx && step !== "sucesso";
-                    return (
-                      <li key={s.id} className="flex items-center gap-3">
-                        <span
-                          className={cn(
-                            "h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition",
-                            done && "bg-white text-primary border-white",
-                            active && "bg-white/20 border-white",
-                            !done && !active && "bg-transparent border-white/30 text-white/60"
-                          )}
-                        >
-                          {done ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
-                        </span>
-                        <span
-                          className={cn(
-                            "text-sm font-medium",
-                            !done && !active && "opacity-60"
-                          )}
-                        >
-                          {s.label}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
+              <span className="text-xs font-mono opacity-80 tracking-wider">
+                {mode === "ativar" ? "ATIVAÇÃO" : "MANUTENÇÃO"}
+              </span>
             </div>
-            <div className="relative text-xs opacity-80 space-y-1">
-              <p className="font-semibold">{empresa.nome}</p>
-              <p>CNPJ {empresa.cnpj}</p>
+            <h2 className="text-lg font-semibold leading-tight">
+              {mode === "ativar" ? "Ativar Manutenção" : "Painel da manutenção"}
+            </h2>
+            <p className="mt-1 text-xs text-white/70 truncate">{empresa.nome}</p>
+
+            <div className="mt-6 space-y-1">
+              {mode === "ativar" &&
+                steps.map((s, i) => {
+                  const done = i < stepIdx || step === "sucesso";
+                  const active = i === stepIdx && step !== "sucesso";
+                  return (
+                    <div
+                      key={s.id}
+                      className={cn(
+                        "w-full rounded-lg px-3 py-2.5 flex items-start gap-3 transition",
+                        active ? "bg-white/15 backdrop-blur" : "hover:bg-white/5"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold",
+                          active && "bg-white text-slate-900",
+                          done && "bg-emerald-500/80 text-white",
+                          !active && !done && "bg-white/10"
+                        )}
+                      >
+                        {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{s.label}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+              {mode === "gerenciar" &&
+                GER_STEPS.map((s) => {
+                  const Icon = s.icon;
+                  const active = s.id === gerStep;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => setGerStep(s.id)}
+                      className={cn(
+                        "w-full text-left rounded-lg px-3 py-2.5 flex items-start gap-3 transition",
+                        active ? "bg-white/15 backdrop-blur" : "hover:bg-white/5"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+                          active ? "bg-white text-slate-900" : "bg-white/10"
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{s.label}</div>
+                        <div className="text-[11px] text-white/60 truncate">{s.desc}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+
+            {mode === "gerenciar" && (
+              <div className="mt-6 rounded-xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                <div className="flex items-center gap-2 text-emerald-300">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span className="text-xs font-semibold uppercase tracking-wider">Plano ativo</span>
+                </div>
+                <p className="text-xs text-white/70 mt-1">
+                  Vencimento todo dia {diaVencimento ?? 15}
+                </p>
+                <p className="text-lg font-bold mt-1">R$ {VALOR},00<span className="text-xs font-normal text-white/60">/mês</span></p>
+              </div>
+            )}
+
+            <div className="mt-auto pt-6 text-[11px] text-white/60">
+              <p className="font-semibold">CNPJ {empresa.cnpj}</p>
+              <div className="flex items-center gap-1.5 mt-1">
+                <ShieldCheck className="h-3 w-3" /> Operação auditada CADBRASIL
+              </div>
             </div>
           </aside>
 
           {/* Conteúdo */}
-          <div className="flex flex-col min-h-0">
+          <div className="flex flex-col min-h-0 bg-background">
             <ScrollArea className="flex-1 max-h-[80vh]">
               <div className="p-6 sm:p-8">
                 {mode === "ativar" && step === "plano" && (
@@ -164,7 +221,11 @@ export function ManutencaoModal({
                   <SucessoStep empresa={empresa} dia={dia!} onClose={() => onOpenChange(false)} />
                 )}
                 {mode === "gerenciar" && (
-                  <GerenciarPanel empresa={empresa} dia={diaVencimento ?? 15} />
+                  <GerenciarPanel
+                    empresa={empresa}
+                    dia={diaVencimento ?? 15}
+                    step={gerStep}
+                  />
                 )}
               </div>
             </ScrollArea>
@@ -417,7 +478,7 @@ function SucessoStep({ empresa, dia, onClose }: { empresa: EmpresaData; dia: num
   );
 }
 
-function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number }) {
+function GerenciarPanel({ empresa, dia, step }: { empresa: EmpresaData; dia: number; step: GerStep }) {
   const hoje = new Date();
   const boletos = Array.from({ length: 12 }).map((_, i) => {
     const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, dia);
@@ -431,33 +492,31 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
   });
   const [pagBoleto, setPagBoleto] = useState<{ data: Date } | null>(null);
 
+  const currentLabel = GER_STEPS.find((s) => s.id === step)?.label ?? "";
+  const stepIdxG = GER_STEPS.findIndex((s) => s.id === step);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <Badge className="bg-success/15 text-success border-success/30 hover:bg-success/15">
-            <CheckCircle2 className="h-3 w-3 mr-1" /> Manutenção ativa
-          </Badge>
-          <h3 className="text-2xl font-bold mt-2 leading-tight">Painel da manutenção</h3>
+          <div className="text-xs text-muted-foreground">
+            Etapa {stepIdxG + 1} de {GER_STEPS.length}
+          </div>
+          <h3 className="text-2xl font-bold mt-1 leading-tight">{currentLabel}</h3>
           <p className="text-sm text-muted-foreground mt-1">
             {empresa.nome} · Vencimento todo dia {dia}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Mensalidade</p>
-          <p className="text-2xl font-bold">R$ {VALOR},00</p>
+        <div className="w-40 h-1.5 rounded-full bg-muted overflow-hidden mt-2">
+          <div
+            className="h-full bg-primary transition-all"
+            style={{ width: `${((stepIdxG + 1) / GER_STEPS.length) * 100}%` }}
+          />
         </div>
       </div>
 
-      <Tabs defaultValue="visao">
-        <TabsList className="grid grid-cols-4 w-full">
-          <TabsTrigger value="visao">Visão geral</TabsTrigger>
-          <TabsTrigger value="boletos">Boletos</TabsTrigger>
-          <TabsTrigger value="atualizacoes">Atualizações</TabsTrigger>
-          <TabsTrigger value="historico">Histórico</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="visao" className="space-y-4 mt-4">
+      {step === "visao" && (
+        <div className="space-y-4">
           <div className="grid sm:grid-cols-3 gap-3">
             <Kpi icon={TrendingUp} label="Meses ativos" value="2" />
             <Kpi icon={Receipt} label="Próxima cobrança" value={format(boletos[2].data, "dd/MM")} />
@@ -468,9 +527,11 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
             <Progress value={(2 / 12) * 100} className="h-2" />
             <p className="text-xs text-muted-foreground mt-2">2 de 12 mensalidades pagas</p>
           </div>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="boletos" className="space-y-2 mt-4">
+      {step === "boletos" && (
+        <div className="space-y-2">
           {boletos.map((b) => (
             <div key={b.id} className="flex items-center justify-between gap-3 rounded-xl border p-3 bg-card">
               <div className="flex items-center gap-3 min-w-0">
@@ -504,9 +565,11 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
               )}
             </div>
           ))}
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="atualizacoes" className="space-y-2 mt-4">
+      {step === "atualizacoes" && (
+        <div className="space-y-2">
           {[
             { t: "Renovação SICAF Nível I e II", d: "Concluída em 02/01/2026", icon: ShieldCheck },
             { t: "Atualização cadastral mensal", d: "15/12/2025", icon: Sparkles },
@@ -523,30 +586,31 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
               </div>
             </div>
           ))}
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="historico" className="space-y-3 mt-4">
-          <ol className="relative border-l-2 border-border ml-2 space-y-4 pl-5">
-            {[
-              { q: "Hoje, 09:14", a: "Plano ativado", t: "ok" as const },
-              { q: "02/01/2026", a: "Boleto pago — Janeiro/2026", t: "ok" as const },
-              { q: "15/12/2025", a: "Boleto emitido — Dezembro/2025", t: "info" as const },
-              { q: "10/12/2025", a: "Alerta enviado: CNDT", t: "warn" as const },
-            ].map((h, i) => (
-              <li key={i} className="relative">
-                <span className={cn(
-                  "absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-card",
-                  h.t === "ok" && "bg-success",
-                  h.t === "warn" && "bg-warning",
-                  h.t === "info" && "bg-primary",
-                )} />
-                <p className="text-sm font-medium">{h.a}</p>
-                <p className="text-xs text-muted-foreground">{h.q}</p>
-              </li>
-            ))}
-          </ol>
-        </TabsContent>
-      </Tabs>
+      {step === "historico" && (
+        <ol className="relative border-l-2 border-border ml-2 space-y-4 pl-5">
+          {[
+            { q: "Hoje, 09:14", a: "Plano ativado", t: "ok" as const },
+            { q: "02/01/2026", a: "Boleto pago — Janeiro/2026", t: "ok" as const },
+            { q: "15/12/2025", a: "Boleto emitido — Dezembro/2025", t: "info" as const },
+            { q: "10/12/2025", a: "Alerta enviado: CNDT", t: "warn" as const },
+          ].map((h, i) => (
+            <li key={i} className="relative">
+              <span className={cn(
+                "absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-card",
+                h.t === "ok" && "bg-success",
+                h.t === "warn" && "bg-warning",
+                h.t === "info" && "bg-primary",
+              )} />
+              <p className="text-sm font-medium">{h.a}</p>
+              <p className="text-xs text-muted-foreground">{h.q}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+
       <PagamentoModal
         open={!!pagBoleto}
         onOpenChange={(v) => !v && setPagBoleto(null)}
@@ -558,6 +622,8 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
     </div>
   );
 }
+
+
 
 function Kpi({ icon: Icon, label, value }: { icon: typeof Receipt; label: string; value: string }) {
   return (
