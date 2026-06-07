@@ -557,11 +557,10 @@ function GerenciarPanel({ empresa, dia, step }: { empresa: EmpresaData; dia: num
                   <Download className="h-3.5 w-3.5" /> Comprovante
                 </Button>
               )}
-              {b.status === "aberto" && (
-                <Button size="sm" className="gap-1.5" onClick={() => setPagBoleto({ data: b.data })}>Pagar agora</Button>
-              )}
-              {b.status === "futuro" && (
-                <Badge variant="secondary">Programado</Badge>
+              {(b.status === "aberto" || b.status === "futuro") && (
+                <Button size="sm" className="gap-1.5" onClick={() => setPagBoleto({ data: b.data })}>
+                  <Receipt className="h-3.5 w-3.5" /> Gerar Boleto
+                </Button>
               )}
             </div>
           ))}
