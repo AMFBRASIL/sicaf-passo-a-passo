@@ -246,7 +246,7 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
             <ScrollArea className="flex-1 max-h-[520px]">
               <div className="p-5">
                 {step === "resumo" && <ResumoTab cliente={cliente} completude={completude} />}
-                {step === "sicaf" && <SicafTab cliente={cliente} />}
+                {step === "sicaf" && <SicafTab cliente={cliente} onRenovar={() => setRenovarOpen(true)} />}
                 {step === "financeiro" && <FinanceiroTab cliente={cliente} />}
                 {step === "documentos" && <DocumentosTab />}
                 {step === "suporte" && <SuporteTab cliente={cliente} />}
