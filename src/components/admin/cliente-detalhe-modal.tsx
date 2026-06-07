@@ -40,6 +40,7 @@ import wizardBg from "@/assets/wizard-bg.jpg";
 import { Check, X as XIcon } from "lucide-react";
 import { PagamentoModal } from "@/components/pagamento-modal";
 import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-modal";
+import { CancelarFaturaModal } from "@/components/admin/cancelar-fatura-modal";
 import type { EmpresaData } from "@/routes/empresas";
 
 export interface ClienteDetalhe {
@@ -493,12 +494,15 @@ type FaturaItem = {
   venc: string;
   forma: "Boleto" | "PIX";
   status: "pago" | "aberto" | "cancelado";
+  motivoCancelamento?: string;
 };
 
 function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
   const [pagOpen, setPagOpen] = useState(false);
   const [autorizarOpen, setAutorizarOpen] = useState(false);
   const [faturaAtiva, setFaturaAtiva] = useState<FaturaItem | null>(null);
+  const [cancelarOpen, setCancelarOpen] = useState(false);
+  const [faturaCancelId, setFaturaCancelId] = useState<string | null>(null);
   const valorCobranca = cliente.mrr || 890;
 
   const [faturas, setFaturas] = useState<FaturaItem[]>([
@@ -530,8 +534,14 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
     setFaturaAtiva(f);
     setAutorizarOpen(true);
   };
-  const cancelarFatura = (id: string) => {
-    setFaturas((prev) => prev.map((f) => (f.id === id ? { ...f, status: "cancelado" } : f)));
+  const abrirCancelar = (id: string) => {
+    setFaturaCancelId(id);
+    setCancelarOpen(true);
+  };
+  const confirmarCancelamento = (id: string, motivo: string) => {
+    setFaturas((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, status: "cancelado", motivoCancelamento: motivo } : f)),
+    );
   };
   const confirmarAutorizacao = () => {
     if (!faturaAtiva) return;
@@ -595,7 +605,7 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
                           size="sm"
                           variant="outline"
                           className="h-7 px-2 text-xs gap-1 border-danger/30 text-danger hover:bg-danger/10 hover:text-danger"
-                          onClick={() => cancelarFatura(f.id)}
+                          onClick={() => abrirCancelar(f.id)}
                         >
                           <XIcon className="h-3 w-3" /> Cancelar
                         </Button>
@@ -642,6 +652,12 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
             : null
         }
         onConfirmar={confirmarAutorizacao}
+      />
+      <CancelarFaturaModal
+        open={cancelarOpen}
+        onOpenChange={setCancelarOpen}
+        faturaId={faturaCancelId}
+        onConfirmar={confirmarCancelamento}
       />
     </div>
   );
