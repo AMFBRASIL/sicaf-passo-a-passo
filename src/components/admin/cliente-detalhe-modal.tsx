@@ -461,7 +461,7 @@ function HealthBar({
   );
 }
 
-function SicafTab({ cliente }: { cliente: ClienteDetalhe }) {
+function SicafTab({ cliente, onRenovar }: { cliente: ClienteDetalhe; onRenovar?: () => void }) {
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between">
