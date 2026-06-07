@@ -16,6 +16,7 @@ import {
   Brain,
   ScrollText,
   Settings2,
+  Shield,
   Building2,
 } from "lucide-react";
 import {
@@ -54,6 +55,7 @@ const inteligencia = [
 
 const gestao = [
   { title: "Gestão de Equipe", url: "/admin/equipe", icon: UserCog },
+  { title: "Gestão de Perfis", url: "/admin/perfis", icon: Shield },
   { title: "Relatórios", url: "/admin/relatorios", icon: BarChart3 },
   { title: "Auditoria", url: "/admin/auditoria", icon: ScrollText },
   { title: "Configurações", url: "/admin/configuracoes", icon: Settings2 },
