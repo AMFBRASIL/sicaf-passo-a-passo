@@ -294,6 +294,38 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
           </section>
         </div>
       </DialogContent>
+      <RenovarSicafModal
+        open={renovarOpen}
+        onOpenChange={setRenovarOpen}
+        cliente={{ razao: cliente.razao, cnpj: cliente.cnpj }}
+        validade={cliente.validadeSicaf ?? "05/06/2027"}
+        onGerarTaxa={() => {
+          setRenovarOpen(false);
+          setRenovarPagOpen(true);
+        }}
+      />
+      <PagamentoModal
+        open={renovarPagOpen}
+        onOpenChange={setRenovarPagOpen}
+        empresa={{
+          nome: cliente.razao,
+          cnpj: cliente.cnpj,
+          sicaf: "ativo",
+          proximoPasso: "",
+          acao: { label: "", icon: CreditCard as never },
+          endereco: "",
+          cidade: cliente.cidade,
+          uf: "",
+          telefone: cliente.telefone ?? "",
+          email: cliente.email ?? "",
+          responsavel: cliente.responsavel,
+          inscricaoEstadual: "",
+          inscricaoMunicipal: "",
+          ramoAtividade: "",
+        } as unknown as EmpresaData}
+        descricao="Renovação SICAF Anual"
+        valor={985}
+      />
     </Dialog>
   );
 }
