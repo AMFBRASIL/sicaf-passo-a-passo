@@ -18,24 +18,32 @@ import {
   TrendingUp,
   FileText,
 } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import type { EmpresaData } from "@/routes/empresas";
 import { PagamentoModal } from "@/components/pagamento-modal";
+import wizardBg from "@/assets/wizard-bg.jpg";
 
 const DIAS = [1, 5, 10, 15, 20, 25];
 const VALOR = 149;
 
 type Mode = "ativar" | "gerenciar";
 type Step = "plano" | "vencimento" | "confirmar" | "sucesso";
+type GerStep = "visao" | "boletos" | "atualizacoes" | "historico";
+
+const GER_STEPS: { id: GerStep; label: string; desc: string; icon: typeof Receipt }[] = [
+  { id: "visao", label: "Visão geral", desc: "Resumo do plano", icon: TrendingUp },
+  { id: "boletos", label: "Boletos", desc: "Cobranças mensais", icon: Receipt },
+  { id: "atualizacoes", label: "Atualizações", desc: "Ações realizadas", icon: Sparkles },
+  { id: "historico", label: "Histórico", desc: "Linha do tempo", icon: History },
+];
 
 export function ManutencaoModal({
   open,
