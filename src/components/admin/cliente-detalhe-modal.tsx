@@ -286,7 +286,7 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Wrench className="h-3.5 w-3.5" /> Manutenção
                 </Button>
-                <Button size="sm" className="gap-1.5">
+                <Button size="sm" className="gap-1.5" onClick={() => setRenovarOpen(true)}>
                   <RefreshCw className="h-3.5 w-3.5" /> Renovar SICAF
                 </Button>
               </div>
