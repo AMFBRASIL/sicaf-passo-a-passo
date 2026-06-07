@@ -653,6 +653,12 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
         }
         onConfirmar={confirmarAutorizacao}
       />
+      <CancelarFaturaModal
+        open={cancelarOpen}
+        onOpenChange={setCancelarOpen}
+        faturaId={faturaCancelId}
+        onConfirmar={confirmarCancelamento}
+      />
     </div>
   );
 }
