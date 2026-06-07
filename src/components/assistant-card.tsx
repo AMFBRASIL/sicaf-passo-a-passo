@@ -13,24 +13,25 @@ export type AssistantAlert = {
 
 const defaultAlerts: AssistantAlert[] = [
   {
-    empresa: "Serviços Modelo EIRELI",
-    cnpj: "11.222.333/0001-44",
-    problema: "Certidão Trabalhista vencida",
+    empresa: "JR Construtora EIRELI",
+    cnpj: "23.456.789/0001-11",
+    problema: "SICAF vencido em 14/10/2025",
     severidade: "danger",
   },
   {
-    empresa: "Comércio Atlântico ME",
-    cnpj: "45.678.912/0001-33",
-    problema: "Certidão Estadual vence em 5 dias",
+    empresa: "Nova Filial Brasília LTDA",
+    cnpj: "34.567.890/0001-22",
+    problema: "Sem cadastro SICAF — regularize",
     severidade: "warn",
   },
   {
-    empresa: "Tech Solutions Brasil",
-    cnpj: "98.765.432/0001-10",
-    problema: "SICAF expira em 12 dias",
+    empresa: "JR Comércio e Serviços ME",
+    cnpj: "12.345.678/0001-99",
+    problema: "Certidão Estadual vence em breve",
     severidade: "warn",
   },
 ];
+
 
 export function AssistantCard({ alerts = defaultAlerts }: { alerts?: AssistantAlert[] }) {
   return (
