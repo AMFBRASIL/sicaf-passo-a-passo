@@ -565,6 +565,13 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
           </table>
         </div>
       </Card>
+      <PagamentoModal
+        open={pagOpen}
+        onOpenChange={setPagOpen}
+        empresa={empresaPagto}
+        descricao="cobrança"
+        valor={valorCobranca}
+      />
     </div>
   );
 }
