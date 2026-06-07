@@ -40,6 +40,7 @@ import wizardBg from "@/assets/wizard-bg.jpg";
 import { Check, X as XIcon } from "lucide-react";
 import { PagamentoModal } from "@/components/pagamento-modal";
 import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-modal";
+import { CancelarFaturaModal } from "@/components/admin/cancelar-fatura-modal";
 import type { EmpresaData } from "@/routes/empresas";
 
 export interface ClienteDetalhe {
