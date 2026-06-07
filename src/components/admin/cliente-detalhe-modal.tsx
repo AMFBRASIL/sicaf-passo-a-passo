@@ -494,6 +494,7 @@ type FaturaItem = {
   venc: string;
   forma: "Boleto" | "PIX";
   status: "pago" | "aberto" | "cancelado";
+  motivoCancelamento?: string;
 };
 
 function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
