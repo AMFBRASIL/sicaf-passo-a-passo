@@ -605,7 +605,7 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
                           size="sm"
                           variant="outline"
                           className="h-7 px-2 text-xs gap-1 border-danger/30 text-danger hover:bg-danger/10 hover:text-danger"
-                          onClick={() => cancelarFatura(f.id)}
+                          onClick={() => abrirCancelar(f.id)}
                         >
                           <XIcon className="h-3 w-3" /> Cancelar
                         </Button>
