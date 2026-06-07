@@ -32,6 +32,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminSuporteRouteImport } from './routes/admin.suporte'
 import { Route as AdminSicafRouteImport } from './routes/admin.sicaf'
 import { Route as AdminRelatoriosRouteImport } from './routes/admin.relatorios'
+import { Route as AdminPerfisRouteImport } from './routes/admin.perfis'
 import { Route as AdminIaRouteImport } from './routes/admin.ia'
 import { Route as AdminGoogleAdsRouteImport } from './routes/admin.google-ads'
 import { Route as AdminFunilRouteImport } from './routes/admin.funil'
@@ -160,6 +161,11 @@ const AdminRelatoriosRoute = AdminRelatoriosRouteImport.update({
   path: '/relatorios',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminPerfisRoute = AdminPerfisRouteImport.update({
+  id: '/perfis',
+  path: '/perfis',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminIaRoute = AdminIaRouteImport.update({
   id: '/ia',
   path: '/ia',
@@ -253,6 +259,7 @@ export interface FileRoutesByFullPath {
   '/admin/funil': typeof AdminFunilRoute
   '/admin/google-ads': typeof AdminGoogleAdsRoute
   '/admin/ia': typeof AdminIaRoute
+  '/admin/perfis': typeof AdminPerfisRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRoute
@@ -289,6 +296,7 @@ export interface FileRoutesByTo {
   '/admin/funil': typeof AdminFunilRoute
   '/admin/google-ads': typeof AdminGoogleAdsRoute
   '/admin/ia': typeof AdminIaRoute
+  '/admin/perfis': typeof AdminPerfisRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRoute
@@ -327,6 +335,7 @@ export interface FileRoutesById {
   '/admin/funil': typeof AdminFunilRoute
   '/admin/google-ads': typeof AdminGoogleAdsRoute
   '/admin/ia': typeof AdminIaRoute
+  '/admin/perfis': typeof AdminPerfisRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRoute
@@ -366,6 +375,7 @@ export interface FileRouteTypes {
     | '/admin/funil'
     | '/admin/google-ads'
     | '/admin/ia'
+    | '/admin/perfis'
     | '/admin/relatorios'
     | '/admin/sicaf'
     | '/admin/suporte'
@@ -402,6 +412,7 @@ export interface FileRouteTypes {
     | '/admin/funil'
     | '/admin/google-ads'
     | '/admin/ia'
+    | '/admin/perfis'
     | '/admin/relatorios'
     | '/admin/sicaf'
     | '/admin/suporte'
@@ -439,6 +450,7 @@ export interface FileRouteTypes {
     | '/admin/funil'
     | '/admin/google-ads'
     | '/admin/ia'
+    | '/admin/perfis'
     | '/admin/relatorios'
     | '/admin/sicaf'
     | '/admin/suporte'
@@ -630,6 +642,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRelatoriosRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/perfis': {
+      id: '/admin/perfis'
+      path: '/perfis'
+      fullPath: '/admin/perfis'
+      preLoaderRoute: typeof AdminPerfisRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/ia': {
       id: '/admin/ia'
       path: '/ia'
@@ -730,6 +749,7 @@ interface AdminRouteChildren {
   AdminFunilRoute: typeof AdminFunilRoute
   AdminGoogleAdsRoute: typeof AdminGoogleAdsRoute
   AdminIaRoute: typeof AdminIaRoute
+  AdminPerfisRoute: typeof AdminPerfisRoute
   AdminRelatoriosRoute: typeof AdminRelatoriosRoute
   AdminSicafRoute: typeof AdminSicafRoute
   AdminSuporteRoute: typeof AdminSuporteRoute
@@ -749,6 +769,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminFunilRoute: AdminFunilRoute,
   AdminGoogleAdsRoute: AdminGoogleAdsRoute,
   AdminIaRoute: AdminIaRoute,
+  AdminPerfisRoute: AdminPerfisRoute,
   AdminRelatoriosRoute: AdminRelatoriosRoute,
   AdminSicafRoute: AdminSicafRoute,
   AdminSuporteRoute: AdminSuporteRoute,
