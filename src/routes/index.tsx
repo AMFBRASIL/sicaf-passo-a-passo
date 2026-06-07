@@ -330,8 +330,6 @@ function HomePage() {
 
         {/* Sidebar */}
         <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-          <AssistantCard />
-
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-semibold">Precisa de ajuda?</CardTitle>
@@ -355,7 +353,10 @@ function HomePage() {
               </Button>
             </CardContent>
           </Card>
+
+          <AssistantCard />
         </aside>
+
       </div>
     </div>
   );
