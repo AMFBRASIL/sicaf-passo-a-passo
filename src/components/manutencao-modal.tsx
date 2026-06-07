@@ -478,7 +478,7 @@ function SucessoStep({ empresa, dia, onClose }: { empresa: EmpresaData; dia: num
   );
 }
 
-function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number }) {
+function GerenciarPanel({ empresa, dia, step }: { empresa: EmpresaData; dia: number; step: GerStep }) {
   const hoje = new Date();
   const boletos = Array.from({ length: 12 }).map((_, i) => {
     const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, dia);
@@ -492,33 +492,31 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
   });
   const [pagBoleto, setPagBoleto] = useState<{ data: Date } | null>(null);
 
+  const currentLabel = GER_STEPS.find((s) => s.id === step)?.label ?? "";
+  const stepIdxG = GER_STEPS.findIndex((s) => s.id === step);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <Badge className="bg-success/15 text-success border-success/30 hover:bg-success/15">
-            <CheckCircle2 className="h-3 w-3 mr-1" /> Manutenção ativa
-          </Badge>
-          <h3 className="text-2xl font-bold mt-2 leading-tight">Painel da manutenção</h3>
+          <div className="text-xs text-muted-foreground">
+            Etapa {stepIdxG + 1} de {GER_STEPS.length}
+          </div>
+          <h3 className="text-2xl font-bold mt-1 leading-tight">{currentLabel}</h3>
           <p className="text-sm text-muted-foreground mt-1">
             {empresa.nome} · Vencimento todo dia {dia}
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Mensalidade</p>
-          <p className="text-2xl font-bold">R$ {VALOR},00</p>
+        <div className="w-40 h-1.5 rounded-full bg-muted overflow-hidden mt-2">
+          <div
+            className="h-full bg-primary transition-all"
+            style={{ width: `${((stepIdxG + 1) / GER_STEPS.length) * 100}%` }}
+          />
         </div>
       </div>
 
-      <Tabs defaultValue="visao">
-        <TabsList className="grid grid-cols-4 w-full">
-          <TabsTrigger value="visao">Visão geral</TabsTrigger>
-          <TabsTrigger value="boletos">Boletos</TabsTrigger>
-          <TabsTrigger value="atualizacoes">Atualizações</TabsTrigger>
-          <TabsTrigger value="historico">Histórico</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="visao" className="space-y-4 mt-4">
+      {step === "visao" && (
+        <div className="space-y-4">
           <div className="grid sm:grid-cols-3 gap-3">
             <Kpi icon={TrendingUp} label="Meses ativos" value="2" />
             <Kpi icon={Receipt} label="Próxima cobrança" value={format(boletos[2].data, "dd/MM")} />
@@ -529,9 +527,11 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
             <Progress value={(2 / 12) * 100} className="h-2" />
             <p className="text-xs text-muted-foreground mt-2">2 de 12 mensalidades pagas</p>
           </div>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="boletos" className="space-y-2 mt-4">
+      {step === "boletos" && (
+        <div className="space-y-2">
           {boletos.map((b) => (
             <div key={b.id} className="flex items-center justify-between gap-3 rounded-xl border p-3 bg-card">
               <div className="flex items-center gap-3 min-w-0">
@@ -565,9 +565,11 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
               )}
             </div>
           ))}
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="atualizacoes" className="space-y-2 mt-4">
+      {step === "atualizacoes" && (
+        <div className="space-y-2">
           {[
             { t: "Renovação SICAF Nível I e II", d: "Concluída em 02/01/2026", icon: ShieldCheck },
             { t: "Atualização cadastral mensal", d: "15/12/2025", icon: Sparkles },
@@ -584,30 +586,31 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
               </div>
             </div>
           ))}
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="historico" className="space-y-3 mt-4">
-          <ol className="relative border-l-2 border-border ml-2 space-y-4 pl-5">
-            {[
-              { q: "Hoje, 09:14", a: "Plano ativado", t: "ok" as const },
-              { q: "02/01/2026", a: "Boleto pago — Janeiro/2026", t: "ok" as const },
-              { q: "15/12/2025", a: "Boleto emitido — Dezembro/2025", t: "info" as const },
-              { q: "10/12/2025", a: "Alerta enviado: CNDT", t: "warn" as const },
-            ].map((h, i) => (
-              <li key={i} className="relative">
-                <span className={cn(
-                  "absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-card",
-                  h.t === "ok" && "bg-success",
-                  h.t === "warn" && "bg-warning",
-                  h.t === "info" && "bg-primary",
-                )} />
-                <p className="text-sm font-medium">{h.a}</p>
-                <p className="text-xs text-muted-foreground">{h.q}</p>
-              </li>
-            ))}
-          </ol>
-        </TabsContent>
-      </Tabs>
+      {step === "historico" && (
+        <ol className="relative border-l-2 border-border ml-2 space-y-4 pl-5">
+          {[
+            { q: "Hoje, 09:14", a: "Plano ativado", t: "ok" as const },
+            { q: "02/01/2026", a: "Boleto pago — Janeiro/2026", t: "ok" as const },
+            { q: "15/12/2025", a: "Boleto emitido — Dezembro/2025", t: "info" as const },
+            { q: "10/12/2025", a: "Alerta enviado: CNDT", t: "warn" as const },
+          ].map((h, i) => (
+            <li key={i} className="relative">
+              <span className={cn(
+                "absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-card",
+                h.t === "ok" && "bg-success",
+                h.t === "warn" && "bg-warning",
+                h.t === "info" && "bg-primary",
+              )} />
+              <p className="text-sm font-medium">{h.a}</p>
+              <p className="text-xs text-muted-foreground">{h.q}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+
       <PagamentoModal
         open={!!pagBoleto}
         onOpenChange={(v) => !v && setPagBoleto(null)}
@@ -619,6 +622,8 @@ function GerenciarPanel({ empresa, dia }: { empresa: EmpresaData; dia: number })
     </div>
   );
 }
+
+
 
 function Kpi({ icon: Icon, label, value }: { icon: typeof Receipt; label: string; value: string }) {
   return (
