@@ -245,7 +245,7 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                 {step === "sicaf" && <SicafTab cliente={cliente} />}
                 {step === "financeiro" && <FinanceiroTab cliente={cliente} />}
                 {step === "documentos" && <DocumentosTab />}
-                {step === "suporte" && <SuporteTab />}
+                {step === "suporte" && <SuporteTab cliente={cliente} />}
                 {step === "historico" && <HistoricoTab />}
                 {step === "notas" && <NotasTab />}
               </div>
