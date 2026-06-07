@@ -534,8 +534,14 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
     setFaturaAtiva(f);
     setAutorizarOpen(true);
   };
-  const cancelarFatura = (id: string) => {
-    setFaturas((prev) => prev.map((f) => (f.id === id ? { ...f, status: "cancelado" } : f)));
+  const abrirCancelar = (id: string) => {
+    setFaturaCancelId(id);
+    setCancelarOpen(true);
+  };
+  const confirmarCancelamento = (id: string, motivo: string) => {
+    setFaturas((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, status: "cancelado", motivoCancelamento: motivo } : f)),
+    );
   };
   const confirmarAutorizacao = () => {
     if (!faturaAtiva) return;
