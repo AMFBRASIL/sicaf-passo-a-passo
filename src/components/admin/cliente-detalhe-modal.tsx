@@ -501,6 +501,8 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
   const [pagOpen, setPagOpen] = useState(false);
   const [autorizarOpen, setAutorizarOpen] = useState(false);
   const [faturaAtiva, setFaturaAtiva] = useState<FaturaItem | null>(null);
+  const [cancelarOpen, setCancelarOpen] = useState(false);
+  const [faturaCancelId, setFaturaCancelId] = useState<string | null>(null);
   const valorCobranca = cliente.mrr || 890;
 
   const [faturas, setFaturas] = useState<FaturaItem[]>([
