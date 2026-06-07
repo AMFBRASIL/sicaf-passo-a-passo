@@ -43,6 +43,8 @@ import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-
 import { CancelarFaturaModal } from "@/components/admin/cancelar-fatura-modal";
 import { TicketRespostaModal, type TicketItem } from "@/components/admin/ticket-resposta-modal";
 import { RenovarSicafModal } from "@/components/admin/renovar-sicaf-modal";
+import { EditarClienteModal } from "@/components/admin/editar-cliente-modal";
+import { ManutencaoModal } from "@/components/manutencao-modal";
 import type { EmpresaData } from "@/routes/empresas";
 
 export interface ClienteDetalhe {
@@ -94,6 +96,8 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
   const [step, setStep] = useState<StepKey>("resumo");
   const [renovarOpen, setRenovarOpen] = useState(false);
   const [renovarPagOpen, setRenovarPagOpen] = useState(false);
+  const [editarOpen, setEditarOpen] = useState(false);
+  const [manutOpen, setManutOpen] = useState(false);
   if (!cliente) return null;
 
   const iniciais = cliente.razao
@@ -280,10 +284,10 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                 )}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditarOpen(true)}>
                   <Edit3 className="h-3.5 w-3.5" /> Editar
                 </Button>
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setManutOpen(true)}>
                   <Wrench className="h-3.5 w-3.5" /> Manutenção
                 </Button>
                 <Button size="sm" className="gap-1.5" onClick={() => setRenovarOpen(true)}>
