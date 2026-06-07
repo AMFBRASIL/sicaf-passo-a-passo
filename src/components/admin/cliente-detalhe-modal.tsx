@@ -41,6 +41,7 @@ import { Check, X as XIcon } from "lucide-react";
 import { PagamentoModal } from "@/components/pagamento-modal";
 import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-modal";
 import { CancelarFaturaModal } from "@/components/admin/cancelar-fatura-modal";
+import { TicketRespostaModal, type TicketItem } from "@/components/admin/ticket-resposta-modal";
 import type { EmpresaData } from "@/routes/empresas";
 
 export interface ClienteDetalhe {
@@ -245,7 +246,7 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                 {step === "sicaf" && <SicafTab cliente={cliente} />}
                 {step === "financeiro" && <FinanceiroTab cliente={cliente} />}
                 {step === "documentos" && <DocumentosTab />}
-                {step === "suporte" && <SuporteTab />}
+                {step === "suporte" && <SuporteTab cliente={cliente} />}
                 {step === "historico" && <HistoricoTab />}
                 {step === "notas" && <NotasTab />}
               </div>
@@ -733,12 +734,20 @@ function DocumentosTab() {
   );
 }
 
-function SuporteTab() {
-  const tickets = [
+function SuporteTab({ cliente }: { cliente: ClienteDetalhe }) {
+  const tickets: TicketItem[] = [
     { id: "#T-2310", titulo: "Atualizar nível IV — Estadual", status: "Em andamento", prio: "alta", data: "Hoje 09:11" },
     { id: "#T-2287", titulo: "Dúvida sobre CNDT", status: "Aguardando cliente", prio: "média", data: "Ontem" },
     { id: "#T-2204", titulo: "Renovação SICAF concluída", status: "Fechado", prio: "baixa", data: "12/05" },
   ];
+  const [ticketOpen, setTicketOpen] = useState(false);
+  const [ticketSel, setTicketSel] = useState<TicketItem | null>(null);
+
+  const abrirTicket = (t: TicketItem) => {
+    setTicketSel(t);
+    setTicketOpen(true);
+  };
+
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between">
@@ -749,7 +758,11 @@ function SuporteTab() {
       </div>
       <div className="mt-3 space-y-2">
         {tickets.map((t) => (
-          <div key={t.id} className="flex items-center justify-between rounded-md border bg-card px-3 py-2.5">
+          <button
+            key={t.id}
+            onClick={() => abrirTicket(t)}
+            className="w-full flex items-center justify-between rounded-md border bg-card px-3 py-2.5 text-left transition hover:bg-accent hover:border-primary/40"
+          >
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs text-muted-foreground">{t.id}</span>
@@ -762,9 +775,15 @@ function SuporteTab() {
             <Badge variant={t.prio === "alta" ? "destructive" : "secondary"} className="text-[10px]">
               {t.prio}
             </Badge>
-          </div>
+          </button>
         ))}
       </div>
+      <TicketRespostaModal
+        open={ticketOpen}
+        onOpenChange={setTicketOpen}
+        ticket={ticketSel}
+        cliente={{ razao: cliente.razao, responsavel: cliente.responsavel }}
+      />
     </Card>
   );
 }
