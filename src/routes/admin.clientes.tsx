@@ -36,6 +36,7 @@ import {
   ClienteDetalheModal,
   type ClienteDetalhe,
 } from "@/components/admin/cliente-detalhe-modal";
+import { NovoClienteModal } from "@/components/admin/novo-cliente-modal";
 import type { NivelStatus } from "@/components/admin/nivel-dots";
 
 export const Route = createFileRoute("/admin/clientes")({
@@ -234,6 +235,7 @@ function ClientesPage() {
   const [empresaSel, setEmpresaSel] = useState<ClienteDetalhe | null>(null);
   const [openEmpresas, setOpenEmpresas] = useState(false);
   const [openDetalhe, setOpenDetalhe] = useState(false);
+  const [openNovo, setOpenNovo] = useState(false);
 
   const lista = useMemo(() => {
     return clientes.filter((g) => {
@@ -289,7 +291,7 @@ function ClientesPage() {
           <Button variant="outline" size="sm" className="gap-1.5">
             <Download className="h-3.5 w-3.5" /> Exportar
           </Button>
-          <Button size="sm" className="gap-1.5">
+          <Button size="sm" className="gap-1.5" onClick={() => setOpenNovo(true)}>
             <Plus className="h-3.5 w-3.5" /> Novo cliente
           </Button>
         </div>
@@ -449,6 +451,7 @@ function ClientesPage() {
           if (!v && grupoSel) setOpenEmpresas(true);
         }}
       />
+      <NovoClienteModal open={openNovo} onOpenChange={setOpenNovo} />
     </div>
   );
 }
