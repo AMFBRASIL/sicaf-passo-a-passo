@@ -92,68 +92,115 @@ export function ManutencaoModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl p-0 overflow-hidden gap-0 sm:rounded-2xl">
-        <div className="grid md:grid-cols-[260px_1fr] min-h-[560px]">
-          {/* Sidebar */}
-          <aside className="relative hidden md:flex flex-col justify-between bg-gradient-to-br from-primary via-primary to-primary/70 text-primary-foreground p-6 overflow-hidden">
-            <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,white,transparent_55%)]" />
-            <div className="absolute -bottom-12 -left-12 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-            <div className="relative">
-              <div className="flex items-center gap-2 mb-6">
-                <div className="h-9 w-9 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-                  <Wrench className="h-5 w-5" />
-                </div>
-                <span className="text-xs uppercase tracking-wider font-semibold opacity-90">
-                  CADBRASIL
-                </span>
+        <DialogTitle className="sr-only">
+          {mode === "ativar" ? "Ativar manutenção" : "Gerenciar manutenção"}
+        </DialogTitle>
+        <div className="grid md:grid-cols-[280px_1fr] min-h-[600px]">
+          {/* Sidebar wizard */}
+          <aside
+            className="relative hidden md:flex flex-col p-6 text-white overflow-hidden"
+            style={{
+              backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.86), rgba(15,23,42,0.96)), url(${wizardBg})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+            }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur">
+                <Wrench className="h-4 w-4" />
               </div>
-              <h2 className="text-2xl font-bold leading-tight">
-                {mode === "ativar" ? "Ativar Manutenção" : "Gerenciar Manutenção"}
-              </h2>
-              <p className="text-sm opacity-90 mt-2">
-                {mode === "ativar"
-                  ? "Tudo automático. Você nunca mais se preocupa com SICAF."
-                  : "Plano ativo. Acompanhe boletos, histórico e atualizações."}
-              </p>
-
-              {mode === "ativar" && (
-                <ol className="mt-8 space-y-3">
-                  {steps.map((s, i) => {
-                    const done = i < stepIdx || step === "sucesso";
-                    const active = i === stepIdx && step !== "sucesso";
-                    return (
-                      <li key={s.id} className="flex items-center gap-3">
-                        <span
-                          className={cn(
-                            "h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition",
-                            done && "bg-white text-primary border-white",
-                            active && "bg-white/20 border-white",
-                            !done && !active && "bg-transparent border-white/30 text-white/60"
-                          )}
-                        >
-                          {done ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
-                        </span>
-                        <span
-                          className={cn(
-                            "text-sm font-medium",
-                            !done && !active && "opacity-60"
-                          )}
-                        >
-                          {s.label}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
+              <span className="text-xs font-mono opacity-80 tracking-wider">
+                {mode === "ativar" ? "ATIVAÇÃO" : "MANUTENÇÃO"}
+              </span>
             </div>
-            <div className="relative text-xs opacity-80 space-y-1">
-              <p className="font-semibold">{empresa.nome}</p>
-              <p>CNPJ {empresa.cnpj}</p>
+            <h2 className="text-lg font-semibold leading-tight">
+              {mode === "ativar" ? "Ativar Manutenção" : "Painel da manutenção"}
+            </h2>
+            <p className="mt-1 text-xs text-white/70 truncate">{empresa.nome}</p>
+
+            <div className="mt-6 space-y-1">
+              {mode === "ativar" &&
+                steps.map((s, i) => {
+                  const done = i < stepIdx || step === "sucesso";
+                  const active = i === stepIdx && step !== "sucesso";
+                  return (
+                    <div
+                      key={s.id}
+                      className={cn(
+                        "w-full rounded-lg px-3 py-2.5 flex items-start gap-3 transition",
+                        active ? "bg-white/15 backdrop-blur" : "hover:bg-white/5"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold",
+                          active && "bg-white text-slate-900",
+                          done && "bg-emerald-500/80 text-white",
+                          !active && !done && "bg-white/10"
+                        )}
+                      >
+                        {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{s.label}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+              {mode === "gerenciar" &&
+                GER_STEPS.map((s) => {
+                  const Icon = s.icon;
+                  const active = s.id === gerStep;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => setGerStep(s.id)}
+                      className={cn(
+                        "w-full text-left rounded-lg px-3 py-2.5 flex items-start gap-3 transition",
+                        active ? "bg-white/15 backdrop-blur" : "hover:bg-white/5"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+                          active ? "bg-white text-slate-900" : "bg-white/10"
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium">{s.label}</div>
+                        <div className="text-[11px] text-white/60 truncate">{s.desc}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+
+            {mode === "gerenciar" && (
+              <div className="mt-6 rounded-xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                <div className="flex items-center gap-2 text-emerald-300">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span className="text-xs font-semibold uppercase tracking-wider">Plano ativo</span>
+                </div>
+                <p className="text-xs text-white/70 mt-1">
+                  Vencimento todo dia {diaVencimento ?? 15}
+                </p>
+                <p className="text-lg font-bold mt-1">R$ {VALOR},00<span className="text-xs font-normal text-white/60">/mês</span></p>
+              </div>
+            )}
+
+            <div className="mt-auto pt-6 text-[11px] text-white/60">
+              <p className="font-semibold">CNPJ {empresa.cnpj}</p>
+              <div className="flex items-center gap-1.5 mt-1">
+                <ShieldCheck className="h-3 w-3" /> Operação auditada CADBRASIL
+              </div>
             </div>
           </aside>
 
           {/* Conteúdo */}
-          <div className="flex flex-col min-h-0">
+          <div className="flex flex-col min-h-0 bg-background">
             <ScrollArea className="flex-1 max-h-[80vh]">
               <div className="p-6 sm:p-8">
                 {mode === "ativar" && step === "plano" && (
@@ -174,7 +221,11 @@ export function ManutencaoModal({
                   <SucessoStep empresa={empresa} dia={dia!} onClose={() => onOpenChange(false)} />
                 )}
                 {mode === "gerenciar" && (
-                  <GerenciarPanel empresa={empresa} dia={diaVencimento ?? 15} />
+                  <GerenciarPanel
+                    empresa={empresa}
+                    dia={diaVencimento ?? 15}
+                    step={gerStep}
+                  />
                 )}
               </div>
             </ScrollArea>
