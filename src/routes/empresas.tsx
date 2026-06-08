@@ -1545,12 +1545,6 @@ function EmpresasPage() {
         onOpenChange={setPendenciasOpen}
         empresas={empresasPendentes}
       />
-      <PagamentoPendenteModal
-        open={pagamentoPendenteOpen}
-        onOpenChange={setPagamentoPendenteOpen}
-        empresa={pagamentoPendenteEmpresa}
-        onPagar={handlePagarTaxa}
-      />
       <PagamentoSicafModal
         open={taxaSicafModalOpen}
         onOpenChange={setTaxaSicafModalOpen}
