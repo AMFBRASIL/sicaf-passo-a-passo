@@ -33,6 +33,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useState } from "react";
+import { NIVEIS_SICAF } from "./nivel-dots";
 import type { ClienteDetalhe } from "./cliente-detalhe-modal";
 
 type AcaoKey = "contatos" | "avisos" | "contratos" | "sicaf-manual" | "relatorio" | "historico";
@@ -325,39 +326,202 @@ function SicafManualModal({ open, onOpenChange, cliente }: { open: boolean; onOp
 
 /* ---------- RELATÓRIO ---------- */
 function RelatorioModal({ open, onOpenChange, cliente }: { open: boolean; onOpenChange: (v: boolean) => void; cliente: ClienteDetalhe }) {
+  // Importações dinâmicas via require ao topo do arquivo já existem (NIVEIS_SICAF abaixo)
+  const niveisList = NIVEIS_SICAF.map((n) => ({
+    ...n,
+    status: (cliente.niveis?.[n.num] ?? "nao_cadastrado") as
+      | "validado"
+      | "vencendo"
+      | "vencido"
+      | "pendente"
+      | "nao_cadastrado",
+  }));
+
+  const niveisHabilitados = niveisList.filter((n) => n.status === "validado" || n.status === "vencendo").length;
+  const certidoesTotal = 5;
+  const certidoesVencidas = niveisList.filter((n) => n.status === "vencido").length;
+  const certidoesVencendo = niveisList.filter((n) => n.status === "vencendo").length;
+  const documentosTotal = 0;
+  const sicafStatusLabel = cliente.sicaf === "ok" ? "Ativo" : cliente.sicaf === "pendente" ? "Pendente" : "Vencido";
+  const sicafStatusTone =
+    cliente.sicaf === "ok"
+      ? "text-emerald-600"
+      : cliente.sicaf === "pendente"
+        ? "text-amber-600"
+        : "text-rose-600";
+
+  const statusBadge = (s: string) => {
+    if (s === "validado") return <span className="text-xs font-medium text-emerald-600">Habilitado</span>;
+    if (s === "vencendo") return <span className="text-xs font-medium text-amber-600">A Vencer</span>;
+    if (s === "vencido") return <span className="text-xs font-medium text-rose-600">Vencido</span>;
+    if (s === "pendente") return <span className="text-xs font-medium text-amber-600">Pendente</span>;
+    return <span className="text-xs font-medium text-muted-foreground">Não cadastrado</span>;
+  };
+
+  const validadeMock = (i: number) =>
+    i === 0 ? cliente.validadeSicaf ?? "07/06/2027"
+    : i === 2 ? "12/06/2026"
+    : i === 3 ? "07/07/2026"
+    : i === 4 ? "—"
+    : "";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5 text-emerald-600" /> Relatório do cliente</DialogTitle>
-          <DialogDescription>Resumo completo de {cliente.razao} para impressão ou envio.</DialogDescription>
-        </DialogHeader>
-        <Card className="p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <Info label="Razão social" value={cliente.razao} />
-            <Info label="CNPJ" value={cliente.cnpj} />
-            <Info label="Responsável" value={cliente.responsavel} />
-            <Info label="Cidade" value={cliente.cidade} />
-            <Info label="Plano" value={cliente.plano ?? "—"} />
-            <Info label="MRR" value={cliente.mrr ? `R$ ${cliente.mrr.toLocaleString("pt-BR")}` : "—"} />
-            <Info label="Validade SICAF" value={cliente.validadeSicaf ?? "—"} />
-            <Info label="Cliente desde" value={cliente.desde ?? "—"} />
-          </div>
-          <Separator />
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 bg-slate-50 dark:bg-slate-950">
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b bg-white/95 dark:bg-slate-900/95 backdrop-blur px-6 py-4">
           <div>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Resumo</p>
-            <p className="mt-1 text-sm">
-              Cliente {cliente.sicaf === "ok" ? "com SICAF em dia" : cliente.sicaf === "pendente" ? "com pendências no SICAF" : "com SICAF vencido"}, {cliente.pagou ? "pagamentos em dia" : "inadimplente"}, {cliente.manutencao ? "com manutenção ativa" : "sem manutenção"}.
-            </p>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <FileText className="h-5 w-5 text-emerald-600" /> Relatório do Cliente
+            </DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs">
+              Resumo completo para compartilhamento com o cliente.
+            </DialogDescription>
           </div>
-        </Card>
-        <DialogFooter>
+          <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+            <Printer className="h-4 w-4" /> Imprimir detalhes
+          </Button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* KPIs principais */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <KpiCard label="SICAF" value={sicafStatusLabel} valueClass={sicafStatusTone} />
+            <KpiCard label="Níveis SICAF" value={String(niveisHabilitados)} />
+            <KpiCard label="Certidões" value={String(certidoesTotal)} />
+            <KpiCard label="Documentos" value={String(documentosTotal)} />
+          </div>
+
+          {/* Bloco empresa */}
+          <Card className="p-4 space-y-1.5 text-sm">
+            <Linha k="Empresa" v={cliente.razao} />
+            <Linha k="Documento" v={cliente.cnpj} />
+            <Linha k="Responsável" v={cliente.responsavel} />
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              <Linha k="E-mail" v={cliente.email ?? "—"} />
+              <Linha k="Telefone" v={cliente.telefone ?? "—"} />
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
+              <Linha k="Manutenção" v={cliente.manutencao ? "Ativa" : "Inativa"} />
+              <Linha k="Validade SICAF" v={cliente.validadeSicaf ?? "—"} />
+            </div>
+          </Card>
+
+          {/* KPIs secundários */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <KpiCard label="Certidões vencidas" value={String(certidoesVencidas)} valueClass="text-rose-600" />
+            <KpiCard label="Certidões vencendo" value={String(certidoesVencendo)} valueClass="text-amber-600" />
+            <KpiCard
+              label="Financeiro (taxas pagas)"
+              value={`R$ ${(cliente.ltv ?? 985).toLocaleString("pt-BR")},00`}
+              valueClass="text-emerald-600"
+            />
+          </div>
+
+          {/* Pendências SICAF banner */}
+          {cliente.pagou ? (
+            <div className="flex items-start gap-3 rounded-lg border border-emerald-200/70 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 p-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Sem taxas SICAF pendentes</p>
+                <p className="text-xs text-muted-foreground">
+                  Todas as solicitações deste cliente estão quitadas ou foram canceladas.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-950/20 p-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">Taxas SICAF em aberto</p>
+                <p className="text-xs text-muted-foreground">Existe solicitação aguardando pagamento.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Níveis SICAF */}
+          <Card className="p-0 overflow-hidden">
+            <div className="px-4 py-3 border-b bg-muted/30">
+              <p className="text-sm font-semibold">Níveis SICAF</p>
+            </div>
+            <div className="divide-y">
+              {niveisList.map((n, i) => (
+                <div key={n.num} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-muted/20">
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Nível {n.roman} -</span>{" "}
+                    <span className="font-medium">{n.nome}</span>
+                  </p>
+                  <div className="flex items-center gap-4 shrink-0">
+                    {validadeMock(i) && validadeMock(i) !== "—" && (
+                      <span className="text-xs text-muted-foreground">Validade: {validadeMock(i)}</span>
+                    )}
+                    {statusBadge(n.status)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Financeiro e Plano */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Card className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Plano contratado</p>
+              <p className="text-base font-bold">{cliente.plano ?? "—"}</p>
+              <div className="mt-3 space-y-1 text-sm">
+                <Linha k="MRR" v={cliente.mrr ? `R$ ${cliente.mrr.toLocaleString("pt-BR")},00` : "—"} />
+                <Linha k="LTV" v={cliente.ltv ? `R$ ${cliente.ltv.toLocaleString("pt-BR")},00` : "—"} />
+                <Linha k="Cliente desde" v={cliente.desde ?? "—"} />
+              </div>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Atendimento</p>
+              <div className="space-y-1 text-sm">
+                <Linha k="Último contato" v={cliente.ultimoContato} />
+                <Linha k="Cidade" v={cliente.cidade} />
+                <Linha k="Pagamento" v={cliente.pagou ? "Em dia" : "Em atraso"} />
+                <Linha k="Status geral" v={cliente.sicaf === "ok" && cliente.pagou ? "Saudável" : "Requer atenção"} />
+              </div>
+            </Card>
+          </div>
+
+          {/* Resumo executivo */}
+          <Card className="p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Resumo executivo</p>
+            <p className="text-sm leading-relaxed">
+              <span className="font-semibold">{cliente.razao}</span> está {cliente.sicaf === "ok" ? "com SICAF em dia" : cliente.sicaf === "pendente" ? "com pendências no SICAF" : "com SICAF vencido"}
+              , {cliente.pagou ? "pagamentos em dia" : "inadimplente"} e {cliente.manutencao ? "com manutenção ativa" : "sem manutenção contratada"}. Possui {niveisHabilitados} de 6 níveis habilitados, {certidoesVencendo} certidão(ões) vencendo nos próximos 30 dias e {certidoesVencidas} vencida(s).
+            </p>
+          </Card>
+        </div>
+
+        <DialogFooter className="sticky bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t px-6 py-3">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
           <Button variant="outline" className="gap-1.5"><Download className="h-4 w-4" /> Baixar PDF</Button>
-          <Button className="gap-1.5"><Printer className="h-4 w-4" /> Imprimir</Button>
+          <Button className="gap-1.5"><Send className="h-4 w-4" /> Enviar por e-mail</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function KpiCard({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <Card className="p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={`mt-0.5 text-xl font-bold ${valueClass ?? ""}`}>{value}</p>
+    </Card>
+  );
+}
+
+function Linha({ k, v }: { k: string; v: string }) {
+  return (
+    <p className="text-sm">
+      <span className="font-semibold">{k}:</span> <span className="text-foreground/90">{v}</span>
+    </p>
   );
 }
 
