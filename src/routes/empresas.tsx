@@ -1350,8 +1350,6 @@ function EmpresasPage() {
   const [detalhesEmpresa, setDetalhesEmpresa] = useState<EmpresaData | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pendenciasOpen, setPendenciasOpen] = useState(false);
-  const [pagamentoPendenteOpen, setPagamentoPendenteOpen] = useState(false);
-  const [pagamentoPendenteEmpresa, setPagamentoPendenteEmpresa] = useState<EmpresaData | null>(null);
   const [taxaSicafModalOpen, setTaxaSicafModalOpen] = useState(false);
   const [taxaSicafEmpresa, setTaxaSicafEmpresa] = useState<{ nome: string; cnpj: string } | null>(null);
   const [manutencaoAtivada, setManutencaoAtivada] = useState<Record<string, number>>({
