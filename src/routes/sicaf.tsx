@@ -1080,7 +1080,12 @@ function SicafPage() {
                   )}
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold">{p.titulo}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold">{p.titulo}</p>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                      ⏱ ~{p.tempoMin} min
+                    </span>
+                  </div>
                   <p className="mt-0.5 text-sm text-muted-foreground">{p.descricao}</p>
                   {status === "current" && (
                     <div className="mt-3 flex flex-wrap gap-2">
