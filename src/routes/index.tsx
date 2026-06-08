@@ -363,6 +363,8 @@ function HomePage() {
             </CardContent>
           </Card>
 
+          <AgendamentosCard />
+
           <AssistantCard />
         </aside>
 
