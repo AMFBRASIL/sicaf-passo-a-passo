@@ -383,94 +383,84 @@ function AssistentePage() {
                   }}
                 />
               </TabsContent>
-              <TabsContent value="individual" className="mt-0">
-                <IndividualUploadInner
-                  arquivo={arquivo}
-                  analisando={analisando}
-                  analisado={analisado}
-                  progresso={progresso}
-                  pendenciasCount={pendenciasMock.length}
-                  inputRef={inputRef}
-                  onSelect={onSelect}
-                  limpar={limpar}
-                />
-              </TabsContent>
-            </Tabs>
-            {!arquivo && (
-              <label
-                htmlFor="sf-pdf"
-                className="group relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border-2 border-dashed border-primary/30 bg-gradient-to-br from-primary/5 to-accent/20 px-4 py-10 text-center transition hover:border-primary hover:from-primary/10"
-              >
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lift transition group-hover:scale-110">
-                  <Upload className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-base font-bold">Arraste o PDF ou clique aqui</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Situação do Fornecedor emitida pelo Compras.gov.br · até 10 MB
-                  </p>
-                </div>
-                <input
-                  ref={inputRef}
-                  id="sf-pdf"
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
-                />
-              </label>
-            )}
-
-            {arquivo && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{arquivo.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(arquivo.size / 1024).toFixed(0)} KB ·{" "}
-                      {analisando ? "Analisando…" : analisado ? "Análise concluída" : "Pronto"}
-                    </p>
-                  </div>
-                  {!analisando && (
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={limpar}>
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  )}
-                </div>
-
-                {analisando && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5 font-medium text-primary">
-                        <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-                        IA analisando seu documento
-                      </span>
-                      <span className="font-mono text-muted-foreground">{progresso}%</span>
+              <TabsContent value="individual" className="mt-0 space-y-4">
+                {!arquivo && (
+                  <label
+                    htmlFor="sf-pdf"
+                    className="group relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border-2 border-dashed border-primary/30 bg-gradient-to-br from-primary/5 to-accent/20 px-4 py-10 text-center transition hover:border-primary hover:from-primary/10"
+                  >
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lift transition group-hover:scale-110">
+                      <Upload className="h-6 w-6" />
                     </div>
-                    <Progress value={progresso} className="h-2" />
-                  </div>
+                    <div>
+                      <p className="text-base font-bold">Arraste o PDF ou clique aqui</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Situação do Fornecedor emitida pelo Compras.gov.br · até 10 MB
+                      </p>
+                    </div>
+                    <input
+                      ref={inputRef}
+                      id="sf-pdf"
+                      type="file"
+                      accept=".pdf"
+                      className="hidden"
+                      onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
                 )}
 
-                {analisado && (
-                  <div className="rounded-xl border border-success/30 bg-success/5 p-3">
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
-                      <div className="text-sm">
-                        <p className="font-semibold">
-                          Encontramos {pendenciasMock.length} pontos de atenção.
-                        </p>
+                {arquivo && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{arquivo.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Veja o painel de pendências ao lado e clique em "Como resolver".
+                          {(arquivo.size / 1024).toFixed(0)} KB ·{" "}
+                          {analisando ? "Analisando…" : analisado ? "Análise concluída" : "Pronto"}
                         </p>
                       </div>
+                      {!analisando && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={limpar}>
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      )}
                     </div>
+
+                    {analisando && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 font-medium text-primary">
+                            <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                            IA analisando seu documento
+                          </span>
+                          <span className="font-mono text-muted-foreground">{progresso}%</span>
+                        </div>
+                        <Progress value={progresso} className="h-2" />
+                      </div>
+                    )}
+
+                    {analisado && (
+                      <div className="rounded-xl border border-success/30 bg-success/5 p-3">
+                        <div className="flex items-start gap-2">
+                          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+                          <div className="text-sm">
+                            <p className="font-semibold">
+                              Encontramos {pendenciasMock.length} pontos de atenção.
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Veja o painel de pendências ao lado e clique em "Como resolver".
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
+              </TabsContent>
+            </Tabs>
 
             {/* Histórico */}
             <div className="mt-6">
