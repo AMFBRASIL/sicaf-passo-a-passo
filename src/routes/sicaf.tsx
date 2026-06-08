@@ -770,7 +770,7 @@ function SicafPage() {
   useEffect(() => {
     setRenovando(false);
     setPagamentoPago(false);
-    setEtapaAtual(cliente.estado === "vencido" ? total + 1 : 1);
+    setEtapaAtual(cliente.estado === "vencido" || cliente.estado === "completo" ? total + 1 : 1);
   }, [cliente.cnpj, cliente.estado, total]);
 
   const concluidas = etapaAtual - 1;
