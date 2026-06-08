@@ -110,7 +110,7 @@ const passosBase: Passo[] = [
 // ============================================================
 // Empresas em processo (mock — viria de query param / contexto)
 // ============================================================
-type EstadoSicaf = "novo" | "vencido";
+type EstadoSicaf = "novo" | "vencido" | "completo";
 
 type ClienteEmProcesso = {
   nome: string;
