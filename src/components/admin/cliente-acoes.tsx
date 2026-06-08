@@ -33,6 +33,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useState } from "react";
+import { NIVEIS_SICAF } from "./nivel-dots";
 import type { ClienteDetalhe } from "./cliente-detalhe-modal";
 
 type AcaoKey = "contatos" | "avisos" | "contratos" | "sicaf-manual" | "relatorio" | "historico";
