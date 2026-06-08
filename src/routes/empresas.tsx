@@ -48,6 +48,7 @@ export interface EmpresaData {
   ramoAtividade: string;
   niveis?: number[];
   detalhesNiveis?: Record<number, NivelDetalhe>;
+  taxaPendente?: boolean;
 }
 
 export const empresasMock: EmpresaData[] = [
