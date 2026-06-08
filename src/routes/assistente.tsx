@@ -33,6 +33,8 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
 import { NIVEIS_SICAF, type NivelStatus } from "@/components/admin/nivel-dots";
+import { ComparadorSicaf, type SnapshotSicaf } from "@/components/comparador-sicaf";
+import { GitCompareArrows } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const searchSchema = z.object({
@@ -194,6 +196,7 @@ function AssistentePage() {
   const [analisando, setAnalisando] = useState(false);
   const [analisado, setAnalisado] = useState(false);
   const [pendenciaAberta, setPendenciaAberta] = useState<Pendencia | null>(null);
+  const [comparadorAberto, setComparadorAberto] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const niveis = analisado ? niveisIniciais : niveisIniciais;
@@ -243,12 +246,18 @@ function AssistentePage() {
             : "Envie sua Situação do Fornecedor e o assistente cuida do resto."
         }
         action={
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <Link to="/sicaf" search={{ cnpj }}>
-              <ArrowRight className="h-3.5 w-3.5 rotate-180" />
-              Voltar ao SICAF
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setComparadorAberto(true)}>
+              <GitCompareArrows className="h-3.5 w-3.5" />
+              Antes vs Depois
+            </Button>
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <Link to="/sicaf" search={{ cnpj }}>
+                <ArrowRight className="h-3.5 w-3.5 rotate-180" />
+                Voltar ao SICAF
+              </Link>
+            </Button>
+          </div>
         }
       />
 
