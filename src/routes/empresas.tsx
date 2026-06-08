@@ -1385,18 +1385,10 @@ function EmpresasPage() {
 
   const handleGerenciar = (empresa: EmpresaData) => {
     if (empresa.taxaPendente) {
-      setPagamentoPendenteEmpresa(empresa);
-      setPagamentoPendenteOpen(true);
+      setTaxaSicafEmpresa({ nome: empresa.nome, cnpj: empresa.cnpj });
+      setTaxaSicafModalOpen(true);
     } else {
       abrirDetalhes(empresa);
-    }
-  };
-
-  const handlePagarTaxa = () => {
-    if (pagamentoPendenteEmpresa) {
-      setTaxaSicafEmpresa({ nome: pagamentoPendenteEmpresa.nome, cnpj: pagamentoPendenteEmpresa.cnpj });
-      setTaxaSicafModalOpen(true);
-      setPagamentoPendenteOpen(false);
     }
   };
 
