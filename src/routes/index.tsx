@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/page-header";
 import { AssistantCard } from "@/components/assistant-card";
+import { CentralTarefas } from "@/components/central-tarefas";
+import { AgendamentosCard } from "@/components/agendamento-revisao";
+import { CopyButton } from "@/components/copy-button";
 import { cn } from "@/lib/utils";
 import {
   Rocket,
