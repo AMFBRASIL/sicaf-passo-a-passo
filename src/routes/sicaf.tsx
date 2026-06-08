@@ -155,9 +155,23 @@ const clientes: Record<string, ClienteEmProcesso> = {
     vencidoEm: "14/10/2025",
     niveis: [1, 2, 3, 4, 5, 6],
   },
+  "45.678.901/0001-33": {
+    nome: "Teste SICAF 100% LTDA",
+    cnpj: "45.678.901/0001-33",
+    endereco: "Av. Teste, 100 - Centro",
+    cidade: "Curitiba",
+    uf: "PR",
+    telefone: "(41) 9999-8888",
+    email: "teste@sicaf100.com.br",
+    responsavel: "Lucas Teste",
+    ramoAtividade: "Tecnologia da Informação",
+    estado: "completo",
+    validade: "10/09/2026",
+    niveis: [1, 2, 3, 4, 5, 6],
+  },
 };
 
-const clienteDefault = clientes["34.567.890/0001-22"];
+const clienteDefault = clientes["45.678.901/0001-33"];
 
 // ============================================================
 // Documentos exigidos
