@@ -699,6 +699,45 @@ function AssistentePage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ComparadorSicaf
+        open={comparadorAberto}
+        onOpenChange={setComparadorAberto}
+        empresa={cnpj ? `CNPJ ${cnpj}` : "Sua empresa"}
+        antes={SNAPSHOT_ANTES}
+        depois={SNAPSHOT_DEPOIS}
+      />
     </div>
   );
 }
+
+const SNAPSHOT_ANTES: SnapshotSicaf = {
+  validade: "12/03/2025 (vencido)",
+  niveis: [
+    { numero: 1, nome: "Credenciamento", ativo: true },
+    { numero: 2, nome: "Hab. Jurídica", ativo: true },
+    { numero: 3, nome: "Reg. Fiscal", ativo: false },
+    { numero: 4, nome: "Qual. Econômica", ativo: false },
+    { numero: 5, nome: "Qual. Técnica", ativo: false },
+    { numero: 6, nome: "Linha de Forn.", ativo: false },
+  ],
+  pendencias: [
+    "Certidão Trabalhista vencida",
+    "Balanço Patrimonial desatualizado",
+    "Receita Federal pendente",
+  ],
+};
+
+const SNAPSHOT_DEPOIS: SnapshotSicaf = {
+  validade: "10/03/2027",
+  niveis: [
+    { numero: 1, nome: "Credenciamento", ativo: true },
+    { numero: 2, nome: "Hab. Jurídica", ativo: true },
+    { numero: 3, nome: "Reg. Fiscal", ativo: true },
+    { numero: 4, nome: "Qual. Econômica", ativo: true },
+    { numero: 5, nome: "Qual. Técnica", ativo: true },
+    { numero: 6, nome: "Linha de Forn.", ativo: true },
+  ],
+  pendencias: [],
+};
+
