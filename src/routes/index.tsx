@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/page-header";
 import { AssistantCard } from "@/components/assistant-card";
+import { CentralTarefas } from "@/components/central-tarefas";
+import { AgendamentosCard } from "@/components/agendamento-revisao";
+import { CopyButton } from "@/components/copy-button";
 import { cn } from "@/lib/utils";
 import {
   Rocket,
@@ -160,6 +163,9 @@ function HomePage() {
             />
           </div>
 
+          {/* Central de Tarefas — visão consolidada do que fazer agora */}
+          <CentralTarefas />
+
           {/* Próximo passo — CTA mantido, agora apontando para empresa prioritária */}
           <Card className="border-primary/30 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lift">
             <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -222,7 +228,10 @@ function HomePage() {
                             {e.nivel}
                           </span>
                         </div>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground font-mono">{e.cnpj}</p>
+                        <div className="mt-0.5 flex items-center gap-1">
+                          <p className="truncate text-xs text-muted-foreground font-mono">{e.cnpj}</p>
+                          <CopyButton value={e.cnpj} label="CNPJ" />
+                        </div>
                       </div>
                       <div className="hidden sm:block w-32">
                         <div className="flex items-center justify-between text-xs">
@@ -353,6 +362,8 @@ function HomePage() {
               </Button>
             </CardContent>
           </Card>
+
+          <AgendamentosCard />
 
           <AssistantCard />
         </aside>

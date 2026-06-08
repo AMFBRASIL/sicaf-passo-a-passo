@@ -64,6 +64,7 @@ interface Passo {
   n: number;
   titulo: string;
   descricao: string;
+  tempoMin: number;
 }
 
 const passosBase: Passo[] = [
@@ -71,36 +72,43 @@ const passosBase: Passo[] = [
     n: 1,
     titulo: "Pagamento da taxa CADBRASIL",
     descricao: "Confirme o pagamento para liberar a atualização dos seus níveis.",
+    tempoMin: 2,
   },
   {
     n: 2,
     titulo: "Verificar certificado digital",
     descricao: "Vamos checar se seu certificado e-CNPJ A1 ou A3 está conectado.",
+    tempoMin: 3,
   },
   {
     n: 3,
     titulo: "Documentação da empresa",
     descricao: "Envie os documentos básicos que vamos usar para o cadastro.",
+    tempoMin: 4,
   },
   {
     n: 4,
     titulo: "Conectar ao Compras.gov.br",
     descricao: "Vamos instalar o Assistente CADBRASIL para automatizar o acesso.",
+    tempoMin: 3,
   },
   {
     n: 5,
     titulo: "Atualizar Nível III — Receita Federal",
     descricao: "Encontramos documentos que precisam ser atualizados.",
+    tempoMin: 4,
   },
   {
     n: 6,
     titulo: "Atualizar Nível IV — Qualificação técnica",
     descricao: "Envie ou confirme os documentos da sua atividade.",
+    tempoMin: 5,
   },
   {
     n: 7,
     titulo: "Validar e enviar",
     descricao: "Confirmação final — você pronto para licitar.",
+    tempoMin: 1,
   },
 ];
 
@@ -1019,7 +1027,17 @@ function SicafPage() {
 
       <Card className="mt-4 shadow-soft">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold">Progresso da atualização</CardTitle>
+          <div>
+            <CardTitle className="text-base font-semibold">Progresso da atualização</CardTitle>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              ⏱ Tempo total estimado: ~
+              {passosBase.reduce((s, p) => s + p.tempoMin, 0)} min · restante: ~
+              {passosBase
+                .filter((p) => statusDe(p.n) !== "done")
+                .reduce((s, p) => s + p.tempoMin, 0)}{" "}
+              min
+            </p>
+          </div>
           <span className="text-sm font-semibold text-primary">
             {Math.min(concluidas, total)} de {total} etapas
           </span>
@@ -1062,7 +1080,12 @@ function SicafPage() {
                   )}
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold">{p.titulo}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold">{p.titulo}</p>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                      ⏱ ~{p.tempoMin} min
+                    </span>
+                  </div>
                   <p className="mt-0.5 text-sm text-muted-foreground">{p.descricao}</p>
                   {status === "current" && (
                     <div className="mt-3 flex flex-wrap gap-2">

@@ -14,8 +14,11 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { Bell, MessageCircle, User, Settings, LogOut, ChevronDown } from "lucide-react";
+import { MessageCircle, Settings, LogOut, ChevronDown } from "lucide-react";
 import { EditarPerfilModal } from "@/components/editar-perfil-modal";
+import { ThemeProvider } from "@/components/theme-provider";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificacoesPopover } from "@/components/notificacoes-popover";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -141,74 +144,77 @@ function RootComponent() {
   if (isAdmin || isAuth) {
     return (
       <QueryClientProvider client={queryClient}>
-        <Outlet />
+        <ThemeProvider>
+          <Outlet />
+        </ThemeProvider>
       </QueryClientProvider>
     );
   }
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SidebarProvider>
-        <div className="flex min-h-screen w-full bg-background">
-          <AppSidebar />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/80 px-3 backdrop-blur sm:px-6">
-              <div className="flex items-center gap-2">
-                <SidebarTrigger />
-                <span className="text-sm font-medium text-muted-foreground hidden sm:inline">
-                  Olá, João 👋
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="rounded-full" aria-label="Notificações">
-                  <Bell className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <MessageCircle className="h-4 w-4" />
-                  <span className="hidden sm:inline">WhatsApp</span>
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="group flex items-center gap-2 rounded-full border border-transparent px-2 py-1 transition-all hover:border-border hover:bg-accent/40 data-[state=open]:border-border data-[state=open]:bg-accent/60"
-                    >
-                      <Avatar className="h-8 w-8 border border-border">
-                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                          JS
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="hidden text-sm font-medium sm:inline">João Silva</span>
-                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-52">
-                    <DropdownMenuLabel className="font-normal">
-                      <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none">João Silva</p>
-                        <p className="text-xs leading-none text-muted-foreground">joao@empresa.com</p>
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => setEditarOpen(true)}>
-                      <Settings className="mr-2 h-4 w-4" />
-                      Editar dados
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Sair
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </header>
-            <main className="flex-1">
-              <Outlet />
-            </main>
+      <ThemeProvider>
+        <SidebarProvider>
+          <div className="flex min-h-screen w-full bg-background">
+            <AppSidebar />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/80 px-3 backdrop-blur sm:px-6">
+                <div className="flex items-center gap-2">
+                  <SidebarTrigger />
+                  <span className="text-sm font-medium text-muted-foreground hidden sm:inline">
+                    Olá, João 👋
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ThemeToggle />
+                  <NotificacoesPopover />
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <MessageCircle className="h-4 w-4" />
+                    <span className="hidden sm:inline">WhatsApp</span>
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="group flex items-center gap-2 rounded-full border border-transparent px-2 py-1 transition-all hover:border-border hover:bg-accent/40 data-[state=open]:border-border data-[state=open]:bg-accent/60"
+                      >
+                        <Avatar className="h-8 w-8 border border-border">
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                            JS
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="hidden text-sm font-medium sm:inline">João Silva</span>
+                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuLabel className="font-normal">
+                        <div className="flex flex-col space-y-1">
+                          <p className="text-sm font-medium leading-none">João Silva</p>
+                          <p className="text-xs leading-none text-muted-foreground">joao@empresa.com</p>
+                        </div>
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => setEditarOpen(true)}>
+                        <Settings className="mr-2 h-4 w-4" />
+                        Editar dados
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Sair
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </header>
+              <main className="flex-1">
+                <Outlet />
+              </main>
+            </div>
           </div>
-        </div>
-        <EditarPerfilModal open={editarOpen} onOpenChange={setEditarOpen} />
-      </SidebarProvider>
+          <EditarPerfilModal open={editarOpen} onOpenChange={setEditarOpen} />
+        </SidebarProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

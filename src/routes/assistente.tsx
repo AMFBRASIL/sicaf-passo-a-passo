@@ -33,6 +33,11 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
 import { NIVEIS_SICAF, type NivelStatus } from "@/components/admin/nivel-dots";
+import { ComparadorSicaf, type SnapshotSicaf } from "@/components/comparador-sicaf";
+import { UploadMassa } from "@/components/upload-massa";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { GitCompareArrows, Files, FileUp } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const searchSchema = z.object({
@@ -194,6 +199,7 @@ function AssistentePage() {
   const [analisando, setAnalisando] = useState(false);
   const [analisado, setAnalisado] = useState(false);
   const [pendenciaAberta, setPendenciaAberta] = useState<Pendencia | null>(null);
+  const [comparadorAberto, setComparadorAberto] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const niveis = analisado ? niveisIniciais : niveisIniciais;
@@ -243,12 +249,18 @@ function AssistentePage() {
             : "Envie sua Situação do Fornecedor e o assistente cuida do resto."
         }
         action={
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <Link to="/sicaf" search={{ cnpj }}>
-              <ArrowRight className="h-3.5 w-3.5 rotate-180" />
-              Voltar ao SICAF
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setComparadorAberto(true)}>
+              <GitCompareArrows className="h-3.5 w-3.5" />
+              Antes vs Depois
+            </Button>
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <Link to="/sicaf" search={{ cnpj }}>
+                <ArrowRight className="h-3.5 w-3.5 rotate-180" />
+                Voltar ao SICAF
+              </Link>
+            </Button>
+          </div>
         }
       />
 
@@ -351,81 +363,104 @@ function AssistentePage() {
             </div>
           </CardHeader>
           <CardContent>
-            {!arquivo && (
-              <label
-                htmlFor="sf-pdf"
-                className="group relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border-2 border-dashed border-primary/30 bg-gradient-to-br from-primary/5 to-accent/20 px-4 py-10 text-center transition hover:border-primary hover:from-primary/10"
-              >
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lift transition group-hover:scale-110">
-                  <Upload className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-base font-bold">Arraste o PDF ou clique aqui</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Situação do Fornecedor emitida pelo Compras.gov.br · até 10 MB
-                  </p>
-                </div>
-                <input
-                  ref={inputRef}
-                  id="sf-pdf"
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
+            <Tabs defaultValue="individual" className="w-full">
+              <TabsList className="mb-4 grid w-full grid-cols-2">
+                <TabsTrigger value="individual" className="gap-1.5">
+                  <FileUp className="h-3.5 w-3.5" />
+                  Individual
+                </TabsTrigger>
+                <TabsTrigger value="massa" className="gap-1.5">
+                  <Files className="h-3.5 w-3.5" />
+                  Em massa
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="massa" className="mt-0">
+                <UploadMassa
+                  empresas={EMPRESAS_MOCK}
+                  onConfirmar={(r) => {
+                    const ok = r.filter((x) => x.status === "ok").length;
+                    toast.success(`${ok} arquivo${ok !== 1 ? "s" : ""} importado${ok !== 1 ? "s" : ""} com sucesso`);
+                  }}
                 />
-              </label>
-            )}
-
-            {arquivo && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{arquivo.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(arquivo.size / 1024).toFixed(0)} KB ·{" "}
-                      {analisando ? "Analisando…" : analisado ? "Análise concluída" : "Pronto"}
-                    </p>
-                  </div>
-                  {!analisando && (
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={limpar}>
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  )}
-                </div>
-
-                {analisando && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="flex items-center gap-1.5 font-medium text-primary">
-                        <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-                        IA analisando seu documento
-                      </span>
-                      <span className="font-mono text-muted-foreground">{progresso}%</span>
+              </TabsContent>
+              <TabsContent value="individual" className="mt-0 space-y-4">
+                {!arquivo && (
+                  <label
+                    htmlFor="sf-pdf"
+                    className="group relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border-2 border-dashed border-primary/30 bg-gradient-to-br from-primary/5 to-accent/20 px-4 py-10 text-center transition hover:border-primary hover:from-primary/10"
+                  >
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lift transition group-hover:scale-110">
+                      <Upload className="h-6 w-6" />
                     </div>
-                    <Progress value={progresso} className="h-2" />
-                  </div>
+                    <div>
+                      <p className="text-base font-bold">Arraste o PDF ou clique aqui</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Situação do Fornecedor emitida pelo Compras.gov.br · até 10 MB
+                      </p>
+                    </div>
+                    <input
+                      ref={inputRef}
+                      id="sf-pdf"
+                      type="file"
+                      accept=".pdf"
+                      className="hidden"
+                      onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
                 )}
 
-                {analisado && (
-                  <div className="rounded-xl border border-success/30 bg-success/5 p-3">
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
-                      <div className="text-sm">
-                        <p className="font-semibold">
-                          Encontramos {pendenciasMock.length} pontos de atenção.
-                        </p>
+                {arquivo && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{arquivo.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Veja o painel de pendências ao lado e clique em "Como resolver".
+                          {(arquivo.size / 1024).toFixed(0)} KB ·{" "}
+                          {analisando ? "Analisando…" : analisado ? "Análise concluída" : "Pronto"}
                         </p>
                       </div>
+                      {!analisando && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={limpar}>
+                          <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      )}
                     </div>
+
+                    {analisando && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 font-medium text-primary">
+                            <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                            IA analisando seu documento
+                          </span>
+                          <span className="font-mono text-muted-foreground">{progresso}%</span>
+                        </div>
+                        <Progress value={progresso} className="h-2" />
+                      </div>
+                    )}
+
+                    {analisado && (
+                      <div className="rounded-xl border border-success/30 bg-success/5 p-3">
+                        <div className="flex items-start gap-2">
+                          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+                          <div className="text-sm">
+                            <p className="font-semibold">
+                              Encontramos {pendenciasMock.length} pontos de atenção.
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Veja o painel de pendências ao lado e clique em "Como resolver".
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
+              </TabsContent>
+            </Tabs>
 
             {/* Histórico */}
             <div className="mt-6">
@@ -690,6 +725,53 @@ function AssistentePage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ComparadorSicaf
+        open={comparadorAberto}
+        onOpenChange={setComparadorAberto}
+        empresa={cnpj ? `CNPJ ${cnpj}` : "Sua empresa"}
+        antes={SNAPSHOT_ANTES}
+        depois={SNAPSHOT_DEPOIS}
+      />
     </div>
   );
 }
+
+const SNAPSHOT_ANTES: SnapshotSicaf = {
+  validade: "12/03/2025 (vencido)",
+  niveis: [
+    { numero: 1, nome: "Credenciamento", ativo: true },
+    { numero: 2, nome: "Hab. Jurídica", ativo: true },
+    { numero: 3, nome: "Reg. Fiscal", ativo: false },
+    { numero: 4, nome: "Qual. Econômica", ativo: false },
+    { numero: 5, nome: "Qual. Técnica", ativo: false },
+    { numero: 6, nome: "Linha de Forn.", ativo: false },
+  ],
+  pendencias: [
+    "Certidão Trabalhista vencida",
+    "Balanço Patrimonial desatualizado",
+    "Receita Federal pendente",
+  ],
+};
+
+const SNAPSHOT_DEPOIS: SnapshotSicaf = {
+  validade: "10/03/2027",
+  niveis: [
+    { numero: 1, nome: "Credenciamento", ativo: true },
+    { numero: 2, nome: "Hab. Jurídica", ativo: true },
+    { numero: 3, nome: "Reg. Fiscal", ativo: true },
+    { numero: 4, nome: "Qual. Econômica", ativo: true },
+    { numero: 5, nome: "Qual. Técnica", ativo: true },
+    { numero: 6, nome: "Linha de Forn.", ativo: true },
+  ],
+  pendencias: [],
+};
+
+
+const EMPRESAS_MOCK = [
+  { cnpj: "12.345.678/0001-90", nome: "Construtora Horizonte LTDA" },
+  { cnpj: "98.765.432/0001-10", nome: "Tech Solutions Brasil" },
+  { cnpj: "45.678.912/0001-33", nome: "Comércio Atlântico ME" },
+  { cnpj: "11.222.333/0001-44", nome: "Serviços Modelo EIRELI" },
+  { cnpj: "45.678.901/0001-33", nome: "Teste SICAF 100% LTDA" },
+];
