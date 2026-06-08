@@ -767,3 +767,11 @@ const SNAPSHOT_DEPOIS: SnapshotSicaf = {
   pendencias: [],
 };
 
+
+const EMPRESAS_MOCK = [
+  { cnpj: "12.345.678/0001-90", nome: "Construtora Horizonte LTDA" },
+  { cnpj: "98.765.432/0001-10", nome: "Tech Solutions Brasil" },
+  { cnpj: "45.678.912/0001-33", nome: "Comércio Atlântico ME" },
+  { cnpj: "11.222.333/0001-44", nome: "Serviços Modelo EIRELI" },
+  { cnpj: "45.678.901/0001-33", nome: "Teste SICAF 100% LTDA" },
+];
