@@ -34,7 +34,9 @@ import {
   CreditCard,
   History,
   StickyNote,
+  LayoutGrid,
 } from "lucide-react";
+import { AcoesTab } from "./cliente-acoes";
 import { useState } from "react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { Check, X as XIcon } from "lucide-react";
@@ -88,6 +90,7 @@ const STEPS = [
   { key: "suporte", label: "Suporte", desc: "Tickets e SLA", icon: Ticket },
   { key: "historico", label: "Histórico", desc: "Linha do tempo", icon: History },
   { key: "notas", label: "Notas", desc: "Internas da equipe", icon: StickyNote },
+  { key: "acoes", label: "Ações", desc: "Funcionalidades do cliente", icon: LayoutGrid },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]["key"];
@@ -256,6 +259,7 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                 {step === "suporte" && <SuporteTab cliente={cliente} />}
                 {step === "historico" && <HistoricoTab />}
                 {step === "notas" && <NotasTab />}
+                {step === "acoes" && <AcoesTab cliente={cliente} />}
               </div>
             </ScrollArea>
 
