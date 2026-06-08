@@ -1027,7 +1027,17 @@ function SicafPage() {
 
       <Card className="mt-4 shadow-soft">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold">Progresso da atualização</CardTitle>
+          <div>
+            <CardTitle className="text-base font-semibold">Progresso da atualização</CardTitle>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              ⏱ Tempo total estimado: ~
+              {passosBase.reduce((s, p) => s + p.tempoMin, 0)} min · restante: ~
+              {passosBase
+                .filter((p) => statusDe(p.n) !== "done")
+                .reduce((s, p) => s + p.tempoMin, 0)}{" "}
+              min
+            </p>
+          </div>
           <span className="text-sm font-semibold text-primary">
             {Math.min(concluidas, total)} de {total} etapas
           </span>
