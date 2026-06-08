@@ -90,6 +90,7 @@ const STEPS = [
   { key: "suporte", label: "Suporte", desc: "Tickets e SLA", icon: Ticket },
   { key: "historico", label: "Histórico", desc: "Linha do tempo", icon: History },
   { key: "notas", label: "Notas", desc: "Internas da equipe", icon: StickyNote },
+  { key: "acoes", label: "Ações", desc: "Funcionalidades do cliente", icon: LayoutGrid },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]["key"];
