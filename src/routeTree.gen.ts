@@ -25,6 +25,7 @@ import { Route as DocumentosRouteImport } from './routes/documentos'
 import { Route as ConcluidoRouteImport } from './routes/concluido'
 import { Route as ColaboradoresRouteImport } from './routes/colaboradores'
 import { Route as CertidoesRouteImport } from './routes/certidoes'
+import { Route as AssistenteRouteImport } from './routes/assistente'
 import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
@@ -124,6 +125,11 @@ const ColaboradoresRoute = ColaboradoresRouteImport.update({
 const CertidoesRoute = CertidoesRouteImport.update({
   id: '/certidoes',
   path: '/certidoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AssistenteRoute = AssistenteRouteImport.update({
+  id: '/assistente',
+  path: '/assistente',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AjudaRoute = AjudaRouteImport.update({
@@ -231,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
+  '/assistente': typeof AssistenteRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
@@ -268,6 +275,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ajuda': typeof AjudaRoute
+  '/assistente': typeof AssistenteRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
@@ -307,6 +315,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
+  '/assistente': typeof AssistenteRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
@@ -347,6 +356,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/ajuda'
+    | '/assistente'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
@@ -384,6 +394,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/ajuda'
+    | '/assistente'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
@@ -422,6 +433,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/ajuda'
+    | '/assistente'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
@@ -461,6 +473,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
   AjudaRoute: typeof AjudaRoute
+  AssistenteRoute: typeof AssistenteRoute
   CertidoesRoute: typeof CertidoesRoute
   ColaboradoresRoute: typeof ColaboradoresRoute
   ConcluidoRoute: typeof ConcluidoRoute
@@ -591,6 +604,13 @@ declare module '@tanstack/react-router' {
       path: '/certidoes'
       fullPath: '/certidoes'
       preLoaderRoute: typeof CertidoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/assistente': {
+      id: '/assistente'
+      path: '/assistente'
+      fullPath: '/assistente'
+      preLoaderRoute: typeof AssistenteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ajuda': {
@@ -782,6 +802,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
   AjudaRoute: AjudaRoute,
+  AssistenteRoute: AssistenteRoute,
   CertidoesRoute: CertidoesRoute,
   ColaboradoresRoute: ColaboradoresRoute,
   ConcluidoRoute: ConcluidoRoute,
@@ -802,13 +823,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
