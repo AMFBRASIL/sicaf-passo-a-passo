@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { PendenciasModal } from "@/components/pendencias-modal";
 import { Building2, ChevronRight, Edit3, FileText, MapPin, Plus, Rocket, Save, RefreshCw, ShieldCheck, User, X, Search, Loader2, QrCode, Receipt, Check, ArrowRight, ArrowLeft, Sparkles, CheckCircle2, Mail, Phone, Briefcase, Zap, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1327,11 +1328,29 @@ function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpenChange
 function EmpresasPage() {
   const [detalhesEmpresa, setDetalhesEmpresa] = useState<EmpresaData | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [pendenciasOpen, setPendenciasOpen] = useState(false);
   const [manutencaoAtivada, setManutencaoAtivada] = useState<Record<string, number>>({
     "00.000.000/0001-00": 15,
     "12.345.678/0001-99": 10,
     "23.456.789/0001-11": 5,
   });
+
+  const empresasPendentes = empresasMock.filter(
+    (e) => e.sicaf === "vencido" || e.sicaf === "sem_cadastro",
+  );
+
+  useEffect(() => {
+    if (empresasPendentes.length === 0) return;
+    const key = "cadbrasil-pendencias-shown";
+    const today = new Date().toISOString().slice(0, 10);
+    if (sessionStorage.getItem(key) === today) return;
+    const t = setTimeout(() => {
+      setPendenciasOpen(true);
+      sessionStorage.setItem(key, today);
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const total = empresasMock.length;
   const ativos = empresasMock.filter((e) => e.sicaf === "ativo").length;
@@ -1495,6 +1514,11 @@ function EmpresasPage() {
         onAtivar={(cnpj, dia) => setManutencaoAtivada((p) => ({ ...p, [cnpj]: dia }))}
       />
       <NovaEmpresaWizard open={wizardOpen} onOpenChange={setWizardOpen} />
+      <PendenciasModal
+        open={pendenciasOpen}
+        onOpenChange={setPendenciasOpen}
+        empresas={empresasPendentes}
+      />
     </div>
   );
 }
