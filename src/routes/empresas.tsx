@@ -1367,13 +1367,7 @@ function EmpresasPage() {
 
   useEffect(() => {
     if (empresasPendentes.length === 0) return;
-    const key = "cadbrasil-pendencias-shown";
-    const today = new Date().toISOString().slice(0, 10);
-    if (sessionStorage.getItem(key) === today) return;
-    const t = setTimeout(() => {
-      setPendenciasOpen(true);
-      sessionStorage.setItem(key, today);
-    }, 400);
+    const t = setTimeout(() => setPendenciasOpen(true), 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
