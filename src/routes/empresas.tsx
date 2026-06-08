@@ -124,6 +124,24 @@ export const empresasMock: EmpresaData[] = [
     ramoAtividade: "Prestação de Serviços Administrativos",
     taxaPendente: true,
   },
+  {
+    nome: "Teste SICAF 100% LTDA",
+    cnpj: "45.678.901/0001-33",
+    sicaf: "ativo",
+    validade: "10/09/2026",
+    proximoPasso: "SICAF 100% atualizado. Use o assistente para monitorar.",
+    acao: { label: "Ver detalhes", variant: "outline", icon: RefreshCw },
+    endereco: "Av. Teste, 100 - Centro",
+    cidade: "Curitiba",
+    uf: "PR",
+    telefone: "(41) 9999-8888",
+    email: "teste@sicaf100.com.br",
+    responsavel: "Lucas Teste",
+    inscricaoEstadual: "111.222.333.444",
+    inscricaoMunicipal: "1234567890",
+    ramoAtividade: "Tecnologia da Informação",
+    niveis: [1, 2, 3, 4, 5, 6],
+  },
 ];
 
 export const statusLabel: Record<SicafStatus, { label: string; status: "ok" | "warn" | "danger" | "idle" }> = {
