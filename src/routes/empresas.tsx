@@ -1514,6 +1514,11 @@ function EmpresasPage() {
         onAtivar={(cnpj, dia) => setManutencaoAtivada((p) => ({ ...p, [cnpj]: dia }))}
       />
       <NovaEmpresaWizard open={wizardOpen} onOpenChange={setWizardOpen} />
+      <PendenciasModal
+        open={pendenciasOpen}
+        onOpenChange={setPendenciasOpen}
+        empresas={empresasPendentes}
+      />
     </div>
   );
 }
