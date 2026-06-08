@@ -34,7 +34,9 @@ import {
   CreditCard,
   History,
   StickyNote,
+  LayoutGrid,
 } from "lucide-react";
+import { AcoesTab } from "./cliente-acoes";
 import { useState } from "react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { Check, X as XIcon } from "lucide-react";
