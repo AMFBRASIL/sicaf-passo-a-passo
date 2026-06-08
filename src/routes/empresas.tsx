@@ -122,6 +122,7 @@ export const empresasMock: EmpresaData[] = [
     inscricaoEstadual: "N/A",
     inscricaoMunicipal: "N/A",
     ramoAtividade: "Prestação de Serviços Administrativos",
+    taxaPendente: true,
   },
 ];
 
