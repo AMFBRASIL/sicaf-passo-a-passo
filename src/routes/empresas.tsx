@@ -1488,7 +1488,7 @@ function EmpresasPage() {
                     type="button"
                     variant={e.acao.variant ?? "default"}
                     className="gap-2"
-                    onClick={() => abrirDetalhes(e)}
+                    onClick={() => handleGerenciar(e)}
                   >
                     <Icon className="h-4 w-4" />
                     Gerenciar
