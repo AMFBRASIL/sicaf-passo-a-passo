@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PendenciasModal } from "@/components/pendencias-modal";
-import { PagamentoPendenteModal } from "@/components/pagamento-pendente-modal";
 import { Building2, ChevronRight, Edit3, FileText, MapPin, Plus, Rocket, Save, RefreshCw, ShieldCheck, User, X, Search, Loader2, QrCode, Receipt, Check, ArrowRight, ArrowLeft, Sparkles, CheckCircle2, Mail, Phone, Briefcase, Zap, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1351,8 +1350,6 @@ function EmpresasPage() {
   const [detalhesEmpresa, setDetalhesEmpresa] = useState<EmpresaData | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pendenciasOpen, setPendenciasOpen] = useState(false);
-  const [pagamentoPendenteOpen, setPagamentoPendenteOpen] = useState(false);
-  const [pagamentoPendenteEmpresa, setPagamentoPendenteEmpresa] = useState<EmpresaData | null>(null);
   const [taxaSicafModalOpen, setTaxaSicafModalOpen] = useState(false);
   const [taxaSicafEmpresa, setTaxaSicafEmpresa] = useState<{ nome: string; cnpj: string } | null>(null);
   const [manutencaoAtivada, setManutencaoAtivada] = useState<Record<string, number>>({
@@ -1388,18 +1385,10 @@ function EmpresasPage() {
 
   const handleGerenciar = (empresa: EmpresaData) => {
     if (empresa.taxaPendente) {
-      setPagamentoPendenteEmpresa(empresa);
-      setPagamentoPendenteOpen(true);
+      setTaxaSicafEmpresa({ nome: empresa.nome, cnpj: empresa.cnpj });
+      setTaxaSicafModalOpen(true);
     } else {
       abrirDetalhes(empresa);
-    }
-  };
-
-  const handlePagarTaxa = () => {
-    if (pagamentoPendenteEmpresa) {
-      setTaxaSicafEmpresa({ nome: pagamentoPendenteEmpresa.nome, cnpj: pagamentoPendenteEmpresa.cnpj });
-      setTaxaSicafModalOpen(true);
-      setPagamentoPendenteOpen(false);
     }
   };
 
@@ -1555,12 +1544,6 @@ function EmpresasPage() {
         open={pendenciasOpen}
         onOpenChange={setPendenciasOpen}
         empresas={empresasPendentes}
-      />
-      <PagamentoPendenteModal
-        open={pagamentoPendenteOpen}
-        onOpenChange={setPagamentoPendenteOpen}
-        empresa={pagamentoPendenteEmpresa}
-        onPagar={handlePagarTaxa}
       />
       <PagamentoSicafModal
         open={taxaSicafModalOpen}
