@@ -105,6 +105,7 @@ export const empresasMock: EmpresaData[] = [
     inscricaoMunicipal: "5678901234",
     ramoAtividade: "Construção Civil",
     niveis: [1, 2, 3, 4, 5, 6],
+    taxaPendente: true,
   },
   {
     nome: "Nova Filial Brasília LTDA",
