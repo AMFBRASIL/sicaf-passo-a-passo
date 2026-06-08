@@ -34,9 +34,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { NIVEIS_SICAF, type NivelStatus } from "@/components/admin/nivel-dots";
 import { ComparadorSicaf, type SnapshotSicaf } from "@/components/comparador-sicaf";
-import { UploadMassa } from "@/components/upload-massa";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { GitCompareArrows, Files, FileUp } from "lucide-react";
+import { GitCompareArrows } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -363,27 +361,7 @@ function AssistentePage() {
             </div>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="individual" className="w-full">
-              <TabsList className="mb-4 grid w-full grid-cols-2">
-                <TabsTrigger value="individual" className="gap-1.5">
-                  <FileUp className="h-3.5 w-3.5" />
-                  Individual
-                </TabsTrigger>
-                <TabsTrigger value="massa" className="gap-1.5">
-                  <Files className="h-3.5 w-3.5" />
-                  Em massa
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="massa" className="mt-0">
-                <UploadMassa
-                  empresas={EMPRESAS_MOCK}
-                  onConfirmar={(r) => {
-                    const ok = r.filter((x) => x.status === "ok").length;
-                    toast.success(`${ok} arquivo${ok !== 1 ? "s" : ""} importado${ok !== 1 ? "s" : ""} com sucesso`);
-                  }}
-                />
-              </TabsContent>
-              <TabsContent value="individual" className="mt-0 space-y-4">
+            <div className="space-y-4">
                 {!arquivo && (
                   <label
                     htmlFor="sf-pdf"
@@ -459,8 +437,7 @@ function AssistentePage() {
                     )}
                   </div>
                 )}
-              </TabsContent>
-            </Tabs>
+            </div>
 
             {/* Histórico */}
             <div className="mt-6">
