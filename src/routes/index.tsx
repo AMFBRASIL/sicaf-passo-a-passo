@@ -163,9 +163,6 @@ function HomePage() {
             />
           </div>
 
-          {/* Central de Tarefas — visão consolidada do que fazer agora */}
-          <CentralTarefas />
-
           {/* Próximo passo — CTA mantido, agora apontando para empresa prioritária */}
           <Card className="border-primary/30 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lift">
             <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -184,6 +181,9 @@ function HomePage() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Central de Tarefas — visão consolidada do que fazer agora */}
+          <CentralTarefas />
 
           {/* Ranking de empresas */}
           <Card className="shadow-soft">
