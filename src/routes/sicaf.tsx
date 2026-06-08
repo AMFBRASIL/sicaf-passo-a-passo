@@ -966,18 +966,38 @@ function SicafPage() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="mt-6 border-success/30 bg-success/5">
-          <CardContent className="flex items-start gap-3 p-4">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
-            <div className="text-sm">
-              <p className="font-semibold">
-                {renovando
-                  ? "SICAF renovado com sucesso! 🎉"
-                  : "Parabéns! Seu SICAF foi atualizado com sucesso 🎉"}
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                Sua empresa está apta a participar de licitações. Vamos monitorar tudo por você.
-              </p>
+        <Card className="mt-6 border-success/40 bg-gradient-to-br from-success/10 via-success/5 to-transparent shadow-lift overflow-hidden">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-4 flex-wrap">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <div className="flex-1 min-w-[240px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-success px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success-foreground">
+                    100% concluído
+                  </span>
+                  <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" />
+                    Pronto para licitar
+                  </span>
+                </div>
+                <p className="mt-2 font-semibold">
+                  {renovando
+                    ? "SICAF renovado com sucesso! 🎉"
+                    : "Parabéns! Seu SICAF foi atualizado com sucesso 🎉"}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Agora abra o Assistente para enviar a Situação do Fornecedor e manter tudo monitorado.
+                </p>
+              </div>
+              <Button asChild size="lg" className="gap-2 shadow-lift">
+                <Link to="/assistente" search={{ cnpj: cliente.cnpj }}>
+                  <Bot className="h-4 w-4" />
+                  Atualizar meu SICAF agora
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
             </div>
           </CardContent>
         </Card>
