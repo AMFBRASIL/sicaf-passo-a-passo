@@ -34,9 +34,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { NIVEIS_SICAF, type NivelStatus } from "@/components/admin/nivel-dots";
 import { ComparadorSicaf, type SnapshotSicaf } from "@/components/comparador-sicaf";
-import { UploadMassa } from "@/components/upload-massa";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { GitCompareArrows, Files, FileUp } from "lucide-react";
+import { GitCompareArrows } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
