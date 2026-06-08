@@ -437,8 +437,7 @@ function AssistentePage() {
                     )}
                   </div>
                 )}
-              </TabsContent>
-            </Tabs>
+            </div>
 
             {/* Histórico */}
             <div className="mt-6">
