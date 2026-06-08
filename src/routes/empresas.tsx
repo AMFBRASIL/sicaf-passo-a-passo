@@ -1333,6 +1333,10 @@ function EmpresasPage() {
   const [detalhesEmpresa, setDetalhesEmpresa] = useState<EmpresaData | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pendenciasOpen, setPendenciasOpen] = useState(false);
+  const [pagamentoPendenteOpen, setPagamentoPendenteOpen] = useState(false);
+  const [pagamentoPendenteEmpresa, setPagamentoPendenteEmpresa] = useState<EmpresaData | null>(null);
+  const [taxaSicafModalOpen, setTaxaSicafModalOpen] = useState(false);
+  const [taxaSicafEmpresa, setTaxaSicafEmpresa] = useState<{ nome: string; cnpj: string } | null>(null);
   const [manutencaoAtivada, setManutencaoAtivada] = useState<Record<string, number>>({
     "00.000.000/0001-00": 15,
     "12.345.678/0001-99": 10,
@@ -1368,6 +1372,23 @@ function EmpresasPage() {
 
   const handleDetalhesOpenChange = (open: boolean) => {
     if (!open) setDetalhesEmpresa(null);
+  };
+
+  const handleGerenciar = (empresa: EmpresaData) => {
+    if (empresa.taxaPendente) {
+      setPagamentoPendenteEmpresa(empresa);
+      setPagamentoPendenteOpen(true);
+    } else {
+      abrirDetalhes(empresa);
+    }
+  };
+
+  const handlePagarTaxa = () => {
+    if (pagamentoPendenteEmpresa) {
+      setTaxaSicafEmpresa({ nome: pagamentoPendenteEmpresa.nome, cnpj: pagamentoPendenteEmpresa.cnpj });
+      setTaxaSicafModalOpen(true);
+      setPagamentoPendenteOpen(false);
+    }
   };
 
   return (
