@@ -259,6 +259,7 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                 {step === "suporte" && <SuporteTab cliente={cliente} />}
                 {step === "historico" && <HistoricoTab />}
                 {step === "notas" && <NotasTab />}
+                {step === "acoes" && <AcoesTab cliente={cliente} />}
               </div>
             </ScrollArea>
 
