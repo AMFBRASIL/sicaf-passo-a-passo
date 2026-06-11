@@ -9,6 +9,7 @@
  */
 import { config as loadEnv } from "dotenv";
 import path from "node:path";
+import type { RowDataPacket } from "mysql2/promise";
 import {
   createConnection,
   executeSqlFile,
@@ -40,10 +41,10 @@ async function syncApiKeyFromEnv(
     return;
   }
 
-  const [rows] = await conn.query<{ valor: string | null }[]>(
+  const [rows] = await conn.query<RowDataPacket[]>(
     "SELECT valor FROM configuracoes_sistema WHERE chave = 'ia_api_key' LIMIT 1",
   );
-  const row = Array.isArray(rows) ? rows[0] : null;
+  const row = rows[0] as { valor?: string | null } | undefined;
   const atual = (row?.valor || "").trim();
 
   if (atual) {
@@ -59,7 +60,7 @@ async function syncApiKeyFromEnv(
 }
 
 async function printStatus(conn: Awaited<ReturnType<typeof createConnection>>) {
-  const [rows] = await conn.query<{ chave: string; valor: string | null; categoria: string }[]>(
+  const [rows] = await conn.query<RowDataPacket[]>(
     `SELECT chave, valor, categoria FROM configuracoes_sistema
      WHERE chave IN (${IA_KEYS.map(() => "?").join(",")})
      ORDER BY chave`,
@@ -67,7 +68,7 @@ async function printStatus(conn: Awaited<ReturnType<typeof createConnection>>) {
   );
 
   console.log("\n  Chaves IA no banco:");
-  const list = Array.isArray(rows) ? rows : [];
+  const list = rows as { chave: string; valor: string | null; categoria: string }[];
   const byKey = new Map(list.map((r) => [r.chave, r]));
 
   for (const key of IA_KEYS) {
