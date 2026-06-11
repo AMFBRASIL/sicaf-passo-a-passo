@@ -47,14 +47,15 @@ export function NivelDots({ niveis, size = "sm" }: NivelDotsProps) {
         return (
           <HoverCard key={n.num} openDelay={120} closeDelay={60}>
             <HoverCardTrigger asChild>
-              <button
-                type="button"
+              <span
+                role="img"
                 aria-label={`Nível ${n.roman} - ${meta.label}`}
-                className={`relative flex items-center justify-center rounded-full font-bold text-white outline-none transition hover:scale-110 ${dim} ${
+                className={`relative inline-flex items-center justify-center rounded-full font-bold text-white outline-none transition hover:scale-110 ${dim} ${
                   inativo ? "opacity-25 grayscale" : "shadow-sm"
                 }`}
                 style={{ backgroundColor: n.color }}
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
               >
                 {n.roman}
                 {!inativo && (
@@ -62,7 +63,7 @@ export function NivelDots({ niveis, size = "sm" }: NivelDotsProps) {
                     className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 border-card ${meta.dot}`}
                   />
                 )}
-              </button>
+              </span>
             </HoverCardTrigger>
             <HoverCardContent className="w-60 p-3 text-xs" side="top">
               <div className="flex items-center gap-2">

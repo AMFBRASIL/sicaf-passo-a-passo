@@ -30,17 +30,45 @@ import {
   Calendar,
   Sparkles,
   Plus,
-  Send,
   CreditCard,
   History,
-  StickyNote,
   LayoutGrid,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Shield,
+  ExternalLink,
+  Copy,
+  Loader2,
 } from "lucide-react";
 import { AcoesTab } from "./cliente-acoes";
-import { useState } from "react";
+import { SituacaoTab } from "./cliente-situacao-tab";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  atualizarAdminCliente,
+  fetchAdminClienteDetalhe,
+  fetchAdminClienteFinanceiro,
+  fetchAdminTicketsCliente,
+  fetchAdminClienteDocumentos,
+  downloadCertificadoDigital,
+  flattenChecklistDocumentos,
+  mapFinanceiroToFaturas,
+  autorizarPagamentoComComprovante,
+  novaValidadeSicafAposPagamento,
+  diasAteNovaValidadeSicaf,
+  parseTaxaIdFromFaturaId,
+  mapHistoricoFromApi,
+  mapTicketsToUi,
+  mergeDetalheFromApi,
+  type DocumentoUi,
+  type DocumentosPainelUi,
+  type FaturaUi,
+  type HistoricoUi,
+} from "@/lib/admin-clientes-api";
+import { toast } from "sonner";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { Check, X as XIcon } from "lucide-react";
-import { PagamentoModal } from "@/components/pagamento-modal";
+import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-modal";
 import { CancelarFaturaModal } from "@/components/admin/cancelar-fatura-modal";
 import { TicketRespostaModal, type TicketItem } from "@/components/admin/ticket-resposta-modal";
@@ -72,8 +100,12 @@ export interface ClienteDetalhe {
 
 interface Props {
   cliente: ClienteDetalhe | null;
+  grupoEmpresas?: ClienteDetalhe[];
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  onUpdated?: () => void;
+  onSelectEmpresa?: (empresa: ClienteDetalhe) => void;
+  onVerTodasEmpresas?: () => void;
 }
 
 const sicafTone: Record<string, string> = {
@@ -89,27 +121,91 @@ const STEPS = [
   { key: "documentos", label: "Documentos", desc: "Certidões e contratos", icon: FolderOpen },
   { key: "suporte", label: "Suporte", desc: "Tickets e SLA", icon: Ticket },
   { key: "historico", label: "Histórico", desc: "Linha do tempo", icon: History },
-  { key: "notas", label: "Notas", desc: "Internas da equipe", icon: StickyNote },
+  { key: "situacao", label: "Situação", desc: "Status manual do SICAF", icon: ShieldCheck },
   { key: "acoes", label: "Ações", desc: "Funcionalidades do cliente", icon: LayoutGrid },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]["key"];
 
-export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
+export function ClienteDetalheModal({
+  cliente,
+  grupoEmpresas,
+  open,
+  onOpenChange,
+  onUpdated,
+  onSelectEmpresa,
+  onVerTodasEmpresas,
+}: Props) {
   const [step, setStep] = useState<StepKey>("resumo");
   const [renovarOpen, setRenovarOpen] = useState(false);
   const [renovarPagOpen, setRenovarPagOpen] = useState(false);
   const [editarOpen, setEditarOpen] = useState(false);
   const [manutOpen, setManutOpen] = useState(false);
-  if (!cliente) return null;
+  const [detalhe, setDetalhe] = useState<ClienteDetalhe | null>(null);
+  const [faturas, setFaturas] = useState<FaturaUi[]>([]);
+  const [documentosPainel, setDocumentosPainel] = useState<DocumentosPainelUi | null>(null);
+  const [tickets, setTickets] = useState<ReturnType<typeof mapTicketsToUi>>([]);
+  const [historico, setHistorico] = useState<HistoricoUi[]>([]);
 
-  const iniciais = cliente.razao
+  const recarregarDados = useCallback(async (baseCliente: ClienteDetalhe) => {
+    const clienteId = parseInt(baseCliente.id, 10);
+    if (!Number.isFinite(clienteId)) return;
+
+    const [det, fin, tks, docs] = await Promise.all([
+      fetchAdminClienteDetalhe(clienteId),
+      fetchAdminClienteFinanceiro(clienteId),
+      fetchAdminTicketsCliente(clienteId),
+      fetchAdminClienteDocumentos(clienteId),
+    ]);
+
+    if (det.ok && det.client) {
+      const merged = mergeDetalheFromApi(baseCliente, det.client);
+      setDetalhe(merged);
+      setHistorico(mapHistoricoFromApi(det.client.historico, det.client.loginLogs));
+    }
+
+    if (fin.ok && fin.financeiro) {
+      setFaturas(mapFinanceiroToFaturas(fin.financeiro));
+    }
+
+    if (tks.ok && tks.tickets) {
+      setTickets(mapTicketsToUi(tks.tickets));
+    }
+
+    if (docs.ok && docs.painel) {
+      setDocumentosPainel(docs.painel);
+    } else {
+      setDocumentosPainel(null);
+    }
+  }, []);
+
+  const atualizarPainel = useCallback(() => {
+    const base = detalhe || cliente;
+    if (!base) return;
+    void recarregarDados(base);
+    onUpdated?.();
+  }, [cliente, detalhe, onUpdated, recarregarDados]);
+
+  useEffect(() => {
+    if (!open || !cliente) return;
+    const clienteId = parseInt(cliente.id, 10);
+    if (!Number.isFinite(clienteId)) return;
+
+    setStep("resumo");
+    setDetalhe(cliente);
+    void recarregarDados(cliente);
+  }, [open, cliente?.id, recarregarDados]);
+
+  const exibicao = detalhe || cliente;
+  if (!cliente || !exibicao) return null;
+
+  const iniciais = exibicao.razao
     .split(" ")
     .slice(0, 2)
     .map((p) => p[0])
     .join("");
 
-  const validados = Object.values(cliente.niveis).filter((s) => s === "validado").length;
+  const validados = Object.values(exibicao.niveis).filter((s) => s === "validado").length;
   const totalNiveis = NIVEIS_SICAF.length;
   const completude = Math.round((validados / totalNiveis) * 100);
 
@@ -119,7 +215,7 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl p-0 overflow-hidden gap-0">
-        <DialogTitle className="sr-only">{cliente.razao}</DialogTitle>
+        <DialogTitle className="sr-only">{exibicao.razao}</DialogTitle>
 
         <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] min-h-[640px]">
           {/* LEFT WIZARD RAIL */}
@@ -138,8 +234,8 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0">
-                <p className="text-sm font-semibold truncate">{cliente.razao}</p>
-                <p className="text-[11px] font-mono text-white/70 truncate">{cliente.cnpj}</p>
+                <p className="text-sm font-semibold truncate">{exibicao.razao}</p>
+                <p className="text-[11px] font-mono text-white/70 truncate">{exibicao.cnpj}</p>
               </div>
             </div>
 
@@ -198,13 +294,50 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
               })}
             </nav>
 
+            {grupoEmpresas && grupoEmpresas.length > 1 && (
+              <div className="mt-3 rounded-lg bg-white/10 p-2.5 backdrop-blur">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] uppercase tracking-wider text-white/70">
+                    CNPJs vinculados ({grupoEmpresas.length})
+                  </p>
+                  {onVerTodasEmpresas && (
+                    <button
+                      type="button"
+                      onClick={onVerTodasEmpresas}
+                      className="text-[10px] font-medium text-white/90 underline-offset-2 hover:underline"
+                    >
+                      Ver lista
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2 max-h-28 space-y-1 overflow-y-auto pr-0.5">
+                  {grupoEmpresas.map((emp) => {
+                    const ativo = emp.id === exibicao.id;
+                    return (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        onClick={() => onSelectEmpresa?.(emp)}
+                        className={`w-full rounded-md px-2 py-1.5 text-left transition ${
+                          ativo ? "bg-white text-foreground shadow-sm" : "text-white/85 hover:bg-white/10"
+                        }`}
+                      >
+                        <p className="truncate text-[11px] font-semibold leading-tight">{emp.razao}</p>
+                        <p className="truncate font-mono text-[10px] opacity-80">{emp.cnpj}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="mt-4 rounded-lg bg-white/10 p-3 backdrop-blur">
               <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-white/70">
                 <ShieldCheck className="h-3 w-3" /> SICAF
               </div>
               <p className="mt-0.5 text-lg font-bold">{completude}% completo</p>
               <div className="mt-2">
-                <NivelDots niveis={cliente.niveis} size="sm" />
+                <NivelDots niveis={exibicao.niveis} size="sm" />
               </div>
             </div>
           </aside>
@@ -219,16 +352,16 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
                     {STEPS[stepIndex].label}
                   </h2>
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sicafTone[cliente.sicaf]}`}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sicafTone[exibicao.sicaf]}`}
                   >
                     SICAF{" "}
-                    {cliente.sicaf === "ok"
+                    {exibicao.sicaf === "ok"
                       ? "OK"
-                      : cliente.sicaf === "pendente"
+                      : exibicao.sicaf === "pendente"
                         ? "Pendente"
                         : "Vencido"}
                   </span>
-                  {cliente.novo && (
+                  {exibicao.novo && (
                     <Badge className="bg-blue-500 text-white border-0 text-[10px]">Novo</Badge>
                   )}
                 </div>
@@ -251,15 +384,27 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
 
             {/* Content */}
             <ScrollArea className="flex-1 max-h-[520px]">
-              <div className="p-5">
-                {step === "resumo" && <ResumoTab cliente={cliente} completude={completude} />}
-                {step === "sicaf" && <SicafTab cliente={cliente} onRenovar={() => setRenovarOpen(true)} />}
-                {step === "financeiro" && <FinanceiroTab cliente={cliente} />}
-                {step === "documentos" && <DocumentosTab />}
-                {step === "suporte" && <SuporteTab cliente={cliente} />}
-                {step === "historico" && <HistoricoTab />}
-                {step === "notas" && <NotasTab />}
-                {step === "acoes" && <AcoesTab cliente={cliente} />}
+              <div className="min-w-0 p-5">
+                {step === "resumo" && (
+                  <ResumoTab cliente={exibicao} completude={completude} faturas={faturas} />
+                )}
+                {step === "sicaf" && <SicafTab cliente={exibicao} onRenovar={() => setRenovarOpen(true)} />}
+                {step === "financeiro" && (
+                  <FinanceiroTab cliente={exibicao} faturasIniciais={faturas} onPagamentoAutorizado={atualizarPainel} />
+                )}
+                {step === "documentos" && (
+                  <DocumentosTab painel={documentosPainel} clienteId={parseInt(exibicao.id, 10)} />
+                )}
+                {step === "suporte" && <SuporteTab cliente={exibicao} tickets={tickets} />}
+                {step === "historico" && <HistoricoTab eventos={historico} />}
+                {step === "situacao" && (
+                  <SituacaoTab
+                    cliente={exibicao}
+                    clienteId={parseInt(exibicao.id, 10)}
+                    onUpdated={atualizarPainel}
+                  />
+                )}
+                {step === "acoes" && <AcoesTab cliente={exibicao} clienteId={parseInt(exibicao.id, 10)} />}
               </div>
             </ScrollArea>
 
@@ -305,54 +450,72 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
       <RenovarSicafModal
         open={renovarOpen}
         onOpenChange={setRenovarOpen}
-        cliente={{ razao: cliente.razao, cnpj: cliente.cnpj }}
-        validade={cliente.validadeSicaf ?? "05/06/2027"}
+        cliente={{ razao: exibicao.razao, cnpj: exibicao.cnpj }}
+        validade={exibicao.validadeSicaf ?? "05/06/2027"}
         onGerarTaxa={() => {
           setRenovarOpen(false);
           setRenovarPagOpen(true);
         }}
       />
-      <PagamentoModal
+      <PagamentoSicafModal
         open={renovarPagOpen}
         onOpenChange={setRenovarPagOpen}
         empresa={{
-          nome: cliente.razao,
-          cnpj: cliente.cnpj,
-          sicaf: "ativo",
-          proximoPasso: "",
-          acao: { label: "", icon: CreditCard as never },
-          endereco: "",
-          cidade: cliente.cidade,
-          uf: "",
-          telefone: cliente.telefone ?? "",
-          email: cliente.email ?? "",
-          responsavel: cliente.responsavel,
-          inscricaoEstadual: "",
-          inscricaoMunicipal: "",
-          ramoAtividade: "",
-        } as unknown as EmpresaData}
-        descricao="Renovação SICAF Anual"
-        valor={985}
+          nome: exibicao.razao,
+          cnpj: exibicao.cnpj,
+          clienteId: parseInt(exibicao.id, 10),
+        }}
+        onGerado={() => {
+          setStep("financeiro");
+          atualizarPainel();
+        }}
+        onPago={() => {
+          setStep("financeiro");
+          atualizarPainel();
+        }}
       />
-      <EditarClienteModal cliente={cliente} open={editarOpen} onOpenChange={setEditarOpen} />
+      <EditarClienteModal
+        cliente={exibicao}
+        open={editarOpen}
+        onOpenChange={setEditarOpen}
+        onSalvar={async (data) => {
+          const res = await atualizarAdminCliente(parseInt(exibicao.id, 10), { ...data });
+          if (!res.ok) {
+            toast.error(res.error || "Erro ao salvar");
+            return false;
+          }
+          toast.success("Cliente atualizado");
+          onUpdated?.();
+          return true;
+        }}
+      />
       <ManutencaoModal
         open={manutOpen}
         onOpenChange={setManutOpen}
-        mode={cliente.manutencao ? "gerenciar" : "ativar"}
+        mode={exibicao.manutencao ? "gerenciar" : "ativar"}
         diaVencimento={10}
-        onAtivar={() => setManutOpen(false)}
+        onAtivar={() => {
+          setDetalhe((d) => (d ? { ...d, manutencao: true } : d));
+          atualizarPainel();
+        }}
+        onCancelar={() => {
+          setDetalhe((d) => (d ? { ...d, manutencao: false } : d));
+          atualizarPainel();
+        }}
+        onPaymentGenerated={atualizarPainel}
         empresa={{
-          nome: cliente.razao,
-          cnpj: cliente.cnpj,
+          clienteId: parseInt(exibicao.id, 10),
+          nome: exibicao.razao,
+          cnpj: exibicao.cnpj,
           sicaf: "ativo",
           proximoPasso: "",
           acao: { label: "", icon: CreditCard as never },
           endereco: "",
-          cidade: cliente.cidade,
+          cidade: exibicao.cidade,
           uf: "",
-          telefone: cliente.telefone ?? "",
-          email: cliente.email ?? "",
-          responsavel: cliente.responsavel,
+          telefone: exibicao.telefone ?? "",
+          email: exibicao.email ?? "",
+          responsavel: exibicao.responsavel,
           inscricaoEstadual: "",
           inscricaoMunicipal: "",
           ramoAtividade: "",
@@ -365,14 +528,259 @@ export function ClienteDetalheModal({ cliente, open, onOpenChange }: Props) {
 
 /* ---------- TABS ---------- */
 
+type ResumoCardTone = "ok" | "warn" | "danger" | "muted";
+
+function parseBrDate(value?: string | null): Date | null {
+  if (!value || value === "—") return null;
+  const br = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) {
+    const d = new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const iso = new Date(value);
+  return Number.isNaN(iso.getTime()) ? null : iso;
+}
+
+function diasAteVencimento(validade?: string | null): number | null {
+  const fim = parseBrDate(validade);
+  if (!fim) return null;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  fim.setHours(0, 0, 0, 0);
+  return Math.ceil((fim.getTime() - hoje.getTime()) / 86_400_000);
+}
+
+function formatVigenciaSicaf(validade: string, dias: number): string {
+  if (dias <= 0) return `Venceu em ${validade}`;
+  if (dias === 1) return `Vence amanhã (${validade})`;
+  if (dias <= 30) return `Vence em ${dias} dias (${validade})`;
+  if (dias <= 60) return `Válido até ${validade} · faltam ${dias} dias`;
+  return `Válido até ${validade}`;
+}
+
+function faturasSicafOnly(faturas: FaturaUi[]) {
+  return faturas.filter((f) => !/^manuten[cç][aã]o\b/i.test(f.desc.trim()));
+}
+
+function derivePagamentoSicafCard(cliente: ClienteDetalhe, faturas: FaturaUi[]) {
+  const faturasSicaf = faturasSicafOnly(faturas);
+  const emAberto = faturasSicaf.filter((f) => f.status === "aberto");
+  const pagas = faturasSicaf.filter((f) => f.status === "pago");
+
+  const validade = cliente.validadeSicaf;
+  const dias = diasAteVencimento(validade);
+  const vigente =
+    dias !== null &&
+    dias > 0 &&
+    cliente.sicaf !== "vencido";
+  const vencendoEmBreve = vigente && dias !== null && dias <= 30;
+
+  if (vigente && validade) {
+    const vigenciaTxt = formatVigenciaSicaf(validade, dias!);
+    if (emAberto.length > 0) {
+      const prox = emAberto[0];
+      const abertoTxt =
+        prox.venc !== "—" ? ` · renovação em aberto (venc. ${prox.venc})` : " · renovação em aberto";
+      return {
+        tone: (vencendoEmBreve ? "warn" : "ok") as ResumoCardTone,
+        status: vencendoEmBreve ? "Vencendo" : "Vigente",
+        detail: `${vigenciaTxt}${abertoTxt}`,
+      };
+    }
+    if (pagas.length > 0 || cliente.pagou || cliente.sicaf === "ok") {
+      return {
+        tone: (vencendoEmBreve || cliente.sicaf === "pendente" ? "warn" : "ok") as ResumoCardTone,
+        status:
+          vencendoEmBreve || cliente.sicaf === "pendente" ? "Vencendo" : "Pago e válido",
+        detail: vigenciaTxt,
+      };
+    }
+    return {
+      tone: (vencendoEmBreve ? "warn" : "ok") as ResumoCardTone,
+      status: "Vigente",
+      detail: vigenciaTxt,
+    };
+  }
+
+  if (dias !== null && dias <= 0) {
+    if (emAberto.length > 0) {
+      const prox = emAberto[0];
+      return {
+        tone: "danger" as ResumoCardTone,
+        status: "Vencido",
+        detail: `Credenciamento expirou${validade ? ` em ${validade}` : ""}${
+          prox.venc !== "—" ? ` · taxa em aberto (venc. ${prox.venc})` : ""
+        }`,
+      };
+    }
+    return {
+      tone: "danger" as ResumoCardTone,
+      status: "Vencido",
+      detail: validade ? `Validade expirada em ${validade}` : "Sem credenciamento vigente",
+    };
+  }
+
+  if (emAberto.length > 0) {
+    const prox = emAberto[0];
+    return {
+      tone: "warn" as ResumoCardTone,
+      status: "Pendente",
+      detail: `${emAberto.length} taxa(s) em aberto${
+        prox.venc !== "—" ? ` · venc. ${prox.venc}` : ""
+      } · sem vigência ativa no cadastro`,
+    };
+  }
+
+  if (pagas.length > 0) {
+    return {
+      tone: "warn" as ResumoCardTone,
+      status: "Verificar vigência",
+      detail: "Há pagamento registrado, mas sem data de validade no cadastro SICAF",
+    };
+  }
+
+  return {
+    tone: "danger" as ResumoCardTone,
+    status: "Sem vigência",
+    detail: "Nenhum credenciamento SICAF vigente no sistema",
+  };
+}
+
+function deriveSicafNiveisCard(cliente: ClienteDetalhe, completude: number) {
+  const niveis = Object.values(cliente.niveis);
+  const validados = niveis.filter((s) => s === "validado").length;
+  const vencidos = niveis.filter((s) => s === "vencido").length;
+  const pendentes = niveis.filter((s) => s === "pendente" || s === "vencendo").length;
+
+  if (cliente.sicaf === "vencido" || vencidos > 0) {
+    return {
+      tone: "danger" as ResumoCardTone,
+      status: "Desatualizado",
+      detail:
+        vencidos > 0
+          ? `${vencidos} nível(is) vencido(s) — renovação necessária`
+          : "Cadastro SICAF vencido — renovar imediatamente",
+    };
+  }
+  if (cliente.sicaf === "pendente" || pendentes > 0) {
+    return {
+      tone: "warn" as ResumoCardTone,
+      status: "Atenção",
+      detail: `${validados}/6 níveis validados — há pendências de atualização`,
+    };
+  }
+  if (validados >= 2 && completude >= 33) {
+    return {
+      tone: "ok" as ResumoCardTone,
+      status: "Em ordem",
+      detail: `${validados}/6 níveis validados e atualizados`,
+    };
+  }
+  return {
+    tone: "warn" as ResumoCardTone,
+    status: "Incompleto",
+    detail: `${validados}/6 níveis validados — cadastro ainda em andamento`,
+  };
+}
+
+function deriveManutencaoCard(cliente: ClienteDetalhe) {
+  if (cliente.manutencao) {
+    return {
+      tone: "ok" as ResumoCardTone,
+      status: "Ativa",
+      detail: cliente.plano ? `Plano ${cliente.plano}` : "Plano de manutenção mensal ativo",
+    };
+  }
+  return {
+    tone: "muted" as ResumoCardTone,
+    status: "Inativa",
+    detail: "Nenhum plano de manutenção contratado",
+  };
+}
+
+function ResumoStatusCard({
+  icon: Icon,
+  titulo,
+  subtitulo,
+  status,
+  detail,
+  tone,
+}: {
+  icon: React.ElementType;
+  titulo: string;
+  subtitulo: string;
+  status: string;
+  detail: string;
+  tone: ResumoCardTone;
+}) {
+  const styles: Record<
+    ResumoCardTone,
+    { ring: string; iconBg: string; iconFg: string; badge: string }
+  > = {
+    ok: {
+      ring: "ring-success/25 border-success/20",
+      iconBg: "bg-success/10",
+      iconFg: "text-success",
+      badge: "bg-success/10 text-success ring-success/30",
+    },
+    warn: {
+      ring: "ring-warning/30 border-warning/25",
+      iconBg: "bg-warning/10",
+      iconFg: "text-warning-foreground",
+      badge: "bg-warning/10 text-warning-foreground ring-warning/40",
+    },
+    danger: {
+      ring: "ring-danger/30 border-danger/25",
+      iconBg: "bg-danger/10",
+      iconFg: "text-danger",
+      badge: "bg-danger/10 text-danger ring-danger/30",
+    },
+    muted: {
+      ring: "ring-border border-border",
+      iconBg: "bg-muted",
+      iconFg: "text-muted-foreground",
+      badge: "bg-muted text-muted-foreground ring-border",
+    },
+  };
+  const s = styles[tone];
+
+  return (
+    <Card className={`p-4 ring-1 ${s.ring}`}>
+      <div className="flex items-start gap-3">
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${s.iconBg}`}>
+          <Icon className={`h-5 w-5 ${s.iconFg}`} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {subtitulo}
+          </p>
+          <p className="text-sm font-bold leading-tight">{titulo}</p>
+          <span
+            className={`mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${s.badge}`}
+          >
+            {status}
+          </span>
+          <p className="mt-2 text-xs text-muted-foreground leading-snug">{detail}</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function ResumoTab({
   cliente,
   completude,
+  faturas = [],
 }: {
   cliente: ClienteDetalhe;
   completude: number;
+  faturas?: FaturaUi[];
 }) {
-  const alerts: { tone: "danger" | "warn" | "ok"; text: string; icon: any }[] = [];
+  const sicafNiveis = deriveSicafNiveisCard(cliente, completude);
+  const pagamentoSicaf = derivePagamentoSicafCard(cliente, faturas);
+  const manutencao = deriveManutencaoCard(cliente);
+
+  const alerts: { tone: "danger" | "warn" | "ok"; text: string; icon: typeof AlertTriangle }[] = [];
   if (cliente.sicaf === "vencido")
     alerts.push({ tone: "danger", text: "SICAF vencido — renovar imediatamente", icon: AlertTriangle });
   if (!cliente.pagou)
@@ -383,6 +791,34 @@ function ResumoTab({
     alerts.push({ tone: "ok", text: "Tudo em dia — cliente saudável", icon: CheckCircle2 });
 
   return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <ResumoStatusCard
+          icon={ShieldCheck}
+          subtitulo="Cadastro"
+          titulo="SICAF — Níveis"
+          status={sicafNiveis.status}
+          detail={sicafNiveis.detail}
+          tone={sicafNiveis.tone}
+        />
+        <ResumoStatusCard
+          icon={CreditCard}
+          subtitulo="Taxa anual"
+          titulo="Pagamento SICAF"
+          status={pagamentoSicaf.status}
+          detail={pagamentoSicaf.detail}
+          tone={pagamentoSicaf.tone}
+        />
+        <ResumoStatusCard
+          icon={Wrench}
+          subtitulo="Plano mensal"
+          titulo="Manutenção"
+          status={manutencao.status}
+          detail={manutencao.detail}
+          tone={manutencao.tone}
+        />
+      </div>
+
     <div className="grid gap-4 lg:grid-cols-3">
       <Card className="lg:col-span-2 p-4">
         <h3 className="text-sm font-semibold">Situação do cliente</h3>
@@ -445,6 +881,7 @@ function ResumoTab({
           <li>• Agendar revisão trimestral</li>
         </ul>
       </Card>
+    </div>
     </div>
   );
 }
@@ -555,48 +992,50 @@ function SicafTab({ cliente, onRenovar }: { cliente: ClienteDetalhe; onRenovar?:
   );
 }
 
-type FaturaItem = {
-  id: string;
-  desc: string;
-  valor: number;
-  venc: string;
-  forma: "Boleto" | "PIX";
-  status: "pago" | "aberto" | "cancelado";
+type FaturaItem = FaturaUi & {
   motivoCancelamento?: string;
 };
 
-function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
-  const [pagOpen, setPagOpen] = useState(false);
+function FinanceiroTab({
+  cliente,
+  faturasIniciais = [],
+  onPagamentoAutorizado,
+}: {
+  cliente: ClienteDetalhe;
+  faturasIniciais?: FaturaUi[];
+  onPagamentoAutorizado?: () => void;
+}) {
   const [autorizarOpen, setAutorizarOpen] = useState(false);
   const [faturaAtiva, setFaturaAtiva] = useState<FaturaItem | null>(null);
   const [cancelarOpen, setCancelarOpen] = useState(false);
   const [faturaCancelId, setFaturaCancelId] = useState<string | null>(null);
-  const valorCobranca = cliente.mrr || 890;
 
-  const [faturas, setFaturas] = useState<FaturaItem[]>([
-    { id: "#4830", desc: "Renovação SICAF 2026", valor: 985, venc: "12/06/2026", forma: "Boleto", status: "aberto" },
-    { id: "#4821", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/06/2026", forma: "PIX", status: cliente.pagou ? "pago" : "aberto" },
-    { id: "#4720", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/05/2026", forma: "PIX", status: "pago" },
-    { id: "#4612", desc: "Renovação SICAF anual", valor: 1290, venc: "15/04/2026", forma: "Boleto", status: "pago" },
-    { id: "#4501", desc: "Mensalidade Manutenção SICAF", valor: cliente.mrr || 890, venc: "10/03/2026", forma: "PIX", status: "pago" },
-  ]);
+  const faturasSicaf = useMemo(
+    () => faturasIniciais.filter((f) => !/^manuten[cç][aã]o\b/i.test(f.desc.trim())),
+    [faturasIniciais],
+  );
 
-  const empresaPagto = {
-    nome: cliente.razao,
-    cnpj: cliente.cnpj,
-    sicaf: "ativo",
-    proximoPasso: "",
-    acao: { label: "", icon: CreditCard as never },
-    endereco: "",
-    cidade: cliente.cidade,
-    uf: "",
-    telefone: cliente.telefone ?? "",
-    email: cliente.email ?? "",
-    responsavel: cliente.responsavel,
-    inscricaoEstadual: "",
-    inscricaoMunicipal: "",
-    ramoAtividade: "",
-  } as unknown as EmpresaData;
+  const [faturas, setFaturas] = useState<FaturaItem[]>(faturasSicaf);
+
+  useEffect(() => {
+    setFaturas(faturasSicaf);
+  }, [faturasSicaf]);
+
+  const totalEmAberto = faturas
+    .filter((f) => f.status === "aberto")
+    .reduce((acc, f) => acc + f.valor, 0);
+
+  const totalFaturado12m = faturas
+    .filter((f) => f.status === "pago")
+    .reduce((acc, f) => acc + f.valor, 0);
+
+  const formaPreferida = useMemo(() => {
+    const pix = faturas.filter((f) => f.forma === "PIX").length;
+    const boleto = faturas.filter((f) => f.forma === "Boleto").length;
+    if (pix > boleto) return "PIX";
+    if (boleto > pix) return "Boleto";
+    return faturas[0]?.forma ?? "—";
+  }, [faturas]);
 
   const abrirAutorizar = (f: FaturaItem) => {
     setFaturaAtiva(f);
@@ -611,82 +1050,167 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
       prev.map((f) => (f.id === id ? { ...f, status: "cancelado", motivoCancelamento: motivo } : f)),
     );
   };
-  const confirmarAutorizacao = () => {
+  const confirmarAutorizacao = async (payload: { comprovante: File; observacoes?: string }) => {
     if (!faturaAtiva) return;
-    setFaturas((prev) => prev.map((f) => (f.id === faturaAtiva.id ? { ...f, status: "pago" } : f)));
+    const taxaId = faturaAtiva.taxaId ?? parseTaxaIdFromFaturaId(faturaAtiva.id);
+    const clienteId = parseInt(cliente.id, 10);
+    if (!taxaId) {
+      toast.error("Não foi possível identificar a taxa SICAF.");
+      throw new Error("taxa_invalida");
+    }
+    if (!Number.isFinite(clienteId)) {
+      toast.error("Cliente inválido.");
+      throw new Error("cliente_invalido");
+    }
+
+    const res = await autorizarPagamentoComComprovante({
+      taxaId,
+      clienteId,
+      pagamentoId: faturaAtiva.pagamentoId,
+      formaPagamento: faturaAtiva.forma,
+      valor: faturaAtiva.valor,
+      observacoes: payload.observacoes,
+      comprovante: payload.comprovante,
+    });
+
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao autorizar pagamento");
+      throw new Error("autorizacao_falhou");
+    }
+
+    toast.success(res.message || "Pagamento autorizado e comprovante registrado");
+    setFaturas((prev) =>
+      prev.map((f) =>
+        f.id === faturaAtiva.id
+          ? { ...f, status: "pago", dataPago: new Date().toLocaleDateString("pt-BR") }
+          : f,
+      ),
+    );
+    onPagamentoAutorizado?.();
   };
 
   const statusMeta: Record<FaturaItem["status"], { cls: string; txt: string }> = {
     pago: { cls: "bg-success/10 text-success", txt: "Pago" },
-    aberto: { cls: "bg-danger/10 text-danger", txt: "Em aberto" },
-    cancelado: { cls: "bg-muted text-muted-foreground line-through", txt: "Cancelado" },
+    aberto: { cls: "bg-danger/10 text-danger", txt: "Aberto" },
+    cancelado: { cls: "bg-muted text-muted-foreground line-through", txt: "Cancel." },
   };
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MiniStat label="MRR" value={`R$ ${(cliente.mrr || 0).toLocaleString("pt-BR")}`} />
-        <MiniStat label="Total faturado (12m)" value={`R$ ${((cliente.mrr || 890) * 12 + 1290).toLocaleString("pt-BR")}`} />
-        <MiniStat label="Em aberto" value={cliente.pagou ? "R$ 0" : `R$ ${(cliente.mrr || 890).toLocaleString("pt-BR")}`} tone={cliente.pagou ? "ok" : "danger"} />
-        <MiniStat label="Método preferido" value="PIX" />
+        <MiniStat label="Total faturado (12m)" value={`R$ ${totalFaturado12m.toLocaleString("pt-BR")}`} />
+        <MiniStat
+          label="Em aberto"
+          value={`R$ ${totalEmAberto.toLocaleString("pt-BR")}`}
+          tone={totalEmAberto > 0 ? "danger" : "ok"}
+        />
+        <MiniStat label="Método preferido" value={formaPreferida} />
       </div>
-      <Card className="p-4">
-        <div className="flex items-center justify-between">
+      <Card className="min-w-0 p-4">
+        <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">Faturas</h3>
-          <div className="flex gap-1.5">
-            <Button variant="outline" size="sm" className="gap-1.5">
-              <Download className="h-3.5 w-3.5" /> Exportar
-            </Button>
-            <Button size="sm" className="gap-1.5" onClick={() => setPagOpen(true)}>
-              <CreditCard className="h-3.5 w-3.5" /> Gerar cobrança
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <Download className="h-3.5 w-3.5" /> Exportar
+          </Button>
         </div>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="mt-3 overflow-x-auto rounded-lg border">
+          <table className="w-full table-fixed text-xs">
+            <colgroup>
+              <col className="w-[52px]" />
+              <col className="w-[72px]" />
+              <col className="w-[52px]" />
+              <col className="w-[68px]" />
+              <col className="w-[68px]" />
+              <col className="w-[68px]" />
+              <col className="w-[64px]" />
+              <col className="w-[72px]" />
+              <col className="w-[118px]" />
+            </colgroup>
             <thead>
-              <tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                <th className="py-2 font-medium">Fatura</th>
-                <th className="py-2 font-medium">Descrição</th>
-                <th className="py-2 font-medium">Vencimento</th>
-                <th className="py-2 font-medium text-right">Valor</th>
-                <th className="py-2 font-medium">Status</th>
-                <th className="py-2 font-medium text-right">Ações</th>
+              <tr className="border-b bg-muted/30 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                <th className="px-2 py-2 font-medium">Fatura</th>
+                <th className="px-2 py-2 font-medium">Descrição</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Forma</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Gerado</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Vence</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Pago</th>
+                <th className="px-2 py-2 font-medium text-right whitespace-nowrap">Valor</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Status</th>
+                <th className="px-2 py-2 font-medium text-right whitespace-nowrap">Ações</th>
               </tr>
             </thead>
             <tbody>
+              {faturas.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-2 py-8 text-center text-sm text-muted-foreground">
+                    Nenhuma fatura SICAF registrada.
+                  </td>
+                </tr>
+              )}
               {faturas.map((f) => (
-                <tr key={f.id} className="border-b border-border/40">
-                  <td className="py-2 font-mono text-xs">{f.id}</td>
-                  <td className="py-2">{f.desc}</td>
-                  <td className="py-2 text-xs">{f.venc}</td>
-                  <td className="py-2 text-right font-medium">R$ {f.valor.toLocaleString("pt-BR")}</td>
-                  <td className="py-2">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusMeta[f.status].cls}`}>
+                <tr key={f.id} className="border-b border-border/40 last:border-0">
+                  <td className="px-2 py-2 font-mono whitespace-nowrap align-middle">{f.id}</td>
+                  <td className="px-2 py-2 align-middle truncate" title={f.desc}>
+                    {f.desc}
+                  </td>
+                  <td className="px-2 py-2 whitespace-nowrap align-middle">
+                    <Badge
+                      variant="outline"
+                      className={`rounded-full px-1.5 py-0 text-[9px] font-semibold ${
+                        f.forma === "PIX"
+                          ? "bg-violet-500/10 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/20"
+                          : "bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/20"
+                      }`}
+                    >
+                      {f.forma}
+                    </Badge>
+                  </td>
+                  <td className="px-2 py-2 whitespace-nowrap align-middle tabular-nums">
+                    {f.dataGeracao}
+                  </td>
+                  <td className="px-2 py-2 whitespace-nowrap align-middle tabular-nums">
+                    {f.venc}
+                  </td>
+                  <td className="px-2 py-2 whitespace-nowrap align-middle tabular-nums">
+                    {f.status === "pago" ? f.dataPago : "—"}
+                  </td>
+                  <td className="px-2 py-2 text-right font-medium whitespace-nowrap tabular-nums align-middle">
+                    {f.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                  </td>
+                  <td className="px-2 py-2 whitespace-nowrap align-middle">
+                    <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusMeta[f.status].cls}`}>
                       {statusMeta[f.status].txt}
                     </span>
                   </td>
-                  <td className="py-2 text-right">
+                  <td className="px-2 py-2 align-middle">
                     {f.status === "aberto" ? (
-                      <div className="flex justify-end gap-1.5">
+                      <div className="flex flex-nowrap justify-end gap-1">
                         <Button
+                          type="button"
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-xs gap-1 border-danger/30 text-danger hover:bg-danger/10 hover:text-danger"
+                          title="Cancelar fatura"
+                          aria-label="Cancelar fatura"
+                          className="h-7 w-7 shrink-0 p-0 border-danger/30 text-danger hover:bg-danger/10 hover:text-danger"
                           onClick={() => abrirCancelar(f.id)}
                         >
-                          <XIcon className="h-3 w-3" /> Cancelar
+                          <XIcon className="h-3.5 w-3.5" />
                         </Button>
                         <Button
+                          type="button"
                           size="sm"
-                          className="h-7 px-2 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
+                          title="Autorizar pagamento"
+                          aria-label="Autorizar pagamento"
+                          className="h-7 shrink-0 px-2 text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-700"
                           onClick={() => abrirAutorizar(f)}
                         >
-                          <ShieldCheck className="h-3 w-3" /> Autorizar
+                          <ShieldCheck className="h-3 w-3 shrink-0" />
+                          Autorizar
                         </Button>
                       </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
+                      <span className="block text-right text-muted-foreground">—</span>
                     )}
                   </td>
                 </tr>
@@ -695,27 +1219,20 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
           </table>
         </div>
       </Card>
-      <PagamentoModal
-        open={pagOpen}
-        onOpenChange={setPagOpen}
-        empresa={empresaPagto}
-        descricao="cobrança"
-        valor={valorCobranca}
-      />
       <AutorizarPagamentoModal
         open={autorizarOpen}
         onOpenChange={setAutorizarOpen}
         dados={
           faturaAtiva
             ? {
-                descricao: `${faturaAtiva.desc} — ${cliente.razao}`,
+                descricao: faturaAtiva.desc,
                 cliente: cliente.razao,
                 valor: faturaAtiva.valor,
-                ano: new Date().getFullYear(),
+                ano: faturaAtiva.anoReferencia ?? new Date().getFullYear(),
                 forma: faturaAtiva.forma,
-                dataGeracao: faturaAtiva.venc,
-                novaValidade: nextYearDate(faturaAtiva.venc),
-                diasRenovados: 365,
+                dataGeracao: faturaAtiva.dataGeracao,
+                novaValidade: novaValidadeSicafAposPagamento(),
+                diasRenovados: diasAteNovaValidadeSicaf(),
               }
             : null
         }
@@ -729,11 +1246,6 @@ function FinanceiroTab({ cliente }: { cliente: ClienteDetalhe }) {
       />
     </div>
   );
-}
-
-function nextYearDate(d: string) {
-  const [dd, mm, yyyy] = d.split("/");
-  return `${dd}/${mm}/${Number(yyyy) + 1}`;
 }
 
 function MiniStat({
@@ -759,54 +1271,242 @@ function MiniStat({
   );
 }
 
-function DocumentosTab() {
-  const docs = [
-    { nome: "Contrato Social", validade: "—", status: "ok" },
-    { nome: "Certidão Federal", validade: "15/05/2026", status: "ok" },
-    { nome: "Certidão FGTS", validade: "30/03/2026", status: "ok" },
-    { nome: "CNDT", validade: "Vencida 12/11/2025", status: "danger" },
-    { nome: "Certidão Estadual", validade: "—", status: "warn" },
-    { nome: "Certidão Municipal", validade: "10/06/2026", status: "ok" },
-  ];
+function formatDatePainel(d?: string | null) {
+  if (!d) return "—";
+  try {
+    return new Date(d).toLocaleDateString("pt-BR");
+  } catch {
+    return String(d);
+  }
+}
+
+function abrirArquivo(url?: string | null) {
+  if (!url) {
+    toast.error("Arquivo não disponível");
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function statusDocBadge(status: DocumentoUi["status"]) {
+  if (status === "danger") return <Badge variant="destructive" className="text-[10px]">Vencido</Badge>;
+  if (status === "warn") return <Badge className="text-[10px] bg-amber-500 hover:bg-amber-500">Vencendo</Badge>;
+  if (status === "ok") return <Badge className="text-[10px] bg-emerald-600 hover:bg-emerald-600">Válido</Badge>;
+  return <Badge variant="secondary" className="text-[10px]">Pendente</Badge>;
+}
+
+function DocumentosTab({ painel, clienteId }: { painel: DocumentosPainelUi | null; clienteId: number }) {
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [baixandoCert, setBaixandoCert] = useState(false);
+  const cert = painel?.certificadoDigital;
+  const checklist = painel ? flattenChecklistDocumentos(painel.docsPorNivel) : [];
+  const outros = (painel?.arquivos || []).filter((a) => a.origem === "doc");
+
+  const copiarSenha = () => {
+    if (!cert?.senha) return;
+    void navigator.clipboard.writeText(cert.senha);
+    toast.success("Senha copiada");
+  };
+
+  const baixarCertificado = async () => {
+    if (!Number.isFinite(clienteId)) return;
+    setBaixandoCert(true);
+    try {
+      await downloadCertificadoDigital(clienteId, cert?.arquivoNome || "certificado.pfx");
+      toast.success("Certificado baixado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao baixar certificado");
+    } finally {
+      setBaixandoCert(false);
+    }
+  };
+
   return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Documentos do cliente</h3>
-        <Button size="sm" className="gap-1.5">
-          <Plus className="h-3.5 w-3.5" /> Enviar documento
-        </Button>
-      </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {docs.map((d) => (
-          <div
-            key={d.nome}
-            className="flex items-center justify-between rounded-md border bg-card px-3 py-2.5"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
-                <FolderOpen className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">{d.nome}</p>
-                <p className="text-xs text-muted-foreground">Validade: {d.validade}</p>
+    <div className="space-y-4">
+      {/* Certificado digital */}
+      <Card className="p-4 border-violet-200/60 dark:border-violet-900/40 bg-violet-50/30 dark:bg-violet-950/20">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500 text-white">
+              <KeyRound className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold">Certificado digital (A1)</h3>
+              <p className="text-xs text-muted-foreground">Arquivo e senha cadastrados pelo cliente</p>
+            </div>
+          </div>
+          {cert && (
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 border-violet-300 text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:text-violet-300"
+                disabled={baixandoCert}
+                onClick={() => void baixarCertificado()}
+              >
+                {baixandoCert ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                Baixar .pfx
+              </Button>
+              <Badge
+                variant="outline"
+                className={
+                  cert.status === "expirado"
+                    ? "border-rose-500/40 text-rose-600"
+                    : cert.status === "vencendo"
+                      ? "border-amber-500/40 text-amber-700"
+                      : "border-emerald-500/40 text-emerald-700"
+                }
+              >
+                {cert.status === "expirado" ? "Expirado" : cert.status === "vencendo" ? "Vencendo" : "Válido"}
+              </Badge>
+            </div>
+          )}
+        </div>
+
+        {!cert ? (
+          <p className="mt-3 text-sm text-muted-foreground">Nenhum certificado digital cadastrado.</p>
+        ) : (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <InfoLinha label="Arquivo" value={cert.arquivoNome} />
+            <InfoLinha label="Titular" value={cert.titularNome || "—"} />
+            <InfoLinha label="CPF/CNPJ titular" value={cert.titularDocumento || "—"} />
+            <InfoLinha label="Emissor" value={cert.emissor || "—"} />
+            <InfoLinha label="Válido de" value={formatDatePainel(cert.validoDe)} />
+            <InfoLinha label="Válido até" value={formatDatePainel(cert.validoAte)} />
+            <div className="sm:col-span-2 rounded-lg border bg-background p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">Senha do certificado</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono">
+                  {cert.senha ? (mostrarSenha ? cert.senha : "••••••••••") : "—"}
+                </code>
+                {cert.senha && (
+                  <>
+                    <Button type="button" size="icon" variant="outline" className="h-9 w-9" onClick={() => setMostrarSenha((v) => !v)}>
+                      {mostrarSenha ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                    <Button type="button" size="icon" variant="outline" className="h-9 w-9" onClick={copiarSenha}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
-            <Button size="icon" variant="ghost" className="h-7 w-7">
-              <Download className="h-3.5 w-3.5" />
-            </Button>
           </div>
-        ))}
-      </div>
-    </Card>
+        )}
+      </Card>
+
+      {/* Certidões SICAF (checklist) */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              <Shield className="h-4 w-4 text-emerald-600" /> Certidões e documentos SICAF
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {painel?.sicafStatus ? `Status SICAF: ${painel.sicafStatus}` : "Checklist por nível"}
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {checklist.length === 0 && (
+            <p className="text-sm text-muted-foreground col-span-2 py-4 text-center">Nenhum documento no checklist SICAF.</p>
+          )}
+          {checklist.map((d) => (
+            <DocumentoCard key={`${d.nivel}-${d.nome}`} doc={d} onDownload={() => abrirArquivo(d.url)} />
+          ))}
+        </div>
+      </Card>
+
+      {/* Outros arquivos / uploads gerais */}
+      {outros.length > 0 && (
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-3">Outros arquivos enviados</h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {outros.map((a) => (
+              <div
+                key={`${a.origem}-${a.id}`}
+                className="flex items-center justify-between rounded-md border bg-card px-3 py-2.5"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted">
+                    <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{a.nome}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {a.pasta || "Geral"} · {a.dataUpload ? formatDatePainel(a.dataUpload) : "—"}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0"
+                  disabled={!a.arquivoUrl}
+                  onClick={() => abrirArquivo(a.arquivoUrl)}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }
 
-function SuporteTab({ cliente }: { cliente: ClienteDetalhe }) {
-  const tickets: TicketItem[] = [
-    { id: "#T-2310", titulo: "Atualizar nível IV — Estadual", status: "Em andamento", prio: "alta", data: "Hoje 09:11" },
-    { id: "#T-2287", titulo: "Dúvida sobre CNDT", status: "Aguardando cliente", prio: "média", data: "Ontem" },
-    { id: "#T-2204", titulo: "Renovação SICAF concluída", status: "Fechado", prio: "baixa", data: "12/05" },
-  ];
+function InfoLinha({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border bg-background/80 px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-sm font-medium mt-0.5 truncate" title={value}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function DocumentoCard({ doc, onDownload }: { doc: DocumentoUi; onDownload: () => void }) {
+  return (
+    <div className="flex items-center justify-between rounded-md border bg-card px-3 py-2.5 gap-2">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted">
+          <FolderOpen className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="text-sm font-medium truncate">{doc.nome}</p>
+            {doc.nivel ? (
+              <Badge variant="outline" className="text-[9px] px-1 py-0">
+                Nível {doc.nivel}
+              </Badge>
+            ) : null}
+            {statusDocBadge(doc.status)}
+          </div>
+          <p className="text-xs text-muted-foreground">Validade: {doc.validade}</p>
+        </div>
+      </div>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-7 w-7 shrink-0"
+        disabled={!doc.url}
+        onClick={onDownload}
+        title={doc.url ? "Baixar / abrir" : "Sem arquivo"}
+      >
+        {doc.url ? <ExternalLink className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5 opacity-40" />}
+      </Button>
+    </div>
+  );
+}
+
+function SuporteTab({ cliente, tickets = [] }: { cliente: ClienteDetalhe; tickets?: TicketItem[] }) {
   const [ticketOpen, setTicketOpen] = useState(false);
   const [ticketSel, setTicketSel] = useState<TicketItem | null>(null);
 
@@ -824,6 +1524,9 @@ function SuporteTab({ cliente }: { cliente: ClienteDetalhe }) {
         </Button>
       </div>
       <div className="mt-3 space-y-2">
+        {tickets.length === 0 && (
+          <p className="text-sm text-muted-foreground py-4 text-center">Nenhum ticket para este cliente.</p>
+        )}
         {tickets.map((t) => (
           <button
             key={t.id}
@@ -855,15 +1558,7 @@ function SuporteTab({ cliente }: { cliente: ClienteDetalhe }) {
   );
 }
 
-function HistoricoTab() {
-  const eventos = [
-    { d: "Hoje 14:22", t: "Ligação atendida — confirmou renovação", icon: Phone },
-    { d: "Hoje 09:11", t: "Ticket #T-2310 aberto: Atualizar nível IV", icon: Ticket },
-    { d: "Ontem", t: "E-mail enviado: lembrete de vencimento SICAF", icon: Mail },
-    { d: "12/05", t: "Pagamento confirmado fatura #4720", icon: CheckCircle2 },
-    { d: "15/04", t: "Renovação SICAF anual concluída", icon: ShieldCheck },
-    { d: "10/03", t: "Cliente entrou em manutenção mensal", icon: Sparkles },
-  ];
+function HistoricoTab({ eventos = [] }: { eventos?: HistoricoUi[] }) {
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between">
@@ -872,10 +1567,13 @@ function HistoricoTab() {
         </h3>
       </div>
       <ol className="mt-4 relative border-l border-border ml-2 space-y-4">
+        {eventos.length === 0 && (
+          <li className="pl-4 text-sm text-muted-foreground">Nenhum evento registrado.</li>
+        )}
         {eventos.map((e, i) => (
           <li key={i} className="pl-4">
             <span className="absolute -left-[7px] flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <e.icon className="h-2 w-2" />
+              <History className="h-2 w-2" />
             </span>
             <p className="text-xs text-muted-foreground">{e.d}</p>
             <p className="text-sm">{e.t}</p>
@@ -886,41 +1584,3 @@ function HistoricoTab() {
   );
 }
 
-function NotasTab() {
-  const [nota, setNota] = useState("");
-  const notas = [
-    { autor: "Ana (Atendimento)", data: "Hoje 09:30", texto: "Cliente prefere ser contactado via WhatsApp à tarde." },
-    { autor: "Carlos (SICAF)", data: "Ontem", texto: "Documentação do nível IV depende da Sefaz local — prazo médio 5 dias." },
-  ];
-  return (
-    <Card className="p-4">
-      <h3 className="text-sm font-semibold flex items-center gap-1.5">
-        <StickyNote className="h-4 w-4" /> Notas internas
-      </h3>
-      <div className="mt-3 flex gap-2">
-        <textarea
-          value={nota}
-          onChange={(e) => setNota(e.target.value)}
-          rows={2}
-          placeholder="Escreva uma nota visível apenas para a equipe..."
-          className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-        <Button size="sm" className="gap-1.5 self-start">
-          <Send className="h-3.5 w-3.5" /> Salvar
-        </Button>
-      </div>
-      <Separator className="my-4" />
-      <div className="space-y-3">
-        {notas.map((n, i) => (
-          <div key={i} className="rounded-md bg-muted/40 p-3 text-sm">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">{n.autor}</span>
-              <span>{n.data}</span>
-            </div>
-            <p className="mt-1">{n.texto}</p>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}

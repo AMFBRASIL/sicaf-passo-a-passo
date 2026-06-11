@@ -9,11 +9,16 @@ import { Switch } from "@/components/ui/switch";
 import { useState } from "react";
 import {
   X, FileSpreadsheet, FileType, FileText, Calendar, Filter, CheckCircle2, Mail,
-  Users, DollarSign, FileCheck2, Ticket, TrendingUp, Sparkles,
+  Users, DollarSign, FileCheck2, Ticket, TrendingUp, Sparkles, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  downloadRelatorio,
+  gerarRelatorio,
+  type RelatorioKey,
+} from "@/lib/admin-relatorios-api";
 
-export type RelatorioKey = "clientes" | "financeiro" | "sicaf" | "suporte" | "googleads";
+export type { RelatorioKey };
 
 const META: Record<RelatorioKey, { icon: any; titulo: string; desc: string; tom: string }> = {
   clientes: { icon: Users, titulo: "Base de Clientes", desc: "Lista completa com status, MRR e responsável", tom: "blue" },
@@ -43,9 +48,10 @@ interface Props {
   relatorio: RelatorioKey | null;
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  onGerado?: () => void;
 }
 
-export function RelatorioFiltrosModal({ relatorio, open, onOpenChange }: Props) {
+export function RelatorioFiltrosModal({ relatorio, open, onOpenChange, onGerado }: Props) {
   const [periodo, setPeriodo] = useState("30d");
   const [dataIni, setDataIni] = useState("");
   const [dataFim, setDataFim] = useState("");
@@ -54,8 +60,8 @@ export function RelatorioFiltrosModal({ relatorio, open, onOpenChange }: Props) 
   const [agendado, setAgendado] = useState(false);
   const [emailDestino, setEmailDestino] = useState("");
   const [frequencia, setFrequencia] = useState("semanal");
+  const [gerando, setGerando] = useState(false);
 
-  // Campos específicos
   const [filtros, setFiltros] = useState<Record<string, string>>({});
   const setF = (k: string, v: string) => setFiltros((p) => ({ ...p, [k]: v }));
 
@@ -64,10 +70,41 @@ export function RelatorioFiltrosModal({ relatorio, open, onOpenChange }: Props) 
   const Icon = meta.icon;
   const cols = COLUNAS[relatorio];
 
-  const gerar = () => {
-    toast.success(`Relatório "${meta.titulo}" gerado`, {
-      description: `Formato ${formato.toUpperCase()} · período ${periodo} · ${Object.values(colunas).filter(Boolean).length || cols.length} colunas${agendado ? " · agendamento ativo" : ""}.`,
+  const gerar = async () => {
+    if (!relatorio) return;
+    const colunasAtivas = cols.filter((c) => colunas[c] !== false);
+    setGerando(true);
+    const res = await gerarRelatorio({
+      tipo: relatorio,
+      periodo,
+      dataIni: periodo === "custom" ? dataIni : undefined,
+      dataFim: periodo === "custom" ? dataFim : undefined,
+      formato,
+      colunas: colunasAtivas,
+      filtros,
+      agendado,
+      frequencia,
+      emails: emailDestino,
     });
+    setGerando(false);
+
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao gerar relatório");
+      return;
+    }
+
+    if (res.headers?.length && res.rows) {
+      downloadRelatorio(res);
+    }
+
+    const colCount = colunasAtivas.length || cols.length;
+    toast.success(`Relatório "${meta.titulo}" gerado`, {
+      description: `${res.total ?? 0} linhas · ${formato.toUpperCase()} · ${colCount} colunas${agendado ? " · agendamento salvo" : ""}.`,
+    });
+    if (res.agendamentoErro) {
+      toast.warning("Agendamento não salvo", { description: res.agendamentoErro });
+    }
+    onGerado?.();
     onOpenChange(false);
   };
 
@@ -145,8 +182,14 @@ export function RelatorioFiltrosModal({ relatorio, open, onOpenChange }: Props) 
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Responsável interno"><Input placeholder="Todos" /></Field>
-                  <Field label="MRR mínimo (R$)"><Input type="number" placeholder="0" /></Field>
+                  <Field label="MRR mínimo (R$)">
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={filtros.mrrMin ?? ""}
+                      onChange={(e) => setF("mrrMin", e.target.value)}
+                    />
+                  </Field>
                 </div>
               )}
 
@@ -175,13 +218,22 @@ export function RelatorioFiltrosModal({ relatorio, open, onOpenChange }: Props) 
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Valor mínimo (R$)"><Input type="number" placeholder="0" /></Field>
-                  <Field label="Valor máximo (R$)"><Input type="number" placeholder="100000" /></Field>
-                  <div className="sm:col-span-2 grid grid-cols-3 gap-2">
-                    <ToggleMini titulo="Incluir juros" />
-                    <ToggleMini titulo="Incluir multa" />
-                    <ToggleMini titulo="Agrupar por cliente" defaultOn />
-                  </div>
+                  <Field label="Valor mínimo (R$)">
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={filtros.valorMin ?? ""}
+                      onChange={(e) => setF("valorMin", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Valor máximo (R$)">
+                    <Input
+                      type="number"
+                      placeholder="100000"
+                      value={filtros.valorMax ?? ""}
+                      onChange={(e) => setF("valorMax", e.target.value)}
+                    />
+                  </Field>
                 </div>
               )}
 
@@ -239,47 +291,13 @@ export function RelatorioFiltrosModal({ relatorio, open, onOpenChange }: Props) 
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="Atendente"><Input placeholder="Todos" /></Field>
-                  <Field label="SLA estourado">
-                    <Select defaultValue="todos">
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Indiferente</SelectItem>
-                        <SelectItem value="sim">Apenas estourados</SelectItem>
-                        <SelectItem value="nao">Apenas dentro do SLA</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
                 </div>
               )}
 
               {relatorio === "googleads" && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Conta MCC"><Input placeholder="Todas" /></Field>
-                  <Field label="Campanha"><Input placeholder="Todas" /></Field>
-                  <Field label="Tipo de campanha">
-                    <Select defaultValue="todos">
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Todos</SelectItem>
-                        <SelectItem value="search">Search</SelectItem>
-                        <SelectItem value="display">Display</SelectItem>
-                        <SelectItem value="pmax">Performance Max</SelectItem>
-                        <SelectItem value="video">Video</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field label="Modelo de atribuição">
-                    <Select defaultValue="data-driven">
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="last-click">Último clique</SelectItem>
-                        <SelectItem value="linear">Linear</SelectItem>
-                        <SelectItem value="data-driven">Data-driven</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Dados de palavras-chave com pagamentos validados no período selecionado (tracking Google Ads + taxas SICAF / Gerencianet).
+                </p>
               )}
             </Section>
 
@@ -349,8 +367,18 @@ export function RelatorioFiltrosModal({ relatorio, open, onOpenChange }: Props) 
             Saída: {formato.toUpperCase()} · {agendado ? frequencia : "sob demanda"}
           </Badge>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button onClick={gerar}>Gerar relatório</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={gerando}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void gerar()} disabled={gerando}>
+              {gerando ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Gerando…
+                </>
+              ) : (
+                "Gerar relatório"
+              )}
+            </Button>
           </div>
         </div>
       </DialogContent>
@@ -378,16 +406,6 @@ function Field({ label, children, hint }: { label: string; children: React.React
       {children}
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
-  );
-}
-
-function ToggleMini({ titulo, defaultOn }: { titulo: string; defaultOn?: boolean }) {
-  const [v, setV] = useState(!!defaultOn);
-  return (
-    <label className="flex cursor-pointer items-center justify-between rounded-md border p-2 text-xs">
-      <span>{titulo}</span>
-      <Switch checked={v} onCheckedChange={setV} />
-    </label>
   );
 }
 

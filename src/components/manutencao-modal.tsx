@@ -17,9 +17,22 @@ import {
   Clock,
   TrendingUp,
   FileText,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -27,12 +40,26 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import type { EmpresaData } from "@/routes/empresas";
+import type { EmpresaData } from "@/lib/empresas-shared";
 import { PagamentoModal } from "@/components/pagamento-modal";
+import {
+  ativarManutencao,
+  autorizarBoletoManutencao,
+  calcParcelamentoManutencao,
+  cancelarManutencao,
+  fetchManutencaoCliente,
+  fetchValorManutencaoMensal,
+  fmtBrl,
+  type ManutencaoBoleto,
+  type ParcelamentoManutencao,
+} from "@/lib/manutencao-api";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 
 const DIAS = [1, 5, 10, 15, 20, 25];
-const VALOR = 149;
+
+const PARCELAMENTO_OPCOES: ParcelamentoManutencao[] = ["avista", "6x", "12x"];
 
 type Mode = "ativar" | "gerenciar";
 type Step = "plano" | "vencimento" | "confirmar" | "sucesso";
@@ -52,6 +79,8 @@ export function ManutencaoModal({
   mode,
   diaVencimento,
   onAtivar,
+  onCancelar,
+  onPaymentGenerated,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -59,20 +88,64 @@ export function ManutencaoModal({
   mode: Mode;
   diaVencimento?: number;
   onAtivar: (cnpj: string, dia: number) => void;
+  onCancelar?: (cnpj: string) => void;
+  onPaymentGenerated?: () => void;
 }) {
   const [step, setStep] = useState<Step>("plano");
   const [gerStep, setGerStep] = useState<GerStep>("visao");
   const [dia, setDia] = useState<number | null>(null);
   const [dataInicio, setDataInicio] = useState<Date | undefined>(new Date());
+  const [ativando, setAtivando] = useState(false);
+  const [effectiveMode, setEffectiveMode] = useState<Mode>(mode);
+  const [planoAtivo, setPlanoAtivo] = useState(false);
+  const [valorMensal, setValorMensal] = useState(155);
+  const [parcelamento, setParcelamento] = useState<ParcelamentoManutencao>("12x");
 
   useEffect(() => {
-    if (open && mode === "ativar") {
+    if (!open || !empresa) return;
+    void fetchValorManutencaoMensal().then(setValorMensal);
+    if (!empresa.clienteId) {
+      setPlanoAtivo(false);
+      setEffectiveMode(mode);
+      return;
+    }
+    if (mode === "gerenciar") {
+      setEffectiveMode("gerenciar");
+    }
+    let cancelled = false;
+    void fetchManutencaoCliente(empresa.clienteId).then((res) => {
+      if (cancelled) return;
+      const ativo = !!(res.ok && res.manutencao);
+      setPlanoAtivo(ativo);
+      setEffectiveMode(ativo ? "gerenciar" : "ativar");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, mode, empresa?.clienteId, empresa?.cnpj]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (effectiveMode === "ativar") {
       setStep("plano");
       setDia(null);
+      setParcelamento("12x");
       setDataInicio(new Date());
+    } else {
+      setGerStep("visao");
     }
-    if (open && mode === "gerenciar") setGerStep("visao");
-  }, [open, mode]);
+  }, [open, effectiveMode]);
+
+  const handlePlanoCancelado = () => {
+    setPlanoAtivo(false);
+    setEffectiveMode("ativar");
+    setStep("plano");
+    setDia(null);
+    setParcelamento("12x");
+    setDataInicio(new Date());
+    setGerStep("visao");
+    onCancelar?.(empresa.cnpj);
+  };
 
   if (!empresa) return null;
 
@@ -83,17 +156,31 @@ export function ManutencaoModal({
   ];
   const stepIdx = steps.findIndex((s) => s.id === step);
 
-  const handleAtivar = () => {
+  const handleAtivar = async () => {
     if (!dia) return;
+    if (!empresa.clienteId) {
+      toast.error("Empresa sem identificador. Recarregue a página.");
+      return;
+    }
+    setAtivando(true);
+    const res = await ativarManutencao(empresa.clienteId, dia, parcelamento);
+    setAtivando(false);
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao ativar manutenção");
+      return;
+    }
     onAtivar(empresa.cnpj, dia);
+    setPlanoAtivo(true);
+    setEffectiveMode("gerenciar");
     setStep("sucesso");
+    toast.success(res.message || "Manutenção ativada com sucesso!");
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl p-0 overflow-hidden gap-0 sm:rounded-2xl">
         <DialogTitle className="sr-only">
-          {mode === "ativar" ? "Ativar manutenção" : "Gerenciar manutenção"}
+          {effectiveMode === "ativar" ? "Ativar manutenção" : "Gerenciar manutenção"}
         </DialogTitle>
         <div className="grid md:grid-cols-[280px_1fr] min-h-[600px]">
           {/* Sidebar wizard */}
@@ -110,16 +197,16 @@ export function ManutencaoModal({
                 <Wrench className="h-4 w-4" />
               </div>
               <span className="text-xs font-mono opacity-80 tracking-wider">
-                {mode === "ativar" ? "ATIVAÇÃO" : "MANUTENÇÃO"}
+                {effectiveMode === "ativar" ? "ATIVAÇÃO" : "MANUTENÇÃO"}
               </span>
             </div>
             <h2 className="text-lg font-semibold leading-tight">
-              {mode === "ativar" ? "Ativar Manutenção" : "Painel da manutenção"}
+              {effectiveMode === "ativar" ? "Ativar Manutenção" : "Painel da manutenção"}
             </h2>
             <p className="mt-1 text-xs text-white/70 truncate">{empresa.nome}</p>
 
             <div className="mt-6 space-y-1">
-              {mode === "ativar" &&
+              {effectiveMode === "ativar" &&
                 steps.map((s, i) => {
                   const done = i < stepIdx || step === "sucesso";
                   const active = i === stepIdx && step !== "sucesso";
@@ -148,7 +235,7 @@ export function ManutencaoModal({
                   );
                 })}
 
-              {mode === "gerenciar" &&
+              {effectiveMode === "gerenciar" &&
                 GER_STEPS.map((s) => {
                   const Icon = s.icon;
                   const active = s.id === gerStep;
@@ -178,7 +265,7 @@ export function ManutencaoModal({
                 })}
             </div>
 
-            {mode === "gerenciar" && (
+            {effectiveMode === "gerenciar" && planoAtivo && (
               <div className="mt-6 rounded-xl border border-white/10 bg-white/5 backdrop-blur p-3">
                 <div className="flex items-center gap-2 text-emerald-300">
                   <CheckCircle2 className="h-4 w-4" />
@@ -187,7 +274,16 @@ export function ManutencaoModal({
                 <p className="text-xs text-white/70 mt-1">
                   Vencimento todo dia {diaVencimento ?? 15}
                 </p>
-                <p className="text-lg font-bold mt-1">R$ {VALOR},00<span className="text-xs font-normal text-white/60">/mês</span></p>
+                <p className="text-lg font-bold mt-1">
+                  {fmtBrl(valorMensal)}
+                  <span className="text-xs font-normal text-white/60">/mês</span>
+                </p>
+              </div>
+            )}
+            {effectiveMode === "ativar" && (
+              <div className="mt-6 rounded-xl border border-white/10 bg-white/5 backdrop-blur p-3">
+                <p className="text-xs text-white/70">Nenhum plano ativo</p>
+                <p className="text-sm font-medium mt-1">Configure um novo plano de manutenção</p>
               </div>
             )}
 
@@ -203,34 +299,50 @@ export function ManutencaoModal({
           <div className="flex flex-col min-h-0 bg-background">
             <ScrollArea className="flex-1 max-h-[80vh]">
               <div className="p-6 sm:p-8">
-                {mode === "ativar" && step === "plano" && (
-                  <PlanoStep />
+                {effectiveMode === "ativar" && step === "plano" && (
+                  <PlanoStep
+                    valorMensal={valorMensal}
+                    parcelamento={parcelamento}
+                    setParcelamento={setParcelamento}
+                  />
                 )}
-                {mode === "ativar" && step === "vencimento" && (
+                {effectiveMode === "ativar" && step === "vencimento" && (
                   <VencimentoStep
                     dia={dia}
                     setDia={setDia}
                     dataInicio={dataInicio}
                     setDataInicio={setDataInicio}
+                    valorMensal={valorMensal}
+                    parcelamento={parcelamento}
                   />
                 )}
-                {mode === "ativar" && step === "confirmar" && (
-                  <ConfirmarStep empresa={empresa} dia={dia!} dataInicio={dataInicio} />
+                {effectiveMode === "ativar" && step === "confirmar" && (
+                  <ConfirmarStep
+                    empresa={empresa}
+                    dia={dia!}
+                    dataInicio={dataInicio}
+                    valorMensal={valorMensal}
+                    parcelamento={parcelamento}
+                  />
                 )}
-                {mode === "ativar" && step === "sucesso" && (
+                {effectiveMode === "ativar" && step === "sucesso" && (
                   <SucessoStep empresa={empresa} dia={dia!} onClose={() => onOpenChange(false)} />
                 )}
-                {mode === "gerenciar" && (
+                {effectiveMode === "gerenciar" && (
                   <GerenciarPanel
+                    open={open}
                     empresa={empresa}
                     dia={diaVencimento ?? 15}
                     step={gerStep}
+                    valorMensal={valorMensal}
+                    onCancelar={handlePlanoCancelado}
+                    onPaymentGenerated={onPaymentGenerated}
                   />
                 )}
               </div>
             </ScrollArea>
 
-            {mode === "ativar" && step !== "sucesso" && (
+            {effectiveMode === "ativar" && step !== "sucesso" && (
               <div className="border-t bg-muted/30 px-6 py-4 flex items-center justify-between gap-3">
                 <Button
                   variant="ghost"
@@ -245,7 +357,7 @@ export function ManutencaoModal({
                   {step === "plano" ? "Cancelar" : "Voltar"}
                 </Button>
                 {step === "plano" && (
-                  <Button onClick={() => setStep("vencimento")} className="gap-2">
+                  <Button onClick={() => setStep("vencimento")} disabled={!parcelamento} className="gap-2">
                     Continuar <ArrowRight className="h-4 w-4" />
                   </Button>
                 )}
@@ -255,8 +367,9 @@ export function ManutencaoModal({
                   </Button>
                 )}
                 {step === "confirmar" && (
-                  <Button onClick={handleAtivar} className="gap-2">
-                    <Sparkles className="h-4 w-4" /> Ativar manutenção
+                  <Button onClick={() => void handleAtivar()} disabled={ativando} className="gap-2">
+                    {ativando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    {ativando ? "Ativando..." : "Ativar manutenção"}
                   </Button>
                 )}
               </div>
@@ -268,7 +381,16 @@ export function ManutencaoModal({
   );
 }
 
-function PlanoStep() {
+function PlanoStep({
+  valorMensal,
+  parcelamento,
+  setParcelamento,
+}: {
+  valorMensal: number;
+  parcelamento: ParcelamentoManutencao;
+  setParcelamento: (p: ParcelamentoManutencao) => void;
+}) {
+  const totalAnual = valorMensal * 12;
   const features = [
     { icon: ShieldCheck, t: "Renovação SICAF automática", d: "Cuidamos do seu cadastro antes do vencimento." },
     { icon: FileText, t: "Emissão e envio de certidões", d: "Federal, Estadual, Municipal, FGTS e CNDT." },
@@ -278,20 +400,63 @@ function PlanoStep() {
   return (
     <div className="space-y-6">
       <div>
-        <Badge variant="secondary" className="mb-2">Plano Manutenção Mensal</Badge>
+        <Badge variant="secondary" className="mb-2">Plano Manutenção Anual</Badge>
         <h3 className="text-2xl font-bold leading-tight">Tudo para sua empresa ficar 100% pronta</h3>
         <p className="text-sm text-muted-foreground mt-1">
-          Por apenas R$ {VALOR},00/mês. Cancele quando quiser.
+          Referência {fmtBrl(valorMensal)}/mês · total anual {fmtBrl(totalAnual)}. Cancele quando quiser.
         </p>
       </div>
 
-      <div className="rounded-2xl border bg-gradient-to-br from-primary/5 to-transparent p-5 flex items-end gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">Mensalidade</p>
-          <p className="text-4xl font-bold mt-1">R$ {VALOR}<span className="text-base font-normal text-muted-foreground">,00</span></p>
-          <p className="text-xs text-muted-foreground mt-1">Pago via boleto · sem fidelidade</p>
+      <div className="rounded-2xl border bg-gradient-to-br from-primary/5 to-transparent p-5">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">Valor de referência mensal</p>
+        <p className="text-4xl font-bold mt-1">{fmtBrl(valorMensal)}</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Contrato anual de {fmtBrl(totalAnual)} · escolha como parcelar abaixo
+        </p>
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          Forma de pagamento
+        </p>
+        <div className="grid sm:grid-cols-3 gap-3">
+          {PARCELAMENTO_OPCOES.map((opcao) => {
+            const calc = calcParcelamentoManutencao(valorMensal, opcao);
+            const active = parcelamento === opcao;
+            return (
+              <button
+                key={opcao}
+                type="button"
+                onClick={() => setParcelamento(opcao)}
+                className={cn(
+                  "rounded-xl border-2 p-4 text-left transition",
+                  active
+                    ? "border-primary bg-primary/5 shadow-soft"
+                    : "border-border bg-card hover:border-primary/40",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold">{calc.titulo}</p>
+                  {opcao === "12x" && (
+                    <Badge variant="secondary" className="text-[10px]">Popular</Badge>
+                  )}
+                </div>
+                <p className="text-2xl font-bold mt-2 text-primary">
+                  {opcao === "avista" ? fmtBrl(calc.valorParcela) : fmtBrl(calc.valorParcela)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {opcao === "avista"
+                    ? "Pagamento único"
+                    : `${calc.parcelas}x de ${fmtBrl(calc.valorParcela)}`}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-2">{calc.subtitulo}</p>
+                <p className="text-xs font-medium mt-2 pt-2 border-t border-border/60">
+                  Total: {fmtBrl(calc.total)}
+                </p>
+              </button>
+            );
+          })}
         </div>
-        <Badge className="ml-auto gap-1"><Sparkles className="h-3 w-3" /> Mais escolhido</Badge>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
@@ -316,12 +481,17 @@ function VencimentoStep({
   setDia,
   dataInicio,
   setDataInicio,
+  valorMensal,
+  parcelamento,
 }: {
   dia: number | null;
   setDia: (d: number) => void;
   dataInicio: Date | undefined;
   setDataInicio: (d: Date | undefined) => void;
+  valorMensal: number;
+  parcelamento: ParcelamentoManutencao;
 }) {
+  const calc = calcParcelamentoManutencao(valorMensal, parcelamento);
   return (
     <div className="space-y-6">
       <div>
@@ -380,16 +550,32 @@ function VencimentoStep({
       </div>
 
       {dia && (
-        <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-sm">
+        <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-sm space-y-2">
           <p className="font-semibold flex items-center gap-2">
-            <Clock className="h-4 w-4 text-primary" /> Resumo
+            <Clock className="h-4 w-4 text-primary" /> Resumo do parcelamento
           </p>
-          <p className="text-muted-foreground mt-1">
-            Boletos de <strong className="text-foreground">R$ {VALOR},00</strong> serão emitidos todo dia{" "}
-            <strong className="text-foreground">{dia}</strong> a partir de{" "}
+          <p className="text-muted-foreground">
+            <strong className="text-foreground">{calc.titulo}</strong> · {calc.subtitulo}
+          </p>
+          <p className="text-muted-foreground">
+            {parcelamento === "avista" ? (
+              <>
+                Será emitido <strong className="text-foreground">1 boleto</strong> de{" "}
+                <strong className="text-foreground">{fmtBrl(calc.valorParcela)}</strong>
+              </>
+            ) : (
+              <>
+                Serão emitidos <strong className="text-foreground">{calc.parcelas} boletos</strong> de{" "}
+                <strong className="text-foreground">{fmtBrl(calc.valorParcela)}</strong> cada
+              </>
+            )}
+            , vencendo todo dia <strong className="text-foreground">{dia}</strong>, a partir de{" "}
             <strong className="text-foreground">
               {dataInicio ? format(dataInicio, "dd/MM/yyyy") : "hoje"}
             </strong>.
+          </p>
+          <p className="text-xs font-medium text-foreground pt-1 border-t border-primary/20">
+            Total do contrato: {fmtBrl(calc.total)}
           </p>
         </div>
       )}
@@ -401,11 +587,16 @@ function ConfirmarStep({
   empresa,
   dia,
   dataInicio,
+  valorMensal,
+  parcelamento,
 }: {
   empresa: EmpresaData;
   dia: number;
   dataInicio: Date | undefined;
+  valorMensal: number;
+  parcelamento: ParcelamentoManutencao;
 }) {
+  const calc = calcParcelamentoManutencao(valorMensal, parcelamento);
   return (
     <div className="space-y-6">
       <div>
@@ -424,8 +615,15 @@ function ConfirmarStep({
           <p className="text-xs text-muted-foreground">CNPJ {empresa.cnpj}</p>
         </div>
         <div className="divide-y">
-          <Row label="Plano" value="Manutenção Mensal CADBRASIL" />
-          <Row label="Valor mensal" value={`R$ ${VALOR},00`} highlight />
+          <Row label="Plano" value="Manutenção Anual CADBRASIL" />
+          <Row label="Parcelamento" value={calc.titulo} />
+          <Row
+            label={parcelamento === "avista" ? "Valor à vista" : "Valor por boleto"}
+            value={fmtBrl(calc.valorParcela)}
+            highlight
+          />
+          <Row label="Total do contrato" value={fmtBrl(calc.total)} />
+          <Row label="Referência mensal" value={fmtBrl(valorMensal)} />
           <Row label="Vencimento" value={`Todo dia ${dia} do mês`} />
           <Row
             label="Primeira cobrança"
@@ -478,19 +676,125 @@ function SucessoStep({ empresa, dia, onClose }: { empresa: EmpresaData; dia: num
   );
 }
 
-function GerenciarPanel({ empresa, dia, step }: { empresa: EmpresaData; dia: number; step: GerStep }) {
+function isBoletoPago(status: string) {
+  const s = String(status || "").trim().toLowerCase();
+  return s === "pago" || s === "paid";
+}
+
+function mapBoletoUiStatus(b: ManutencaoBoleto): "pago" | "aberto" | "futuro" {
+  if (isBoletoPago(b.status)) return "pago";
+  const venc = new Date(b.vencimento);
   const hoje = new Date();
-  const boletos = Array.from({ length: 12 }).map((_, i) => {
-    const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, dia);
-    const pago = i < 2;
-    const atual = i === 2;
-    return {
-      id: i,
-      data: d,
-      status: pago ? "pago" : atual ? "aberto" : "futuro",
-    };
-  });
-  const [pagBoleto, setPagBoleto] = useState<{ data: Date } | null>(null);
+  hoje.setHours(0, 0, 0, 0);
+  if (!Number.isNaN(venc.getTime())) {
+    venc.setHours(0, 0, 0, 0);
+    if (venc.getTime() <= hoje.getTime()) return "aberto";
+  }
+  return "futuro";
+}
+
+function parseBoletoData(b: ManutencaoBoleto, diaFallback: number) {
+  const parsed = new Date(b.vencimento);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  if (b.mes && b.ano) return new Date(b.ano, b.mes - 1, diaFallback);
+  return new Date();
+}
+
+type BoletoUi = {
+  id: number;
+  data: Date;
+  valor: number;
+  status: "pago" | "aberto" | "futuro";
+  rawStatus: string;
+};
+
+function GerenciarPanel({
+  open,
+  empresa,
+  dia,
+  step,
+  valorMensal,
+  onCancelar,
+  onPaymentGenerated,
+}: {
+  open: boolean;
+  empresa: EmpresaData;
+  dia: number;
+  step: GerStep;
+  valorMensal: number;
+  onCancelar: () => void;
+  onPaymentGenerated?: () => void;
+}) {
+  const [boletos, setBoletos] = useState<BoletoUi[]>([]);
+  const [carregandoBoletos, setCarregandoBoletos] = useState(false);
+  const [autorizandoId, setAutorizandoId] = useState<number | null>(null);
+  const [cancelarOpen, setCancelarOpen] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState("");
+  const [cancelando, setCancelando] = useState(false);
+  const [pagBoleto, setPagBoleto] = useState<{ data: Date; boletoId?: number; valor: number } | null>(null);
+
+  const carregarBoletos = async () => {
+    if (!empresa.clienteId) return;
+    setCarregandoBoletos(true);
+    const res = await fetchManutencaoCliente(empresa.clienteId);
+    setCarregandoBoletos(false);
+    if (!res.ok || !res.manutencao?.boletos?.length) {
+      setBoletos([]);
+      return;
+    }
+    setBoletos(
+      res.manutencao.boletos.map((b) => ({
+        id: b.id,
+        data: parseBoletoData(b, dia),
+        valor: b.valor || res.manutencao!.valor,
+        status: mapBoletoUiStatus(b),
+        rawStatus: b.status,
+      })),
+    );
+  };
+
+  useEffect(() => {
+    if (!open || !empresa.clienteId) return;
+    void carregarBoletos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, empresa.clienteId, dia]);
+
+  const handleAutorizar = async (boletoId: number) => {
+    if (!empresa.clienteId) {
+      toast.error("Empresa sem identificador. Recarregue a página.");
+      return;
+    }
+    setAutorizandoId(boletoId);
+    const res = await autorizarBoletoManutencao(boletoId, empresa.clienteId);
+    setAutorizandoId(null);
+    if (!res.ok) {
+      toast.error(res.error || "Falha ao autorizar pagamento.");
+      return;
+    }
+    toast.success(res.message || "Pagamento autorizado com sucesso.");
+    await carregarBoletos();
+  };
+
+  const handleCancelarPlano = async () => {
+    if (!empresa.clienteId) {
+      toast.error("Empresa sem identificador. Recarregue a página.");
+      return;
+    }
+    setCancelando(true);
+    const res = await cancelarManutencao(empresa.clienteId, motivoCancelamento.trim() || undefined);
+    setCancelando(false);
+    if (!res.ok) {
+      toast.error(res.error || "Falha ao cancelar manutenção.");
+      return;
+    }
+    toast.success(res.message || "Plano de manutenção cancelado.");
+    setCancelarOpen(false);
+    setMotivoCancelamento("");
+    onCancelar();
+  };
+
+  const pagos = boletos.filter((b) => b.status === "pago").length;
+  const proximoAberto = boletos.find((b) => b.status !== "pago");
 
   const currentLabel = GER_STEPS.find((s) => s.id === step)?.label ?? "";
   const stepIdxG = GER_STEPS.findIndex((s) => s.id === step);
@@ -518,52 +822,125 @@ function GerenciarPanel({ empresa, dia, step }: { empresa: EmpresaData; dia: num
       {step === "visao" && (
         <div className="space-y-4">
           <div className="grid sm:grid-cols-3 gap-3">
-            <Kpi icon={TrendingUp} label="Meses ativos" value="2" />
-            <Kpi icon={Receipt} label="Próxima cobrança" value={format(boletos[2].data, "dd/MM")} />
-            <Kpi icon={Sparkles} label="Ações realizadas" value="14" />
+            <Kpi icon={TrendingUp} label="Meses ativos" value={String(pagos)} />
+            <Kpi
+              icon={Receipt}
+              label="Próxima cobrança"
+              value={proximoAberto ? format(proximoAberto.data, "dd/MM") : "—"}
+            />
+            <Kpi icon={Sparkles} label="Mensalidades" value={String(boletos.length)} />
           </div>
           <div className="rounded-xl border p-4">
             <p className="text-sm font-semibold mb-2">Progresso do ano</p>
-            <Progress value={(2 / 12) * 100} className="h-2" />
-            <p className="text-xs text-muted-foreground mt-2">2 de 12 mensalidades pagas</p>
+            <Progress
+              value={boletos.length ? (pagos / boletos.length) * 100 : 0}
+              className="h-2"
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              {pagos} de {boletos.length || 12} mensalidades pagas
+            </p>
+          </div>
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-lg bg-destructive/10 text-destructive flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">Cancelar plano de manutenção</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Encerra o plano, cancela todos os boletos pendentes e remove a manutenção desta empresa.
+                  Esta ação não pode ser desfeita.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setCancelarOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Cancelar plano
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {step === "boletos" && (
         <div className="space-y-2">
-          {boletos.map((b) => (
-            <div key={b.id} className="flex items-center justify-between gap-3 rounded-xl border p-3 bg-card">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className={cn(
-                  "h-10 w-10 shrink-0 rounded-lg flex items-center justify-center",
-                  b.status === "pago" && "bg-success/15 text-success",
-                  b.status === "aberto" && "bg-warning/15 text-warning-foreground",
-                  b.status === "futuro" && "bg-muted text-muted-foreground",
-                )}>
-                  <Receipt className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">
-                    Mensalidade {format(b.data, "MMM/yyyy", { locale: ptBR })}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Vence em {format(b.data, "dd/MM/yyyy")} · R$ {VALOR},00
-                  </p>
-                </div>
-              </div>
-              {b.status === "pago" && (
-                <Button size="sm" variant="outline" className="gap-1.5">
-                  <Download className="h-3.5 w-3.5" /> Comprovante
-                </Button>
-              )}
-              {(b.status === "aberto" || b.status === "futuro") && (
-                <Button size="sm" className="gap-1.5" onClick={() => setPagBoleto({ data: b.data })}>
-                  <Receipt className="h-3.5 w-3.5" /> Gerar Boleto
-                </Button>
-              )}
+          {carregandoBoletos && (
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando boletos…
             </div>
-          ))}
+          )}
+          {!carregandoBoletos && boletos.length === 0 && (
+            <div className="rounded-xl border p-6 text-center text-sm text-muted-foreground">
+              Nenhum boleto de manutenção encontrado.
+            </div>
+          )}
+          {!carregandoBoletos &&
+            boletos.map((b) => {
+              const valorFmt = b.valor.toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              });
+              const podeAutorizar = !isBoletoPago(b.rawStatus);
+              return (
+                <div key={b.id} className="flex items-center justify-between gap-3 rounded-xl border p-3 bg-card">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={cn(
+                        "h-10 w-10 shrink-0 rounded-lg flex items-center justify-center",
+                        b.status === "pago" && "bg-success/15 text-success",
+                        b.status === "aberto" && "bg-warning/15 text-warning-foreground",
+                        b.status === "futuro" && "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      <Receipt className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">
+                        Mensalidade {format(b.data, "MMM/yyyy", { locale: ptBR })}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Vence em {format(b.data, "dd/MM/yyyy")} · R$ {valorFmt}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {b.status === "pago" && (
+                      <Button size="sm" variant="outline" className="gap-1.5">
+                        <Download className="h-3.5 w-3.5" /> Comprovante
+                      </Button>
+                    )}
+                    {podeAutorizar && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                          disabled={autorizandoId === b.id}
+                          onClick={() => void handleAutorizar(b.id)}
+                        >
+                          {autorizandoId === b.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                          )}{" "}
+                          Autorizar
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => setPagBoleto({ data: b.data, boletoId: b.id, valor: b.valor })}
+                        >
+                          <Receipt className="h-3.5 w-3.5" /> Gerar Boleto
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
         </div>
       )}
 
@@ -610,13 +987,66 @@ function GerenciarPanel({ empresa, dia, step }: { empresa: EmpresaData; dia: num
         </ol>
       )}
 
+      <AlertDialog open={cancelarOpen} onOpenChange={setCancelarOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar plano de manutenção?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  O plano de <strong className="text-foreground">{empresa.nome}</strong> será encerrado.
+                  Todos os boletos serão cancelados e o plano será removido.
+                </p>
+                <div>
+                  <label className="text-xs font-medium text-foreground" htmlFor="motivo-cancelamento">
+                    Motivo (opcional)
+                  </label>
+                  <Textarea
+                    id="motivo-cancelamento"
+                    value={motivoCancelamento}
+                    onChange={(e) => setMotivoCancelamento(e.target.value)}
+                    placeholder="Ex.: solicitação do cliente"
+                    className="mt-1.5 min-h-[72px]"
+                  />
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelando}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={cancelando}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                void handleCancelarPlano();
+              }}
+            >
+              {cancelando ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Cancelando…
+                </>
+              ) : (
+                "Confirmar cancelamento"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <PagamentoModal
         open={!!pagBoleto}
         onOpenChange={(v) => !v && setPagBoleto(null)}
         empresa={empresa}
         descricao={pagBoleto ? `Mensalidade ${format(pagBoleto.data, "MMM/yyyy", { locale: ptBR })}` : "mensalidade"}
-        valor={VALOR}
+        valor={pagBoleto?.valor ?? valorMensal}
         vencimentoPadrao={pagBoleto ? format(pagBoleto.data, "yyyy-MM-dd") : undefined}
+        boletoId={pagBoleto?.boletoId}
+        clienteId={empresa.clienteId}
+        onPaymentGenerated={() => {
+          void carregarBoletos();
+          onPaymentGenerated?.();
+        }}
       />
     </div>
   );

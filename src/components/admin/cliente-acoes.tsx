@@ -31,12 +31,25 @@ import {
   Edit3,
   Trash2,
   Loader2,
+  StickyNote,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { readAuthToken } from "@/lib/auth-cookie";
+import { apiUrl } from "@/lib/api-config";
+import { toast } from "sonner";
 import { NIVEIS_SICAF } from "./nivel-dots";
 import type { ClienteDetalhe } from "./cliente-detalhe-modal";
+import {
+  AnaliseDetalhe,
+  AnaliseErroRelatorio,
+  type SicafAnaliseApiResult,
+} from "@/components/sicaf/SicafAnalisarProblemaModal";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { AvisosEmailModal } from "@/components/admin/avisos-email-modal";
+import { ContratosModal } from "@/components/admin/contratos-modal";
+import { fetchAdminClienteNotas, criarAdminClienteNota } from "@/lib/admin-clientes-api";
 
-type AcaoKey = "contatos" | "avisos" | "contratos" | "sicaf-manual" | "relatorio" | "historico";
+type AcaoKey = "contatos" | "avisos" | "contratos" | "sicaf-manual" | "relatorio" | "historico" | "notas";
 
 const ACOES: {
   key: AcaoKey;
@@ -94,9 +107,17 @@ const ACOES: {
     tone: "bg-slate-100 dark:bg-slate-900/40 ring-slate-200/60 dark:ring-slate-800",
     iconBg: "bg-slate-700 text-white dark:bg-slate-600",
   },
+  {
+    key: "notas",
+    titulo: "Notas internas",
+    desc: "Anotações visíveis apenas para a equipe — salvas no banco",
+    icon: StickyNote,
+    tone: "bg-yellow-50 dark:bg-yellow-950/20 ring-yellow-200/60 dark:ring-yellow-900/40",
+    iconBg: "bg-yellow-500 text-white",
+  },
 ];
 
-export function AcoesTab({ cliente }: { cliente: ClienteDetalhe }) {
+export function AcoesTab({ cliente, clienteId }: { cliente: ClienteDetalhe; clienteId?: number }) {
   const [aberta, setAberta] = useState<AcaoKey | null>(null);
 
   return (
@@ -130,11 +151,27 @@ export function AcoesTab({ cliente }: { cliente: ClienteDetalhe }) {
       </div>
 
       <ContatosModal open={aberta === "contatos"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
-      <AvisosModal open={aberta === "avisos"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
-      <ContratosModal open={aberta === "contratos"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
-      <SicafManualModal open={aberta === "sicaf-manual"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
+      <AvisosEmailModal
+        open={aberta === "avisos"}
+        onOpenChange={(v) => !v && setAberta(null)}
+        cliente={cliente}
+        clienteId={clienteId}
+      />
+      <ContratosModal
+        open={aberta === "contratos"}
+        onOpenChange={(v) => !v && setAberta(null)}
+        cliente={cliente}
+        clienteId={clienteId}
+      />
+      <SicafManualModal open={aberta === "sicaf-manual"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} clienteId={clienteId} />
       <RelatorioModal open={aberta === "relatorio"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
       <HistoricoModal open={aberta === "historico"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
+      <NotasModal
+        open={aberta === "notas"}
+        onOpenChange={(v) => !v && setAberta(null)}
+        cliente={cliente}
+        clienteId={clienteId}
+      />
     </div>
   );
 }
@@ -185,140 +222,191 @@ function ContatosModal({ open, onOpenChange, cliente }: { open: boolean; onOpenC
   );
 }
 
-/* ---------- AVISOS EMAIL ---------- */
-function AvisosModal({ open, onOpenChange, cliente }: { open: boolean; onOpenChange: (v: boolean) => void; cliente: ClienteDetalhe }) {
-  const templates = [
-    { id: "cobranca", titulo: "Cobrança pendente", desc: "Lembrete de fatura em aberto" },
-    { id: "renovacao", titulo: "Renovação SICAF", desc: "Aviso de vencimento próximo" },
-    { id: "certidao", titulo: "Certidão vencida", desc: "Solicitação de envio de documento" },
-    { id: "boas-vindas", titulo: "Boas-vindas", desc: "Cliente recém-cadastrado" },
-  ];
-  const [sel, setSel] = useState("renovacao");
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-violet-500" /> Avisos por e-mail</DialogTitle>
-          <DialogDescription>Selecione um template e envie para {cliente.email ?? "o cliente"}.</DialogDescription>
-        </DialogHeader>
-        <div className="grid grid-cols-2 gap-2">
-          {templates.map((t) => (
-            <button key={t.id} onClick={() => setSel(t.id)} className={`rounded-lg border p-3 text-left transition ${sel === t.id ? "border-violet-500 bg-violet-50/50 dark:bg-violet-950/20 ring-1 ring-violet-500/30" : "hover:bg-muted/40"}`}>
-              <p className="text-sm font-semibold">{t.titulo}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{t.desc}</p>
-            </button>
-          ))}
-        </div>
-        <Separator />
-        <div className="space-y-2">
-          <label className="text-xs font-medium">Mensagem adicional (opcional)</label>
-          <Textarea placeholder="Escreva uma observação que será incluída no e-mail..." className="min-h-[80px]" />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button className="gap-1.5"><Send className="h-4 w-4" /> Enviar e-mail</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ---------- CONTRATOS ---------- */
-function ContratosModal({ open, onOpenChange, cliente }: { open: boolean; onOpenChange: (v: boolean) => void; cliente: ClienteDetalhe }) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><FileSignature className="h-5 w-5 text-amber-500" /> Contrato digital</DialogTitle>
-          <DialogDescription>Atualize os dados do contrato vinculado a {cliente.razao}.</DialogDescription>
-        </DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Modelo de contrato">
-            <select className="w-full rounded-md border bg-background px-2 py-1.5 text-sm">
-              <option>Manutenção SICAF — Anual</option>
-              <option>Manutenção SICAF Plus</option>
-              <option>Consultoria avulsa</option>
-            </select>
-          </Field>
-          <Field label="Vigência">
-            <Input type="text" defaultValue="12 meses" />
-          </Field>
-          <Field label="Data de assinatura">
-            <Input type="date" />
-          </Field>
-          <Field label="Valor mensal (R$)">
-            <Input type="number" defaultValue={cliente.mrr || 690} />
-          </Field>
-          <Field label="Signatário (nome)" full>
-            <Input defaultValue={cliente.responsavel} />
-          </Field>
-          <Field label="E-mail do signatário" full>
-            <Input type="email" defaultValue={cliente.email ?? ""} />
-          </Field>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button variant="outline" className="gap-1.5"><Download className="h-4 w-4" /> Baixar PDF</Button>
-          <Button className="gap-1.5"><Send className="h-4 w-4" /> Enviar para assinar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /* ---------- SICAF MANUAL ---------- */
-function SicafManualModal({ open, onOpenChange, cliente }: { open: boolean; onOpenChange: (v: boolean) => void; cliente: ClienteDetalhe }) {
+function SicafManualModal({
+  open,
+  onOpenChange,
+  cliente,
+  clienteId,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  cliente: ClienteDetalhe;
+  clienteId?: number;
+}) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [processando, setProcessando] = useState(false);
-  const [concluido, setConcluido] = useState(false);
+  const [resultado, setResultado] = useState<SicafAnaliseApiResult | null>(null);
 
-  const processar = () => {
-    setProcessando(true);
-    setTimeout(() => {
-      setProcessando(false);
-      setConcluido(true);
-    }, 1800);
+  const empresaCtx =
+    clienteId != null
+      ? [{ clienteId, nome: cliente.razao, cnpj: cliente.cnpj }]
+      : [];
+
+  const resetar = () => {
+    setArquivo(null);
+    setResultado(null);
+    setProcessando(false);
   };
 
+  const processar = async () => {
+    if (!arquivo || !clienteId) {
+      toast.error("Selecione um PDF válido");
+      return;
+    }
+    if (arquivo.size > 15 * 1024 * 1024) {
+      toast.error("PDF muito grande. Máximo 15 MB.");
+      return;
+    }
+
+    setProcessando(true);
+    setResultado(null);
+    try {
+      const token = readAuthToken() || "";
+      const form = new FormData();
+      form.append("file", arquivo, arquivo.name);
+      const res = await fetch(apiUrl(`/api/clients/${clienteId}/sicaf/analisar-problema`), {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const raw = await res.text();
+      let data: SicafAnaliseApiResult = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        toast.error(raw?.slice(0, 200) || `Erro HTTP ${res.status}`);
+        return;
+      }
+
+      if (data.ok) {
+        setResultado(data);
+        toast.success(data.message || "Análise concluída e cadastro atualizado");
+      } else {
+        setResultado({
+          ...data,
+          ok: false,
+          cnpjIdentificado: data.cnpjIdentificado || data.cnpj,
+          arquivoNome: arquivo.name,
+        });
+        toast.error(data.error || "Não foi possível analisar o PDF");
+      }
+    } catch {
+      toast.error("Falha ao processar PDF");
+    } finally {
+      setProcessando(false);
+    }
+  };
+
+  const exibirUpload = !processando && !resultado;
+
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setArquivo(null); setConcluido(false); } }}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-emerald-500" /> Atualizar SICAF manual</DialogTitle>
-          <DialogDescription>Envie o PDF da Situação do Fornecedor — a IA irá atualizar os níveis de {cliente.razao} como no Assistente.</DialogDescription>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) resetar();
+      }}
+    >
+      <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
+        <DialogHeader className="shrink-0 border-b px-6 py-4">
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-emerald-500" /> Atualizar SICAF manual
+          </DialogTitle>
+          <DialogDescription>
+            Envie o PDF da Situação do Fornecedor — a IA analisa, atualiza os níveis de{" "}
+            <span className="font-medium text-foreground">{cliente.razao}</span> e exibe o relatório
+            completo como no portal do cliente.
+          </DialogDescription>
         </DialogHeader>
 
-        {!concluido ? (
-          <>
-            <label className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-emerald-300/60 bg-emerald-50/40 dark:bg-emerald-950/10 p-6 cursor-pointer hover:bg-emerald-50/70 transition">
-              <Upload className="h-7 w-7 text-emerald-500" />
-              <p className="text-sm font-medium">{arquivo ? arquivo.name : "Clique para selecionar o PDF"}</p>
-              <p className="text-xs text-muted-foreground">Apenas arquivos PDF · até 10 MB</p>
-              <input type="file" accept="application/pdf" className="hidden" onChange={(e) => setArquivo(e.target.files?.[0] ?? null)} />
-            </label>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-              <Button className="gap-1.5" disabled={!arquivo || processando} onClick={processar}>
-                {processando ? <><Loader2 className="h-4 w-4 animate-spin" /> Processando com IA...</> : <><Sparkles className="h-4 w-4" /> Analisar com IA</>}
-              </Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30 px-3 py-2 text-sm">
-              <CheckCircle2 className="h-4 w-4" /> SICAF atualizado com sucesso pela IA.
-            </div>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li>✓ Nível I — Credenciamento: validado</li>
-              <li>✓ Nível II — Habilitação Jurídica: validado</li>
-              <li>✓ Nível III — Regularidade Fiscal: validado</li>
-              <li>⚠ Nível IV — Regularidade Trabalhista: pendente</li>
-            </ul>
-            <DialogFooter>
-              <Button onClick={() => onOpenChange(false)}>Concluir</Button>
-            </DialogFooter>
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="p-6 space-y-5">
+            {exibirUpload && (
+              <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-emerald-300/60 bg-emerald-50/40 dark:bg-emerald-950/10 p-8 cursor-pointer hover:bg-emerald-50/70 transition">
+                <Upload className="h-8 w-8 text-emerald-500" />
+                <p className="text-sm font-medium">{arquivo ? arquivo.name : "Clique para selecionar o PDF"}</p>
+                <p className="text-xs text-muted-foreground">Apenas arquivos PDF · até 15 MB</p>
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    setArquivo(e.target.files?.[0] ?? null);
+                    setResultado(null);
+                  }}
+                />
+              </label>
+            )}
+
+            {processando && (
+              <div className="flex flex-col items-center justify-center py-16 gap-4 text-muted-foreground">
+                <Loader2 className="h-10 w-10 animate-spin text-emerald-600" />
+                <div className="text-center space-y-1">
+                  <p className="font-semibold text-foreground">Analisando documento...</p>
+                  <p className="text-sm">
+                    Identificando CNPJ, níveis SICAF, pendências e atualizando o cadastro
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {resultado && !resultado.ok && !processando && (
+              <AnaliseErroRelatorio
+                error={resultado.error}
+                cnpjIdentificado={resultado.cnpjIdentificado || resultado.cnpj}
+                metodoExtracao={resultado.metodoExtracao}
+                arquivoNome={resultado.arquivoNome || arquivo?.name}
+                empresas={empresaCtx}
+              />
+            )}
+
+            {resultado?.ok && resultado.analise && !processando && (
+              <AnaliseDetalhe
+                analise={resultado.analise}
+                saveWarning={resultado.saveWarning}
+                clientName={resultado.razaoSocial || cliente.razao}
+                documentoFallback={resultado.cnpj || cliente.cnpj}
+                niveisResumo={resultado.niveisResumo}
+                validacao={resultado.validacao || resultado.analise.validacao}
+              />
+            )}
           </div>
-        )}
+        </ScrollArea>
+
+        <DialogFooter className="shrink-0 border-t px-6 py-4 gap-2">
+          {resultado ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setResultado(null);
+                  setArquivo(null);
+                }}
+              >
+                {resultado.ok ? "Analisar outro PDF" : "Tentar outro PDF"}
+              </Button>
+              <Button onClick={() => onOpenChange(false)}>Concluir</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={processando}>
+                Cancelar
+              </Button>
+              <Button className="gap-1.5" disabled={!arquivo || processando || !clienteId} onClick={processar}>
+                {processando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Processando com IA...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" /> Analisar com IA
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -522,6 +610,126 @@ function Linha({ k, v }: { k: string; v: string }) {
     <p className="text-sm">
       <span className="font-semibold">{k}:</span> <span className="text-foreground/90">{v}</span>
     </p>
+  );
+}
+
+/* ---------- NOTAS ---------- */
+function NotasModal({
+  open,
+  onOpenChange,
+  cliente,
+  clienteId,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  cliente: ClienteDetalhe;
+  clienteId?: number;
+}) {
+  const [nota, setNota] = useState("");
+  const [notas, setNotas] = useState<{ id: number; autor: string; data: string; texto: string }[]>([]);
+  const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    if (!clienteId || !Number.isFinite(clienteId)) return;
+    setCarregando(true);
+    try {
+      const res = await fetchAdminClienteNotas(clienteId);
+      setNotas(res.ok && res.notas ? res.notas : []);
+    } catch {
+      toast.error("Erro ao carregar notas");
+      setNotas([]);
+    } finally {
+      setCarregando(false);
+    }
+  }, [clienteId]);
+
+  useEffect(() => {
+    if (open) void carregar();
+  }, [open, carregar]);
+
+  const salvar = async () => {
+    const texto = nota.trim();
+    if (!texto || !clienteId) return;
+    setSalvando(true);
+    try {
+      const res = await criarAdminClienteNota(clienteId, texto);
+      if (!res.ok || !res.nota) {
+        toast.error(res.error || "Não foi possível salvar a nota");
+        return;
+      }
+      setNotas((prev) => [res.nota!, ...prev]);
+      setNota("");
+      toast.success("Nota salva");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar nota");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <StickyNote className="h-5 w-5 text-yellow-500" /> Notas internas
+          </DialogTitle>
+          <DialogDescription>
+            Anotações visíveis apenas para a equipe — {cliente.razao}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex gap-2">
+          <Textarea
+            value={nota}
+            onChange={(e) => setNota(e.target.value)}
+            rows={3}
+            placeholder="Escreva uma nota visível apenas para a equipe..."
+            className="resize-none"
+            disabled={salvando}
+          />
+          <Button
+            size="sm"
+            className="gap-1.5 self-start shrink-0"
+            disabled={!nota.trim() || salvando || !clienteId}
+            onClick={() => void salvar()}
+          >
+            {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            Salvar
+          </Button>
+        </div>
+        <Separator />
+        <ScrollArea className="max-h-[320px] pr-3">
+          <div className="space-y-3">
+            {carregando && (
+              <div className="flex items-center justify-center py-8 text-sm text-muted-foreground gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> Carregando notas...
+              </div>
+            )}
+            {!carregando && notas.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                Nenhuma nota registrada para este cliente.
+              </p>
+            )}
+            {!carregando &&
+              notas.map((n) => (
+                <Card key={n.id} className="p-3">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">{n.autor}</span>
+                    <span>{n.data}</span>
+                  </div>
+                  <p className="mt-1 text-sm whitespace-pre-wrap">{n.texto}</p>
+                </Card>
+              ))}
+          </div>
+        </ScrollArea>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

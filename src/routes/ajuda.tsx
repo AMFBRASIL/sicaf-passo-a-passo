@@ -3,8 +3,11 @@ import { HelpCircle, Search, PlayCircle, Bot, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader, PageContainer } from "@/components/page-header";
 import { useState } from "react";
+import { perguntarAjuda } from "@/lib/ajuda-api";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/ajuda")({
   head: () => ({
@@ -34,16 +37,22 @@ const videos = [
 function HelpPage() {
   const [q, setQ] = useState("");
   const [resposta, setResposta] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  function ask(text: string) {
+  async function ask(text: string) {
     setQ(text);
-    setResposta(
-      `Ótimo, posso ajudar com "${text}". O primeiro passo é abrir a tela correspondente no menu lateral. Quer que eu te leve até lá? Você também pode assistir o vídeo de 2 minutos para ver tudo em prática.`,
-    );
+    setResposta(null);
+    setLoading(true);
+    const res = await perguntarAjuda(text, (partial) => setResposta(partial));
+    setLoading(false);
+    if (!res.ok) {
+      toast.error(res.error || "Não foi possível consultar o assistente");
+      setResposta("Não consegui responder agora. Tente novamente em instantes ou abra um chamado em Suporte.");
+    }
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
+    <PageContainer>
       <PageHeader
         icon={<HelpCircle className="h-5 w-5" />}
         title="Central de Ajuda Inteligente"
@@ -85,17 +94,21 @@ function HelpPage() {
         </CardContent>
       </Card>
 
-      {resposta && (
+      {(loading || resposta) && (
         <Card className="mt-4 border-primary/30 bg-gradient-to-br from-primary/5 to-card">
           <CardContent className="flex items-start gap-3 p-5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-              <Bot className="h-4 w-4" />
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
             </div>
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold">
                 Assistente CADBRASIL <Sparkles className="h-3.5 w-3.5 text-warning" />
               </div>
-              <p className="mt-1 text-sm leading-relaxed">{resposta}</p>
+              <p className="mt-1 text-sm leading-relaxed">
+                {loading && !resposta
+                  ? "Consultando a base de conhecimento CADBRASIL..."
+                  : resposta}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -124,6 +137,6 @@ function HelpPage() {
           </ul>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }

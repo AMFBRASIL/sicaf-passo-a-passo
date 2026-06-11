@@ -1,32 +1,35 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Copy, Eye, Building2, Mail, Phone, FileText, Award } from "lucide-react";
+import { toast } from "sonner";
+import {
+  criarAdminCliente,
+  fetchAdminClientes,
+  fetchAdminGrupo,
+  mapApiClientToDetalhe,
+  mapApiGroupToClienteGrupo,
+  mapNiveisFromApi,
+  isClienteApto,
+  type ApiAdminClient,
+} from "@/lib/admin-clientes-api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Search,
   Filter,
-  MoreVertical,
-  FileCheck2,
-  DollarSign,
-  Sparkles,
   Plus,
   Download,
-  Phone,
-  Mail,
-  FolderOpen,
-  Ticket,
   ShieldCheck,
-  Building2,
 } from "lucide-react";
 import {
   ClienteEmpresasModal,
@@ -37,177 +40,11 @@ import {
   type ClienteDetalhe,
 } from "@/components/admin/cliente-detalhe-modal";
 import { NovoClienteModal } from "@/components/admin/novo-cliente-modal";
-import type { NivelStatus } from "@/components/admin/nivel-dots";
+import { NivelDots } from "@/components/admin/nivel-dots";
 
 export const Route = createFileRoute("/admin/clientes")({
   component: ClientesPage,
 });
-
-type Status = "ok" | "pendente" | "vencido";
-
-const e = (
-  id: string,
-  razao: string,
-  cnpj: string,
-  cidade: string,
-  sicaf: Status,
-  niveis: Record<number, NivelStatus>,
-  extras: Partial<ClienteDetalhe> = {},
-): ClienteDetalhe => ({
-  id,
-  razao,
-  cnpj,
-  responsavel: extras.responsavel ?? "—",
-  cidade,
-  sicaf,
-  pagou: extras.pagou ?? true,
-  manutencao: extras.manutencao ?? true,
-  novo: extras.novo ?? false,
-  mrr: extras.mrr ?? 0,
-  ultimoContato: extras.ultimoContato ?? "—",
-  niveis,
-  plano: extras.plano,
-  desde: extras.desde,
-  validadeSicaf: extras.validadeSicaf,
-  email: extras.email,
-  telefone: extras.telefone,
-});
-
-const clientes: ClienteGrupo[] = [
-  {
-    id: "g1",
-    nome: "Grupo JR",
-    contatoPrincipal: "João Silva",
-    email: "joao@grupojr.com.br",
-    telefone: "(61) 99812-4422",
-    cidade: "Brasília/DF",
-    desde: "03/2023",
-    plano: "Manutenção SICAF",
-    empresas: [
-      e("g1e1", "JR Construtora EIRELI", "12.345.678/0001-90", "Brasília/DF", "vencido",
-        { 1: "validado", 2: "validado", 3: "vencido", 4: "vencido", 5: "validado", 6: "vencendo" },
-        { responsavel: "João Silva", mrr: 890, ultimoContato: "Hoje 14:22", plano: "Manutenção SICAF", desde: "03/2023", validadeSicaf: "Vencido 22/05/2026" }),
-      e("g1e2", "JR Engenharia LTDA", "12.345.678/0002-71", "Goiânia/GO", "ok",
-        { 1: "validado", 2: "validado", 3: "validado", 4: "validado", 5: "vencendo", 6: "nao_cadastrado" },
-        { responsavel: "João Silva", mrr: 690, ultimoContato: "Ontem 16:00", plano: "Essencial", desde: "07/2024" }),
-      e("g1e3", "JR Locações ME", "12.345.678/0003-52", "Brasília/DF", "pendente",
-        { 1: "validado", 2: "pendente", 3: "pendente", 4: "nao_cadastrado", 5: "nao_cadastrado", 6: "nao_cadastrado" },
-        { responsavel: "João Silva", pagou: false, manutencao: false, mrr: 0, novo: true, ultimoContato: "3 dias" }),
-    ],
-  },
-  {
-    id: "g2",
-    nome: "Maria Souza Holdings",
-    contatoPrincipal: "Maria Souza",
-    email: "maria@holdings.com.br",
-    telefone: "(61) 99100-3344",
-    cidade: "Taguatinga/DF",
-    desde: "05/2026",
-    plano: "Onboarding",
-    empresas: [
-      e("g2e1", "Nova Filial Brasília LTDA", "98.765.432/0001-10", "Taguatinga/DF", "pendente",
-        { 1: "validado", 2: "pendente", 3: "pendente", 4: "nao_cadastrado", 5: "nao_cadastrado", 6: "nao_cadastrado" },
-        { responsavel: "Maria Souza", pagou: false, manutencao: false, mrr: 0, novo: true, ultimoContato: "Ontem 09:10" }),
-    ],
-  },
-  {
-    id: "g3",
-    nome: "Engemax",
-    contatoPrincipal: "Carlos Lima",
-    email: "carlos@engemax.com.br",
-    telefone: "(62) 98800-1122",
-    cidade: "Goiânia/GO",
-    desde: "11/2022",
-    plano: "Manutenção SICAF Plus",
-    empresas: [
-      e("g3e1", "Engemax Serviços", "55.111.222/0001-44", "Goiânia/GO", "pendente",
-        { 1: "validado", 2: "validado", 3: "validado", 4: "vencendo", 5: "pendente", 6: "nao_cadastrado" },
-        { responsavel: "Carlos Lima", mrr: 1290, ultimoContato: "2 dias", plano: "Plus", desde: "11/2022" }),
-      e("g3e2", "Engemax Filial Anápolis", "55.111.222/0002-25", "Anápolis/GO", "ok",
-        { 1: "validado", 2: "validado", 3: "validado", 4: "validado", 5: "validado", 6: "validado" },
-        { responsavel: "Carlos Lima", mrr: 690, ultimoContato: "5 dias", plano: "Essencial", desde: "01/2024" }),
-    ],
-  },
-  {
-    id: "g4",
-    nome: "Pavimar Obras",
-    contatoPrincipal: "Ana Paula",
-    cidade: "Anápolis/GO",
-    desde: "08/2024",
-    empresas: [
-      e("g4e1", "Pavimar Obras", "33.444.555/0001-77", "Anápolis/GO", "ok",
-        { 1: "validado", 2: "validado", 3: "validado", 4: "validado", 5: "validado", 6: "nao_cadastrado" },
-        { responsavel: "Ana Paula", mrr: 590, ultimoContato: "1 semana", plano: "Essencial", desde: "08/2024" }),
-    ],
-  },
-  {
-    id: "g5",
-    nome: "Construtora Aurora",
-    contatoPrincipal: "Pedro Henrique",
-    cidade: "Brasília/DF",
-    desde: "02/2021",
-    plano: "Premium",
-    empresas: [
-      e("g5e1", "Construtora Aurora", "22.333.444/0001-88", "Brasília/DF", "ok",
-        { 1: "validado", 2: "validado", 3: "validado", 4: "validado", 5: "validado", 6: "validado" },
-        { responsavel: "Pedro Henrique", mrr: 1490, ultimoContato: "Hoje 11:05", plano: "Premium", desde: "02/2021" }),
-      e("g5e2", "Aurora Incorporadora", "22.333.444/0002-69", "Brasília/DF", "ok",
-        { 1: "validado", 2: "validado", 3: "validado", 4: "validado", 5: "vencendo", 6: "validado" },
-        { responsavel: "Pedro Henrique", mrr: 990, ultimoContato: "Hoje 11:05", plano: "Premium", desde: "06/2022" }),
-    ],
-  },
-  {
-    id: "g6",
-    nome: "MEI José Roberto",
-    contatoPrincipal: "José Roberto",
-    cidade: "Luziânia/GO",
-    empresas: [
-      e("g6e1", "MEI José Roberto", "44.555.666/0001-22", "Luziânia/GO", "vencido",
-        { 1: "vencido", 2: "vencido", 3: "nao_cadastrado", 4: "nao_cadastrado", 5: "nao_cadastrado", 6: "nao_cadastrado" },
-        { responsavel: "José Roberto", pagou: false, manutencao: false, novo: true, ultimoContato: "3 dias" }),
-    ],
-  },
-  {
-    id: "g7",
-    nome: "Solar Brasil Energia",
-    contatoPrincipal: "Larissa Mendes",
-    cidade: "Brasília/DF",
-    desde: "07/2022",
-    plano: "Premium",
-    empresas: [
-      e("g7e1", "Solar Brasil Energia", "77.888.999/0001-11", "Brasília/DF", "ok",
-        { 1: "validado", 2: "validado", 3: "validado", 4: "validado", 5: "validado", 6: "vencendo" },
-        { responsavel: "Larissa Mendes", mrr: 2100, ultimoContato: "Hoje 16:40", plano: "Premium", desde: "07/2022" }),
-    ],
-  },
-  {
-    id: "g8",
-    nome: "TecnoLimp",
-    contatoPrincipal: "Rafael Costa",
-    cidade: "Águas Claras/DF",
-    desde: "04/2026",
-    plano: "Essencial",
-    empresas: [
-      e("g8e1", "TecnoLimp Servicos", "11.222.333/0001-55", "Águas Claras/DF", "pendente",
-        { 1: "validado", 2: "validado", 3: "pendente", 4: "pendente", 5: "nao_cadastrado", 6: "nao_cadastrado" },
-        { responsavel: "Rafael Costa", mrr: 690, novo: true, ultimoContato: "Ontem 17:30", plano: "Essencial", desde: "04/2026" }),
-    ],
-  },
-];
-
-const sicafBadge: Record<Status, { txt: string; cls: string }> = {
-  ok: { txt: "🟢 OK", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20" },
-  pendente: { txt: "🟡 Pendente", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/20" },
-  vencido: { txt: "🔴 Vencido", cls: "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/20" },
-};
-
-const ordemSicaf: Record<Status, number> = { vencido: 0, pendente: 1, ok: 2 };
-function piorSicaf(grupo: ClienteGrupo): Status {
-  return grupo.empresas.reduce<Status>(
-    (acc, emp) => (ordemSicaf[emp.sicaf] < ordemSicaf[acc] ? emp.sicaf : acc),
-    "ok",
-  );
-}
 
 type FiltroKey =
   | "todos"
@@ -216,66 +53,303 @@ type FiltroKey =
   | "pagou"
   | "nao_pagou"
   | "manutencao"
-  | "novo";
+  | "novo"
+  | "apto"
+  | "inapto";
 
 const filtros: { key: FiltroKey; label: string }[] = [
   { key: "todos", label: "Todos" },
-  { key: "sicaf_ok", label: "SICAF OK" },
-  { key: "sicaf_pendente", label: "SICAF Pendente" },
-  { key: "pagou", label: "Em dia" },
-  { key: "nao_pagou", label: "Inadimplentes" },
+  { key: "sicaf_ok", label: "SICAF Ativo" },
+  { key: "sicaf_pendente", label: "SICAF Inativo" },
+  { key: "pagou", label: "SICAF Pago" },
+  { key: "nao_pagou", label: "SICAF Não pago" },
+  { key: "apto", label: "APTO" },
+  { key: "inapto", label: "INAPTO" },
   { key: "manutencao", label: "Em manutenção" },
   { key: "novo", label: "Cliente novo" },
 ];
 
+function formatCadastroDateTime(raw?: string | null) {
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function statusClienteCls(status?: string) {
+  switch (status) {
+    case "Ativo":
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20";
+    case "Pendente":
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/20";
+    case "Inativo":
+      return "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/20";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+function truncateEmpresa(nome: string, max = 42) {
+  if (nome.length <= max) return nome;
+  return `${nome.slice(0, max).trim()}…`;
+}
+
+function ClienteBadges({
+  c,
+  apto,
+  sicafAtivo,
+  compact = false,
+}: {
+  c: ApiAdminClient;
+  apto: boolean;
+  sicafAtivo: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "" : "justify-center"}`}>
+      <Badge variant="outline" className={`rounded-full text-[10px] ${statusClienteCls(c.status)}`}>
+        {c.status || "—"}
+      </Badge>
+      <Badge
+        variant="outline"
+        className={`rounded-full text-[10px] ${
+          sicafAtivo
+            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20"
+            : "bg-slate-500/10 text-slate-600 dark:text-slate-300 ring-1 ring-slate-500/20"
+        }`}
+      >
+        {sicafAtivo ? "SICAF Ativo" : "SICAF Inativo"}
+      </Badge>
+      <Badge
+        variant="outline"
+        className={`rounded-full text-[10px] ${
+          c.sicafPago
+            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20"
+            : "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/20"
+        }`}
+      >
+        {c.sicafPago ? "Pago" : "Não pago"}
+      </Badge>
+      <Badge
+        variant="outline"
+        className={`rounded-full text-[10px] font-semibold ${
+          apto
+            ? "bg-emerald-600 text-white ring-1 ring-emerald-600/30"
+            : "bg-red-600 text-white ring-1 ring-red-600/30"
+        }`}
+      >
+        {apto ? "APTO" : "INAPTO"}
+      </Badge>
+    </div>
+  );
+}
+
+function ClienteMobileCard({
+  c,
+  onOpen,
+}: {
+  c: ApiAdminClient;
+  onOpen: () => void;
+}) {
+  const niveis = mapNiveisFromApi(c.sicafNiveis);
+  const apto = isClienteApto(niveis);
+  const sicafAtivo = c.sicafAtivo ?? (c.sicafStatus === "Ativo" || c.sicafStatus === "Vencendo");
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full rounded-lg border border-border/60 bg-card p-3 text-left transition hover:bg-muted/40 active:bg-muted/60"
+    >
+      <div className="flex items-start gap-2.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+          <Building2 className="h-4 w-4 text-primary" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm font-medium leading-snug" title={c.name}>
+            {c.name}
+          </p>
+          {c.createdAt && (
+            <p className="mt-0.5 text-[10px] text-muted-foreground">
+              Cadastro: {formatCadastroDateTime(c.createdAt)}
+            </p>
+          )}
+        </div>
+        <Eye className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+      </div>
+
+      <div className="mt-2 flex items-center gap-1.5">
+        <span className="font-mono text-[11px] font-bold">{c.documento}</span>
+        <button
+          type="button"
+          className="rounded p-0.5 hover:bg-muted"
+          title="Copiar documento"
+          onClick={(e) => {
+            e.stopPropagation();
+            void navigator.clipboard.writeText(c.documento.replace(/\D/g, ""));
+            toast.success("Documento copiado");
+          }}
+        >
+          <Copy className="h-3 w-3 text-muted-foreground" />
+        </button>
+      </div>
+
+      {(c.email || c.phone) && (
+        <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+          {c.email && (
+            <div className="flex items-center gap-1 min-w-0">
+              <Mail className="h-3 w-3 shrink-0" />
+              <span className="truncate">{c.email}</span>
+            </div>
+          )}
+          {c.phone && (
+            <div className="flex items-center gap-1">
+              <Phone className="h-3 w-3 shrink-0" />
+              <span>{c.phone}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-2.5">
+        <ClienteBadges c={c} apto={apto} sicafAtivo={sicafAtivo} compact />
+      </div>
+
+      <div className="mt-2.5 -mx-1 overflow-x-auto pb-1" onClick={(e) => e.stopPropagation()}>
+        <NivelDots niveis={niveis} size="sm" />
+      </div>
+
+      <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          <FileText className="h-3 w-3" /> {c.activeBids ?? 0} lic.
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Award className="h-3 w-3" /> {c.certificates ?? 0} cert.
+        </span>
+      </div>
+    </button>
+  );
+}
+
 function ClientesPage() {
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<FiltroKey>("todos");
+  const [page, setPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   const [grupoSel, setGrupoSel] = useState<ClienteGrupo | null>(null);
   const [empresaSel, setEmpresaSel] = useState<ClienteDetalhe | null>(null);
   const [openEmpresas, setOpenEmpresas] = useState(false);
   const [openDetalhe, setOpenDetalhe] = useState(false);
   const [openNovo, setOpenNovo] = useState(false);
+  const [empresas, setEmpresas] = useState<ApiAdminClient[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [stats, setStats] = useState({ totalClientes: 0, totalCnpjs: 0, emRisco: 0, mrr: 0 });
+  const [loading, setLoading] = useState(true);
+  const abrindoDetalheRef = useRef(false);
+
+  const sicafApiParam = useMemo(() => {
+    if (filtro === "sicaf_ok") return "ok";
+    if (filtro === "sicaf_pendente") return "pending";
+    return "all";
+  }, [filtro]);
+
+  const carregar = useCallback(async (search = "", p = page, limit = itemsPerPage) => {
+    setLoading(true);
+    const res = await fetchAdminClientes({
+      search,
+      page: p,
+      limit,
+      sicaf: sicafApiParam,
+    });
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao carregar clientes");
+      setLoading(false);
+      return;
+    }
+    setEmpresas(res.clients || []);
+    setTotal(res.total ?? res.clients?.length ?? 0);
+    setTotalPages(res.totalPages ?? 1);
+    if (res.stats) setStats(res.stats);
+    setLoading(false);
+  }, [page, itemsPerPage, sicafApiParam]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void carregar(q, page, itemsPerPage);
+    }, q ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [q, page, itemsPerPage, carregar]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [q, filtro, itemsPerPage]);
 
   const lista = useMemo(() => {
-    return clientes.filter((g) => {
-      const matchQ =
-        !q ||
-        g.nome.toLowerCase().includes(q.toLowerCase()) ||
-        g.contatoPrincipal.toLowerCase().includes(q.toLowerCase()) ||
-        g.empresas.some((e) => e.cnpj.includes(q) || e.razao.toLowerCase().includes(q.toLowerCase()));
-      if (!matchQ) return false;
-      const sicaf = piorSicaf(g);
-      const algumPagou = g.empresas.some((e) => e.pagou);
-      const algumNaoPagou = g.empresas.some((e) => !e.pagou);
-      const temManutencao = g.empresas.some((e) => e.manutencao);
-      const novo = g.empresas.some((e) => e.novo);
+    return empresas.filter((c) => {
+      const niveis = mapNiveisFromApi(c.sicafNiveis);
+      const apto = isClienteApto(niveis);
       switch (filtro) {
-        case "sicaf_ok": return sicaf === "ok";
-        case "sicaf_pendente": return sicaf !== "ok";
-        case "pagou": return algumPagou && !algumNaoPagou;
-        case "nao_pagou": return algumNaoPagou;
-        case "manutencao": return temManutencao;
-        case "novo": return novo;
-        default: return true;
+        case "pagou":
+          return !!c.sicafPago;
+        case "nao_pagou":
+          return !c.sicafPago;
+        case "manutencao":
+          return !!c.manutencaoAtiva;
+        case "novo":
+          return !!c.novo;
+        case "apto":
+          return apto;
+        case "inapto":
+          return !apto;
+        default:
+          return true;
       }
     });
-  }, [q, filtro]);
+  }, [empresas, filtro]);
 
-  const total = clientes.length;
-  const totalCnpjs = clientes.reduce((s, g) => s + g.empresas.length, 0);
-  const risco = clientes.filter((g) => piorSicaf(g) === "vencido" || g.empresas.some((e) => !e.pagou)).length;
-  const mrr = clientes.reduce((s, g) => s + g.empresas.reduce((a, e) => a + e.mrr, 0), 0);
+  const startIndex = total > 0 ? (page - 1) * itemsPerPage + 1 : 0;
+  const endIndex = Math.min(page * itemsPerPage, total);
 
-  const abrirGrupo = (g: ClienteGrupo) => {
-    setGrupoSel(g);
+  const { totalClientes: totalGrupos, totalCnpjs, emRisco: risco, mrr } = stats;
+
+  const abrirGrupoDoCliente = async (c: ApiAdminClient) => {
+    setOpenDetalhe(false);
+    setEmpresaSel(null);
+
+    if (c.userId) {
+      const res = await fetchAdminGrupo({ grupoId: `u-${c.userId}` });
+      if (res.ok && res.grupo) {
+        setGrupoSel(mapApiGroupToClienteGrupo(res.grupo));
+        setOpenEmpresas(true);
+        return;
+      }
+    }
+
+    const niveis = mapNiveisFromApi(c.sicafNiveis);
+    const detalhe = mapApiClientToDetalhe(c, { niveis });
+    setGrupoSel({
+      id: c.userId ? `u-${c.userId}` : `c-${c.id}`,
+      nome: c.usuarioNome || c.name,
+      contatoPrincipal: c.usuarioNome || c.name,
+      email: c.email,
+      telefone: c.phone,
+      empresas: [detalhe],
+    });
     setOpenEmpresas(true);
   };
 
-  const abrirEmpresa = (emp: ClienteDetalhe) => {
+  const abrirDetalheEmpresa = (emp: ClienteDetalhe) => {
+    abrindoDetalheRef.current = true;
     setEmpresaSel(emp);
-    setOpenEmpresas(false);
     setOpenDetalhe(true);
+    setOpenEmpresas(false);
   };
 
   return (
@@ -284,7 +358,7 @@ function ClientesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Gestão de Clientes</h1>
           <p className="text-sm text-muted-foreground">
-            Cada cliente pode ter múltiplos CNPJs. Clique para ver as empresas vinculadas.
+            Listagem por CNPJ com níveis SICAF, situação de pagamento e APTO/INAPTO.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -298,20 +372,20 @@ function ClientesPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MiniKpi label="Clientes" value={total.toString()} hint="grupos cadastrados" />
-        <MiniKpi label="CNPJs vinculados" value={totalCnpjs.toString()} hint="empresas no portfólio" tone="emerald" />
+        <MiniKpi label="Grupos" value={totalGrupos.toString()} hint="logins cadastrados" />
+        <MiniKpi label="CNPJs" value={totalCnpjs.toString()} hint="empresas no portfólio" tone="emerald" />
         <MiniKpi label="Em risco" value={risco.toString()} hint="inadimplência ou SICAF vencido" tone="rose" />
         <MiniKpi label="MRR estimado" value={`R$ ${mrr.toLocaleString("pt-BR")}`} hint="receita recorrente mensal" tone="violet" />
       </div>
 
-      <Card className="mt-5 p-4">
+      <Card className="mt-5 overflow-hidden p-3 sm:p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[240px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar por cliente, contato, CNPJ ou razão social..."
+              placeholder="Buscar por CNPJ, e-mail, nome ou razão social..."
               className="pl-8"
             />
           </div>
@@ -325,7 +399,10 @@ function ClientesPage() {
                 variant={filtro === f.key ? "default" : "outline"}
                 size="sm"
                 className="h-7 text-xs"
-                onClick={() => setFiltro(f.key)}
+                onClick={() => {
+                  setFiltro(f.key);
+                  setPage(1);
+                }}
               >
                 {f.label}
               </Button>
@@ -333,106 +410,279 @@ function ClientesPage() {
           </div>
         </div>
 
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="mt-4 flex flex-col gap-2 border-b pb-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-xs sm:text-sm">
+            {loading ? (
+              "Carregando..."
+            ) : (
+              <>
+                Exibindo <span className="font-semibold text-foreground">{total > 0 ? startIndex : 0}</span> a{" "}
+                <span className="font-semibold text-foreground">{endIndex}</span> de{" "}
+                <span className="font-semibold text-foreground">{total.toLocaleString("pt-BR")}</span> empresas
+                {lista.length !== empresas.length && (
+                  <span className="ml-1">({lista.length} nesta página após filtro)</span>
+                )}
+              </>
+            )}
+          </span>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="items-per-page" className="text-xs">
+              Itens por página:
+            </Label>
+            <Select
+              value={String(itemsPerPage)}
+              onValueChange={(v) => {
+                setItemsPerPage(parseInt(v, 10));
+                setPage(1);
+              }}
+            >
+              <SelectTrigger id="items-per-page" className="h-8 w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Mobile — cards */}
+        <div className="mt-3 space-y-2 md:hidden">
+          {loading && (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 inline h-5 w-5 animate-spin" />
+              Carregando clientes...
+            </div>
+          )}
+          {!loading &&
+            lista.map((c) => (
+              <ClienteMobileCard key={c.id} c={c} onOpen={() => void abrirGrupoDoCliente(c)} />
+            ))}
+          {!loading && lista.length === 0 && (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              Nenhuma empresa encontrada com esses filtros.
+            </p>
+          )}
+        </div>
+
+        {/* Tablet/Desktop — tabela compacta */}
+        <div className="mt-2 hidden overflow-x-auto md:block">
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "128px" }} />
+              <col style={{ width: "132px" }} />
+              <col style={{ width: "52px" }} />
+              <col style={{ width: "52px" }} />
+              <col style={{ width: "64px" }} />
+              <col style={{ width: "60px" }} />
+              <col style={{ width: "64px" }} />
+              <col style={{ width: "60px" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "40px" }} />
+            </colgroup>
             <thead>
-              <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="px-3 py-2 font-medium">Cliente</th>
-                <th className="px-3 py-2 font-medium">CNPJs</th>
-                <th className="px-3 py-2 font-medium">Pior SICAF</th>
-                <th className="px-3 py-2 font-medium">Contato</th>
-                <th className="px-3 py-2 font-medium text-right">MRR total</th>
-                <th className="px-3 py-2"></th>
+              <tr className="border-b text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="px-2 py-2 font-medium">Empresa</th>
+                <th className="px-2 py-2 font-medium">CNPJ</th>
+                <th className="hidden px-2 py-2 font-medium lg:table-cell">Contato</th>
+                <th className="hidden px-2 py-2 text-center font-medium xl:table-cell">Lic.</th>
+                <th className="hidden px-2 py-2 text-center font-medium xl:table-cell">Cert.</th>
+                <th className="px-1 py-2 text-center font-medium">Status</th>
+                <th className="px-1 py-2 text-center font-medium">SICAF</th>
+                <th className="px-1 py-2 text-center font-medium">Pago</th>
+                <th className="px-1 py-2 text-center font-medium">APTO</th>
+                <th className="px-2 py-2 text-center font-medium">Níveis</th>
+                <th className="px-1 py-2 text-center font-medium"></th>
               </tr>
             </thead>
             <tbody>
-              {lista.map((g) => {
-                const pior = piorSicaf(g);
-                const mrrG = g.empresas.reduce((s, e) => s + e.mrr, 0);
-                return (
-                  <tr
-                    key={g.id}
-                    onClick={() => abrirGrupo(g)}
-                    className="cursor-pointer border-b border-border/40 transition hover:bg-muted/40"
-                  >
-                    <td className="px-3 py-3">
-                      <div className="font-medium">{g.nome}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {g.contatoPrincipal}
-                        {g.cidade ? ` · ${g.cidade}` : ""}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-[11px] font-bold text-primary">
-                          {g.empresas.length}
-                        </span>
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Building2 className="h-3 w-3" />
-                          {g.empresas.length === 1 ? "empresa" : "empresas"}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${sicafBadge[pior].cls}`}>
-                        {sicafBadge[pior].txt}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {g.telefone ?? "—"}
-                    </td>
-                    <td className="px-3 py-3 text-right font-medium">
-                      {mrrG ? `R$ ${mrrG.toLocaleString("pt-BR")}` : "—"}
-                    </td>
-                    <td className="px-3 py-3 text-right" onClick={(ev) => ev.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuLabel className="text-xs">Ações rápidas</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => abrirGrupo(g)}>
-                            <Sparkles className="mr-2 h-4 w-4" /> Ver empresas
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link to="/admin/suporte"><Ticket className="mr-2 h-4 w-4" /> Abrir suporte</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link to="/admin/financeiro"><DollarSign className="mr-2 h-4 w-4" /> Abrir financeiro</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link to="/admin/documentos"><FolderOpen className="mr-2 h-4 w-4" /> Abrir documentos</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link to="/admin/sicaf"><FileCheck2 className="mr-2 h-4 w-4" /> Abrir SICAF</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem><Phone className="mr-2 h-4 w-4" /> Ligar</DropdownMenuItem>
-                          <DropdownMenuItem><Mail className="mr-2 h-4 w-4" /> Enviar e-mail</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
-                );
-              })}
-              {lista.length === 0 && (
+              {loading && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-sm text-muted-foreground">
-                    Nenhum cliente encontrado com esses filtros.
+                  <td colSpan={11} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 inline h-5 w-5 animate-spin" />
+                    Carregando clientes...
+                  </td>
+                </tr>
+              )}
+              {!loading &&
+                lista.map((c) => {
+                  const niveis = mapNiveisFromApi(c.sicafNiveis);
+                  const apto = isClienteApto(niveis);
+                  const sicafAtivo =
+                    c.sicafAtivo ?? (c.sicafStatus === "Ativo" || c.sicafStatus === "Vencendo");
+                  return (
+                    <tr
+                      key={c.id}
+                      onClick={() => void abrirGrupoDoCliente(c)}
+                      className="cursor-pointer border-b border-border/40 transition hover:bg-muted/40"
+                    >
+                      <td className="max-w-0 px-2 py-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
+                            <Building2 className="h-3.5 w-3.5 text-primary" />
+                          </div>
+                          <div className="min-w-0 overflow-hidden">
+                            <div className="truncate text-xs font-medium leading-tight" title={c.name}>
+                              {truncateEmpresa(c.name, 36)}
+                            </div>
+                            {c.createdAt && (
+                              <div className="truncate text-[10px] text-muted-foreground">
+                                {formatCadastroDateTime(c.createdAt)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2.5">
+                        <div className="flex items-center gap-0.5">
+                          <span className="truncate font-mono text-[10px] font-bold" title={c.documento}>
+                            {c.documento}
+                          </span>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded p-0.5 hover:bg-muted"
+                            title="Copiar documento"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(c.documento.replace(/\D/g, ""));
+                              toast.success("Documento copiado");
+                            }}
+                          >
+                            <Copy className="h-3 w-3 text-muted-foreground" />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="hidden max-w-0 px-2 py-2.5 lg:table-cell">
+                        <div className="space-y-0.5 overflow-hidden">
+                          {c.email && (
+                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <Mail className="h-3 w-3 shrink-0" />
+                              <span className="truncate" title={c.email}>
+                                {c.email}
+                              </span>
+                            </div>
+                          )}
+                          {c.phone && (
+                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <Phone className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{c.phone}</span>
+                            </div>
+                          )}
+                          {!c.email && !c.phone && (
+                            <span className="text-[10px] text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="hidden px-2 py-2.5 text-center xl:table-cell">
+                        <span className="text-xs font-medium">{c.activeBids ?? 0}</span>
+                      </td>
+                      <td className="hidden px-2 py-2.5 text-center xl:table-cell">
+                        <span className="text-xs font-medium">{c.certificates ?? 0}</span>
+                      </td>
+                      <td className="px-1 py-2.5 text-center">
+                        <Badge
+                          variant="outline"
+                          className={`rounded-full px-1.5 py-0 text-[9px] ${statusClienteCls(c.status)}`}
+                        >
+                          {(c.status || "—").slice(0, 4)}
+                        </Badge>
+                      </td>
+                      <td className="px-1 py-2.5 text-center">
+                        <Badge
+                          variant="outline"
+                          className={`rounded-full px-1.5 py-0 text-[9px] ${
+                            sicafAtivo
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              : "bg-slate-500/10 text-slate-600 dark:text-slate-300"
+                          }`}
+                        >
+                          {sicafAtivo ? "Ativo" : "Inat."}
+                        </Badge>
+                      </td>
+                      <td className="px-1 py-2.5 text-center">
+                        <Badge
+                          variant="outline"
+                          className={`rounded-full px-1.5 py-0 text-[9px] ${
+                            c.sicafPago
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              : "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                          }`}
+                        >
+                          {c.sicafPago ? "Sim" : "Não"}
+                        </Badge>
+                      </td>
+                      <td className="px-1 py-2.5 text-center">
+                        <Badge
+                          variant="outline"
+                          className={`rounded-full px-1.5 py-0 text-[9px] font-semibold ${
+                            apto ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+                          }`}
+                        >
+                          {apto ? "APTO" : "INAP."}
+                        </Badge>
+                      </td>
+                      <td className="px-1 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-center overflow-x-auto">
+                          <NivelDots niveis={niveis} size="sm" />
+                        </div>
+                      </td>
+                      <td className="px-1 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => void abrirGrupoDoCliente(c)}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              {!loading && lista.length === 0 && (
+                <tr>
+                  <td colSpan={11} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                    Nenhuma empresa encontrada com esses filtros.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Página {page} de {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Próxima
+            </Button>
+          </div>
+        )}
+
         <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-          <span>{lista.length} de {clientes.length} clientes</span>
+          <span>{lista.length} exibidas nesta página</span>
           <div className="flex items-center gap-1">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-            Dados sincronizados com Lovable Cloud (mock)
+            Dados sincronizados com cadbrasilv2
           </div>
         </div>
       </Card>
@@ -440,23 +690,61 @@ function ClientesPage() {
       <ClienteEmpresasModal
         cliente={grupoSel}
         open={openEmpresas}
-        onOpenChange={setOpenEmpresas}
-        onSelectEmpresa={abrirEmpresa}
+        onOpenChange={(v) => {
+          setOpenEmpresas(v);
+          if (!v) {
+            if (abrindoDetalheRef.current) {
+              abrindoDetalheRef.current = false;
+              return;
+            }
+            setGrupoSel(null);
+            setEmpresaSel(null);
+          }
+        }}
+        onSelectEmpresa={abrirDetalheEmpresa}
       />
       <ClienteDetalheModal
         cliente={empresaSel}
+        grupoEmpresas={grupoSel?.empresas}
         open={openDetalhe}
         onOpenChange={(v) => {
           setOpenDetalhe(v);
           if (!v && grupoSel) setOpenEmpresas(true);
         }}
+        onSelectEmpresa={abrirDetalheEmpresa}
+        onVerTodasEmpresas={() => {
+          setOpenDetalhe(false);
+          if (grupoSel) setOpenEmpresas(true);
+        }}
+        onUpdated={() => void carregar(q, page, itemsPerPage)}
       />
-      <NovoClienteModal open={openNovo} onOpenChange={setOpenNovo} />
+      <NovoClienteModal
+        open={openNovo}
+        onOpenChange={setOpenNovo}
+        onCriar={async (data) => {
+          const res = await criarAdminCliente(data);
+          if (!res.ok) {
+            toast.error(res.error || "Erro ao criar cliente");
+            throw new Error(res.error);
+          }
+          await carregar(q, page, itemsPerPage);
+        }}
+      />
     </div>
   );
 }
 
-function MiniKpi({ label, value, hint, tone = "default" }: { label: string; value: string; hint?: string; tone?: "default" | "emerald" | "rose" | "violet" }) {
+function MiniKpi({
+  label,
+  value,
+  hint,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "default" | "emerald" | "rose" | "violet";
+}) {
   const tones: Record<string, string> = {
     default: "text-foreground",
     emerald: "text-emerald-600 dark:text-emerald-400",

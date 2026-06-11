@@ -1,8 +1,22 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
+
+export const PAGE_CONTAINER_CLASS =
+  "w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 sm:py-10";
+
+export function PageContainer({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={cn(PAGE_CONTAINER_CLASS, className)}>{children}</div>;
+}
 
 interface PageHeaderProps {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   icon?: ReactNode;
   action?: ReactNode;
 }
@@ -18,7 +32,9 @@ export function PageHeader({ title, subtitle, icon, action }: PageHeaderProps) {
         )}
         <div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
-          {subtitle && <p className="mt-1 text-sm text-muted-foreground sm:text-base">{subtitle}</p>}
+          {subtitle && (
+            <div className="mt-1 text-sm text-muted-foreground sm:text-base">{subtitle}</div>
+          )}
         </div>
       </div>
       {action}

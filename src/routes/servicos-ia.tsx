@@ -28,8 +28,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader, PageContainer } from "@/components/page-header";
 import { cn } from "@/lib/utils";
+import { executarModuloIA, type ResultadoIA } from "@/lib/servicos-ia-api";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/servicos-ia")({
   head: () => ({
@@ -267,7 +269,7 @@ function ServicosIAPage() {
   const [active, setActive] = useState<Modulo | null>(null);
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+    <PageContainer>
       <PageHeader
         icon={<Sparkles className="h-5 w-5" />}
         title="Serviços com IA"
@@ -306,7 +308,7 @@ function ServicosIAPage() {
       </div>
 
       <WizardDialog modulo={active} onClose={() => setActive(null)} />
-    </div>
+    </PageContainer>
   );
 }
 
@@ -330,8 +332,16 @@ function WizardDialog({ modulo, onClose }: { modulo: Modulo | null; onClose: () 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [textoLivre, setTextoLivre] = useState("");
   const [iaProgress, setIaProgress] = useState(0);
+  const [resultado, setResultado] = useState<ResultadoIA | null>(null);
+  const [processando, setProcessando] = useState(false);
 
   const step = STEPS[stepIndex];
+  const exibicao = resultado ?? {
+    titulo: modulo?.resultadoTitulo ?? "",
+    resumo: modulo?.resultadoResumo ?? "",
+    metricas: modulo?.metricas ?? [],
+    pontos: modulo?.pontos ?? [],
+  };
 
   // Reset on open
   useEffect(() => {
@@ -342,42 +352,47 @@ function WizardDialog({ modulo, onClose }: { modulo: Modulo | null; onClose: () 
       setUploadProgress(0);
       setTextoLivre("");
       setIaProgress(0);
+      setResultado(null);
+      setProcessando(false);
     }
   }, [modulo?.id]);
 
-  // Simulate upload
   useEffect(() => {
-    if (!arquivo) return;
-    setUploadProgress(0);
-    const t = setInterval(() => {
-      setUploadProgress((p) => {
-        if (p >= 100) {
-          clearInterval(t);
-          return 100;
-        }
-        return Math.min(100, p + 8 + Math.random() * 12);
-      });
-    }, 180);
-    return () => clearInterval(t);
+    if (arquivo) setUploadProgress(100);
+    else setUploadProgress(0);
   }, [arquivo]);
 
-  // Simulate IA processing
   useEffect(() => {
-    if (step?.key !== "processando") return;
-    setIaProgress(0);
-    const t = setInterval(() => {
-      setIaProgress((p) => {
-        const next = p + 4 + Math.random() * 6;
-        if (next >= 100) {
-          clearInterval(t);
-          setTimeout(() => setStepIndex((i) => Math.min(STEPS.length - 1, i + 1)), 400);
-          return 100;
-        }
-        return next;
+    if (step?.key !== "processando" || !modulo || processando) return;
+    let cancelled = false;
+
+    void (async () => {
+      setProcessando(true);
+      setIaProgress(5);
+      const res = await executarModuloIA(modulo.id, {
+        objetivo: objetivo || "geral",
+        arquivo,
+        textoLivre,
+        onProgress: (pct) => {
+          if (!cancelled) setIaProgress(pct);
+        },
       });
-    }, 200);
-    return () => clearInterval(t);
-  }, [step?.key]);
+      if (cancelled) return;
+      setProcessando(false);
+      if (!res.ok || !res.resultado) {
+        toast.error(res.error || "Não foi possível concluir a análise");
+        setStepIndex(2);
+        return;
+      }
+      setResultado(res.resultado);
+      setIaProgress(100);
+      setTimeout(() => setStepIndex((i) => Math.min(STEPS.length - 1, i + 1)), 300);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step?.key, modulo?.id]);
 
   const progresso = useMemo(
     () => Math.round(((stepIndex + (step?.key === "resultado" ? 1 : 0)) / STEPS.length) * 100),
@@ -386,13 +401,23 @@ function WizardDialog({ modulo, onClose }: { modulo: Modulo | null; onClose: () 
 
   if (!modulo) return null;
 
+  const documentoOk = (() => {
+    if (modulo.id === "edital" || modulo.id === "preco" || modulo.id === "impugnacao") {
+      return !!arquivo || textoLivre.trim().length > 0;
+    }
+    if (modulo.id === "assistente") return textoLivre.trim().length > 10;
+    return uploadProgress === 100 || textoLivre.trim().length > 0 || modulo.id === "match" || modulo.id === "situacao";
+  })();
+
   const podeAvancar =
     (step.key === "objetivo" && !!objetivo) ||
-    (step.key === "documento" && (uploadProgress === 100 || textoLivre.trim().length > 0));
+    (step.key === "documento" && documentoOk);
 
   const proximo = () => {
     if (step.key === "documento") {
-      setStepIndex((i) => i + 1); // vai p/ processando, useEffect cuida
+      setResultado(null);
+      setProcessando(false);
+      setStepIndex((i) => i + 1);
     } else {
       setStepIndex((i) => Math.min(STEPS.length - 1, i + 1));
     }
@@ -496,13 +521,13 @@ function WizardDialog({ modulo, onClose }: { modulo: Modulo | null; onClose: () 
                   {step.key === "objetivo" && modulo.objetivoLabel}
                   {step.key === "documento" && modulo.documentoLabel}
                   {step.key === "processando" && "Nossa IA está analisando..."}
-                  {step.key === "resultado" && modulo.resultadoTitulo}
+                  {step.key === "resultado" && exibicao.titulo}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {step.key === "objetivo" && "Escolha uma opção para personalizar o resultado."}
                   {step.key === "documento" && modulo.documentoHint}
                   {step.key === "processando" && "Em geral leva menos de 30 segundos."}
-                  {step.key === "resultado" && modulo.resultadoResumo}
+                  {step.key === "resultado" && exibicao.resumo}
                 </p>
               </div>
               <button
@@ -667,7 +692,7 @@ function WizardDialog({ modulo, onClose }: { modulo: Modulo | null; onClose: () 
               {step.key === "resultado" && (
                 <div className="space-y-5">
                   <div className="grid gap-3 sm:grid-cols-3">
-                    {modulo.metricas.map((m) => (
+                    {exibicao.metricas.map((m) => (
                       <div
                         key={m.label}
                         className={cn(
@@ -689,7 +714,7 @@ function WizardDialog({ modulo, onClose }: { modulo: Modulo | null; onClose: () 
                     <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                       Pontos da análise
                     </p>
-                    {modulo.pontos.map((p, i) => (
+                    {exibicao.pontos.map((p, i) => (
                       <div
                         key={i}
                         className="flex gap-3 rounded-xl border border-border bg-card p-4"

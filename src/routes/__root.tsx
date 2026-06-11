@@ -29,6 +29,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ClientOnly } from "@/components/client-only";
+import { Toaster } from "@/components/ui/sonner";
+import { useNavigate } from "@tanstack/react-router";
 
 function NotFoundComponent() {
   return (
@@ -122,12 +126,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="pt-BR" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body className="min-h-dvh antialiased">
         {children}
+        <Toaster richColors position="top-right" />
         <Scripts />
       </body>
     </html>
@@ -136,25 +141,83 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <RootLayout />
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+}
+
+function RootLayout() {
   const [editarOpen, setEditarOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
-  const isAuth = pathname === "/login";
+  const isAuth = pathname === "/auth" || pathname === "/login";
+  const isIframeChat =
+    pathname === "/sicaf-assistant-chat" || pathname === "/sicaf-assistant";
 
-  if (isAdmin || isAuth) {
+  if (isAdmin || isAuth || isIframeChat) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <Outlet />
-        </ThemeProvider>
-      </QueryClientProvider>
+      <ThemeProvider>
+        <Outlet />
+      </ThemeProvider>
     );
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <SidebarProvider>
+    <ThemeProvider>
+      <ClientOnly
+        fallback={
+          <div className="flex min-h-screen items-center justify-center bg-background">
+            <p className="text-sm text-muted-foreground">Carregando...</p>
+          </div>
+        }
+      >
+        <AuthenticatedShell editarOpen={editarOpen} setEditarOpen={setEditarOpen} />
+      </ClientOnly>
+    </ThemeProvider>
+  );
+}
+
+function AuthenticatedShell({
+  editarOpen,
+  setEditarOpen,
+}: {
+  editarOpen: boolean;
+  setEditarOpen: (v: boolean) => void;
+}) {
+  const { user, logout, isLoading, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      void navigate({ to: "/auth" });
+    }
+  }, [isLoading, isAuthenticated, navigate]);
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Verificando sessão...</p>
+      </div>
+    );
+  }
+
+  const initials =
+    user?.avatar_iniciais ||
+    user?.nome
+      ?.split(/\s+/)
+      .map((p) => p[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() ||
+    "CB";
+
+  return (
+    <SidebarProvider>
           <div className="flex min-h-screen w-full bg-background">
             <AppSidebar />
             <div className="flex min-w-0 flex-1 flex-col">
@@ -162,7 +225,7 @@ function RootComponent() {
                 <div className="flex items-center gap-2">
                   <SidebarTrigger />
                   <span className="text-sm font-medium text-muted-foreground hidden sm:inline">
-                    Olá, João 👋
+                    Olá, {user?.nome?.split(" ")[0] ?? "usuário"} 👋
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -180,18 +243,18 @@ function RootComponent() {
                       >
                         <Avatar className="h-8 w-8 border border-border">
                           <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                            JS
+                            {initials}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="hidden text-sm font-medium sm:inline">João Silva</span>
+                        <span className="hidden text-sm font-medium sm:inline">{user?.nome}</span>
                         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-52">
                       <DropdownMenuLabel className="font-normal">
                         <div className="flex flex-col space-y-1">
-                          <p className="text-sm font-medium leading-none">João Silva</p>
-                          <p className="text-xs leading-none text-muted-foreground">joao@empresa.com</p>
+                          <p className="text-sm font-medium leading-none">{user?.nome}</p>
+                          <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
                         </div>
                       </DropdownMenuLabel>
                       <DropdownMenuSeparator />
@@ -199,7 +262,12 @@ function RootComponent() {
                         <Settings className="mr-2 h-4 w-4" />
                         Editar dados
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          logout();
+                          void navigate({ to: "/auth" });
+                        }}
+                      >
                         <LogOut className="mr-2 h-4 w-4" />
                         Sair
                       </DropdownMenuItem>
@@ -213,8 +281,6 @@ function RootComponent() {
             </div>
           </div>
           <EditarPerfilModal open={editarOpen} onOpenChange={setEditarOpen} />
-        </SidebarProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    </SidebarProvider>
   );
 }

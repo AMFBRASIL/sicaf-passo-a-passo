@@ -35,6 +35,9 @@ import {
   Plus,
 } from "lucide-react";
 import { toast } from "sonner";
+import { EmailsConfigPanel } from "@/components/admin/emails-config-panel";
+import { IaConfigPanel } from "@/components/admin/ia-config-panel";
+import { StorageConfigPanel } from "@/components/admin/storage-config-panel";
 
 export type ConfigModuleKey =
   | "emails"
@@ -82,6 +85,7 @@ export function ConfiguracaoModal({ moduleKey, open, onOpenChange }: Props) {
   const Icon = meta.icon;
 
   const handleSave = () => {
+    if (moduleKey === "emails" || moduleKey === "ia" || moduleKey === "armazenamento") return;
     toast.success(`Configurações de ${meta.titulo} salvas`, {
       description: "As alterações entram em vigor imediatamente.",
     });
@@ -112,29 +116,31 @@ export function ConfiguracaoModal({ moduleKey, open, onOpenChange }: Props) {
         {/* Body */}
         <ScrollArea className="max-h-[70vh]">
           <div className="p-6">
-            {moduleKey === "emails" && <EmailsBody />}
+            {moduleKey === "emails" && <EmailsConfigPanel onSaved={() => onOpenChange(false)} />}
             {moduleKey === "whatsapp" && <WhatsAppBody />}
-            {moduleKey === "ia" && <IABody />}
+            {moduleKey === "ia" && <IaConfigPanel onSaved={() => onOpenChange(false)} />}
             {moduleKey === "financeiro" && <FinanceiroBody />}
             {moduleKey === "sicaf" && <SicafBody />}
             {moduleKey === "seguranca" && <SegurancaBody />}
             {moduleKey === "usuarios" && <UsuariosBody />}
             {moduleKey === "googleads" && <GoogleAdsBody />}
-            {moduleKey === "armazenamento" && <ArmazenamentoBody />}
+            {moduleKey === "armazenamento" && <StorageConfigPanel onSaved={() => onOpenChange(false)} />}
             {moduleKey === "integracoes" && <IntegracoesBody />}
           </div>
         </ScrollArea>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t bg-muted/30 px-6 py-3">
-          <p className="text-xs text-muted-foreground">As alterações se aplicam a toda a plataforma.</p>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button onClick={handleSave}>
-              <Save className="mr-2 h-4 w-4" /> Salvar alterações
-            </Button>
+        {/* Footer — e-mails tem botão próprio no painel */}
+        {moduleKey !== "emails" && moduleKey !== "ia" && moduleKey !== "armazenamento" && (
+          <div className="flex items-center justify-between border-t bg-muted/30 px-6 py-3">
+            <p className="text-xs text-muted-foreground">As alterações se aplicam a toda a plataforma.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+              <Button onClick={handleSave}>
+                <Save className="mr-2 h-4 w-4" /> Salvar alterações
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -227,96 +233,6 @@ function ToggleRow({
   );
 }
 
-// ───────────────────────── E-MAILS ─────────────────────────
-function EmailsBody() {
-  const [tipo, setTipo] = useState<"api" | "smtp">("api");
-  return (
-    <>
-      <Section title="Método de envio" desc="Escolha como o sistema vai disparar e-mails transacionais e de marketing.">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <BigCard
-            selected={tipo === "api"}
-            onClick={() => setTipo("api")}
-            icon={Zap}
-            title="API (recomendado)"
-            desc="Resend, SendGrid, Mailgun ou Postmark via HTTPS. Mais rápido, com webhooks de entrega."
-            chip="Webhooks · Tracking"
-          />
-          <BigCard
-            selected={tipo === "smtp"}
-            onClick={() => setTipo("smtp")}
-            icon={Server}
-            title="SMTP"
-            desc="Servidor SMTP próprio ou Gmail/Outlook. Compatível com qualquer provedor padrão."
-            chip="Padrão universal"
-          />
-        </div>
-      </Section>
-
-      {tipo === "api" ? (
-        <Section title="Configuração da API">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Provedor">
-              <Select defaultValue="resend">
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="resend">Resend</SelectItem>
-                  <SelectItem value="sendgrid">SendGrid</SelectItem>
-                  <SelectItem value="mailgun">Mailgun</SelectItem>
-                  <SelectItem value="postmark">Postmark</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="API Key" hint="Armazenado de forma criptografada nos secrets.">
-              <Input type="password" placeholder="re_xxxxxxxxxxxxxxxx" />
-            </Field>
-            <Field label="Domínio de envio">
-              <Input placeholder="cadbrasil.com.br" />
-            </Field>
-            <Field label="E-mail remetente">
-              <Input placeholder="no-reply@cadbrasil.com.br" />
-            </Field>
-            <Field label="Nome do remetente">
-              <Input placeholder="CADBRASIL" />
-            </Field>
-            <Field label="E-mail de resposta (Reply-To)">
-              <Input placeholder="contato@cadbrasil.com.br" />
-            </Field>
-          </div>
-        </Section>
-      ) : (
-        <Section title="Configuração SMTP">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Servidor SMTP"><Input placeholder="smtp.gmail.com" /></Field>
-            <Field label="Porta"><Input placeholder="587" /></Field>
-            <Field label="Usuário"><Input placeholder="usuario@cadbrasil.com.br" /></Field>
-            <Field label="Senha"><Input type="password" placeholder="••••••••" /></Field>
-            <Field label="Criptografia">
-              <Select defaultValue="tls">
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tls">TLS</SelectItem>
-                  <SelectItem value="ssl">SSL</SelectItem>
-                  <SelectItem value="none">Nenhuma</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="E-mail remetente"><Input placeholder="no-reply@cadbrasil.com.br" /></Field>
-          </div>
-        </Section>
-      )}
-
-      <Section title="Preferências de envio">
-        <div className="space-y-2">
-          <ToggleRow title="Webhook de entregas" desc="Receber callbacks de aberturas, cliques e bounces." defaultChecked />
-          <ToggleRow title="Modo sandbox" desc="Envia apenas para domínios autorizados (teste)." />
-          <ToggleRow title="Assinar com DKIM" desc="Aumenta deliverability assinando cada mensagem." defaultChecked />
-        </div>
-      </Section>
-    </>
-  );
-}
-
 // ───────────────────────── WHATSAPP ─────────────────────────
 function WhatsAppBody() {
   const [tipo, setTipo] = useState<"oficial" | "naoof">("oficial");
@@ -355,62 +271,6 @@ function WhatsAppBody() {
           <ToggleRow title="Distribuição automática" desc="Distribui novos chats em round-robin entre atendentes online." defaultChecked />
           <ToggleRow title="Horário comercial" desc="Bloqueia disparos fora do horário (08–18h)." defaultChecked />
           <ToggleRow title="Resposta automática fora do expediente" desc="Envia mensagem de retorno automática." />
-        </div>
-      </Section>
-    </>
-  );
-}
-
-// ───────────────────────── IA ─────────────────────────
-function IABody() {
-  const [provider, setProvider] = useState<"lovable" | "openai" | "anthropic">("lovable");
-  const [temp, setTemp] = useState([0.4]);
-  return (
-    <>
-      <Section title="Provedor de IA">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <BigCard selected={provider === "lovable"} onClick={() => setProvider("lovable")} icon={Sparkles} title="Lovable AI" desc="Gateway integrado, sem chave externa, sem cartão." chip="Recomendado" />
-          <BigCard selected={provider === "openai"} onClick={() => setProvider("openai")} icon={Bot} title="OpenAI" desc="GPT-4o, GPT-4 Turbo. Requer API key própria." />
-          <BigCard selected={provider === "anthropic"} onClick={() => setProvider("anthropic")} icon={Bot} title="Anthropic" desc="Claude 3.5/4. Requer API key própria." />
-        </div>
-      </Section>
-
-      <Section title="Modelo & parâmetros">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Modelo padrão">
-            <Select defaultValue="google/gemini-2.5-flash">
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash (rápido)</SelectItem>
-                <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-                <SelectItem value="openai/gpt-5">GPT-5</SelectItem>
-                <SelectItem value="openai/gpt-5-mini">GPT-5 Mini</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Limite de tokens / requisição"><Input type="number" defaultValue={4096} /></Field>
-          {provider !== "lovable" && (
-            <Field label="API Key" hint="Armazenada nos secrets.">
-              <Input type="password" placeholder="sk-xxxxxxxxxxxxxxxx" />
-            </Field>
-          )}
-          <Field label={`Temperatura: ${temp[0].toFixed(2)}`} hint="0 = determinístico, 1 = criativo.">
-            <Slider value={temp} onValueChange={setTemp} min={0} max={1} step={0.05} />
-          </Field>
-        </div>
-      </Section>
-
-      <Section title="Prompt base do assistente">
-        <Textarea
-          rows={5}
-          defaultValue="Você é um especialista em SICAF, certidões e regularidade fiscal. Sempre responda em português do Brasil, com tom profissional e direto."
-        />
-      </Section>
-
-      <Section title="Limites de uso">
-        <div className="space-y-2">
-          <ToggleRow title="Limitar requisições por cliente" desc="Máximo de 200 chamadas/dia por empresa." defaultChecked />
-          <ToggleRow title="Bloquear ao atingir orçamento mensal" desc="Encerra chamadas quando o gasto ultrapassar R$ 500." />
         </div>
       </Section>
     </>
@@ -608,48 +468,6 @@ function GoogleAdsBody() {
         <div className="space-y-2">
           <ToggleRow title="Importar leads automaticamente" desc="Sincroniza leads do Google Ads a cada 15 minutos." defaultChecked />
           <ToggleRow title="Enviar conversões offline" desc="Envia conversões fechadas via API." defaultChecked />
-        </div>
-      </Section>
-    </>
-  );
-}
-
-// ───────────────────────── ARMAZENAMENTO ─────────────────────────
-function ArmazenamentoBody() {
-  return (
-    <>
-      <Section title="Provedor de bucket">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <BigCard selected onClick={() => {}} icon={Cloud} title="Lovable Cloud" desc="Storage integrado, criptografado em repouso." chip="Atual · 120 GB" />
-          <BigCard selected={false} onClick={() => {}} icon={Server} title="S3 compatível" desc="AWS, Backblaze B2, Wasabi ou MinIO." />
-        </div>
-      </Section>
-
-      <Section title="Retenção & versionamento">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Reter documentos por (meses)"><Input type="number" defaultValue={60} /></Field>
-          <Field label="Versões mantidas por arquivo"><Input type="number" defaultValue={5} /></Field>
-        </div>
-        <div className="mt-3 space-y-2">
-          <ToggleRow title="Versionamento ativo" desc="Mantém histórico de versões de cada documento." defaultChecked />
-          <ToggleRow title="Mover para frio após 180 dias" desc="Reduz custos com arquivos pouco acessados." />
-          <ToggleRow title="Excluir permanentemente após retenção" desc="Apaga arquivos expirados automaticamente." />
-        </div>
-      </Section>
-
-      <Section title="Uso atual">
-        <div className="rounded-lg border p-4">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-medium">120 GB / 500 GB</span>
-            <Badge variant="secondary" className="text-[10px]">24% utilizado</Badge>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-            <div className="h-full w-[24%] bg-primary" />
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button size="sm" variant="outline"><Download className="mr-1.5 h-3.5 w-3.5" /> Exportar inventário</Button>
-            <Button size="sm" variant="outline"><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Limpar lixeira</Button>
-          </div>
         </div>
       </Section>
     </>

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Gavel,
   Search,
@@ -26,17 +26,35 @@ import {
   AlertTriangle,
   Trophy,
   Briefcase,
+  Radar,
+  GitCompare,
+  RefreshCw,
+  Heart,
+  FileSearch,
+  Loader2,
+  ChevronLeft,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { PageHeader } from "@/components/page-header";
+import { LicitacoesIndicators, type LicitacaoStats } from "@/components/licitacoes-indicators";
+import { toast } from "sonner";
+import {
+  fetchLicitacoesFilters,
+  fetchLicitacoesList,
+  fetchLicitacoesStats,
+  mapApiToDisplay,
+  toggleLicitacaoMira,
+  type LicitacaoDisplay,
+  type LicitacaoPersonalKpis,
+  type LicitacoesFilterOptions,
+} from "@/lib/licitacoes-api";
 
 export const Route = createFileRoute("/licitacoes")({
   head: () => ({
@@ -51,125 +69,7 @@ export const Route = createFileRoute("/licitacoes")({
   component: LicitacoesPage,
 });
 
-type Licitacao = {
-  id: string;
-  orgao: string;
-  objeto: string;
-  uf: string;
-  modalidade: string;
-  valor: string;
-  valorNum: number;
-  abertura: string;
-  prazo: string;
-  diasRestantes: number;
-  match: number;
-  destaque?: boolean;
-  segmento: string;
-  descricao: string;
-};
-
-const licitacoes: Licitacao[] = [
-  {
-    id: "PE-2025-001",
-    orgao: "Prefeitura de Belo Horizonte / MG",
-    objeto: "Fornecimento de materiais de escritório para secretarias municipais",
-    uf: "MG",
-    modalidade: "Pregão Eletrônico",
-    valor: "R$ 280.000",
-    valorNum: 280000,
-    abertura: "12/06/2026",
-    prazo: "Encerra em 6 dias",
-    diasRestantes: 6,
-    match: 96,
-    destaque: true,
-    segmento: "Material de Escritório",
-    descricao:
-      "Aquisição de materiais de escritório (papel, canetas, toner, organizadores) para abastecimento das secretarias municipais durante o ano de 2026. Entrega parcelada conforme cronograma.",
-  },
-  {
-    id: "PE-2025-002",
-    orgao: "Governo do Estado de São Paulo",
-    objeto: "Aquisição de equipamentos de informática (notebooks e monitores)",
-    uf: "SP",
-    modalidade: "Pregão Eletrônico",
-    valor: "R$ 1.450.000",
-    valorNum: 1450000,
-    abertura: "15/06/2026",
-    prazo: "Encerra em 9 dias",
-    diasRestantes: 9,
-    match: 88,
-    segmento: "Tecnologia",
-    descricao:
-      "Aquisição de 1.200 notebooks e 800 monitores para modernização do parque tecnológico das escolas estaduais. Inclui garantia de 36 meses e suporte on-site.",
-  },
-  {
-    id: "DI-2025-014",
-    orgao: "Tribunal Regional Federal 1ª Região",
-    objeto: "Serviço de manutenção predial preventiva e corretiva",
-    uf: "DF",
-    modalidade: "Dispensa Eletrônica",
-    valor: "R$ 95.000",
-    valorNum: 95000,
-    abertura: "10/06/2026",
-    prazo: "Encerra em 4 dias",
-    diasRestantes: 4,
-    match: 72,
-    segmento: "Serviços Prediais",
-    descricao:
-      "Contratação de empresa especializada para serviços de manutenção predial preventiva e corretiva nas instalações do TRF 1ª Região por 12 meses.",
-  },
-  {
-    id: "PE-2025-003",
-    orgao: "Universidade Federal do Rio de Janeiro",
-    objeto: "Material de laboratório e reagentes químicos",
-    uf: "RJ",
-    modalidade: "Pregão Eletrônico",
-    valor: "R$ 540.000",
-    valorNum: 540000,
-    abertura: "18/06/2026",
-    prazo: "Encerra em 12 dias",
-    diasRestantes: 12,
-    match: 64,
-    segmento: "Laboratório",
-    descricao:
-      "Fornecimento de materiais de laboratório e reagentes químicos para pesquisa acadêmica nos institutos de química, biologia e farmácia da UFRJ.",
-  },
-  {
-    id: "CC-2025-007",
-    orgao: "Ministério da Saúde",
-    objeto: "Concorrência para construção de UBS no interior do Nordeste",
-    uf: "BA",
-    modalidade: "Concorrência",
-    valor: "R$ 8.200.000",
-    valorNum: 8200000,
-    abertura: "30/06/2026",
-    prazo: "Encerra em 24 dias",
-    diasRestantes: 24,
-    match: 58,
-    segmento: "Construção Civil",
-    descricao:
-      "Construção de 12 Unidades Básicas de Saúde em municípios do interior da Bahia, conforme projeto padrão do Ministério da Saúde. Prazo de execução: 18 meses.",
-  },
-  {
-    id: "PE-2025-004",
-    orgao: "Prefeitura de Curitiba / PR",
-    objeto: "Serviços de limpeza e conservação predial",
-    uf: "PR",
-    modalidade: "Pregão Eletrônico",
-    valor: "R$ 420.000",
-    valorNum: 420000,
-    abertura: "20/06/2026",
-    prazo: "Encerra em 14 dias",
-    diasRestantes: 14,
-    match: 81,
-    segmento: "Serviços Prediais",
-    descricao:
-      "Prestação de serviços continuados de limpeza, conservação e higienização nos prédios administrativos da Prefeitura de Curitiba pelo período de 12 meses.",
-  },
-];
-
-const ufs = ["SP", "MG", "RJ", "DF", "BA", "PR"];
-const modalidades = ["Pregão Eletrônico", "Dispensa Eletrônica", "Concorrência"];
+type Licitacao = LicitacaoDisplay;
 const faixasValor = [
   { id: "ate100", label: "Até R$ 100k", min: 0, max: 100000 },
   { id: "100a500", label: "R$ 100k – 500k", min: 100000, max: 500000 },
@@ -213,28 +113,106 @@ const filtrosDefault: Filtros = {
 
 function LicitacoesPage() {
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
   const [filtros, setFiltros] = useState<Filtros>(filtrosDefault);
   const [filtroAberto, setFiltroAberto] = useState(false);
   const [detalhe, setDetalhe] = useState<Licitacao | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(true);
+  const [abaLista, setAbaLista] = useState<"todas" | "mira">("todas");
+  const [stats, setStats] = useState<LicitacaoStats | null>(null);
+  const [kpis, setKpis] = useState<LicitacaoPersonalKpis | null>(null);
+  const [lista, setLista] = useState<Licitacao[]>([]);
+  const [filterOptions, setFilterOptions] = useState<LicitacoesFilterOptions | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [miraCount, setMiraCount] = useState(0);
 
-  const filtradas = useMemo(() => {
-    return licitacoes.filter((l) => {
-      const matchQ =
-        q.trim() === "" ||
-        l.objeto.toLowerCase().includes(q.toLowerCase()) ||
-        l.orgao.toLowerCase().includes(q.toLowerCase());
-      const matchUf = filtros.ufs.length === 0 || filtros.ufs.includes(l.uf);
-      const matchMod =
-        filtros.modalidades.length === 0 || filtros.modalidades.includes(l.modalidade);
-      const faixa = faixasValor.find((f) => f.id === filtros.faixa);
-      const matchFaixa = !faixa || (l.valorNum >= faixa.min && l.valorNum <= faixa.max);
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQ(q.trim()), 350);
+    return () => window.clearTimeout(t);
+  }, [q]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQ, filtros, abaLista]);
+
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const res = await fetchLicitacoesStats();
+      if (!res.ok || !res.stats) {
+        toast.error(res.error || "Erro ao carregar indicadores");
+        return;
+      }
+      setStats(res.stats);
+      if (res.kpis) {
+        setKpis(res.kpis);
+        setMiraCount(res.kpis.na_mira);
+      }
+    } catch {
+      toast.error("Falha ao conectar com o servidor");
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  const buildListParams = useCallback(() => {
+    const faixa = faixasValor.find((f) => f.id === filtros.faixa);
+    const prazo = prazos.find((p) => p.id === filtros.prazo);
+    return {
+      page,
+      limit: 20,
+      q: debouncedQ || undefined,
+      mira: abaLista === "mira" ? ("1" as const) : undefined,
+      uf: filtros.ufs.length ? filtros.ufs : undefined,
+      modalidade: filtros.modalidades.length ? filtros.modalidades : undefined,
+      valor_min: faixa ? faixa.min : undefined,
+      valor_max: faixa && faixa.max !== Infinity ? faixa.max : undefined,
+      prazo_max_days: prazo && prazo.max < 999 ? prazo.max : undefined,
+      order_by: "data_abertura",
+      order_dir: "desc" as const,
+    };
+  }, [page, debouncedQ, filtros, abaLista]);
+
+  const loadList = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const res = await fetchLicitacoesList(buildListParams());
+      if (!res.ok) {
+        toast.error(res.error || "Erro ao listar licitações");
+        setLista([]);
+        return;
+      }
+      let items = (res.licitacoes || []).map(mapApiToDisplay);
       const matchOpt = matchOpts.find((m) => m.id === filtros.match);
-      const matchM = !matchOpt || l.match >= matchOpt.min;
-      const prazo = prazos.find((p) => p.id === filtros.prazo);
-      const matchPrazo = !prazo || l.diasRestantes <= prazo.max;
-      return matchQ && matchUf && matchMod && matchFaixa && matchM && matchPrazo;
+      if (matchOpt && matchOpt.min > 0) {
+        items = items.filter((l) => l.match >= matchOpt.min);
+      }
+      setLista(items);
+      setTotal(res.total ?? 0);
+      setTotalPages(res.total_pages ?? 1);
+    } catch {
+      toast.error("Falha ao carregar licitações");
+      setLista([]);
+    } finally {
+      setListLoading(false);
+    }
+  }, [buildListParams, filtros.match]);
+
+  useEffect(() => {
+    void loadStats();
+    void fetchLicitacoesFilters().then((res) => {
+      if (res.ok && res.filters) setFilterOptions(res.filters);
     });
-  }, [q, filtros]);
+  }, [loadStats]);
+
+  useEffect(() => {
+    void loadList();
+  }, [loadList]);
+
+  const filtradas = lista;
 
   const filtrosAtivos =
     filtros.ufs.length +
@@ -243,33 +221,84 @@ function LicitacoesPage() {
     (filtros.match !== "todos" ? 1 : 0) +
     (filtros.prazo !== "todos" ? 1 : 0);
 
-  return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
-      <PageHeader
-        icon={<Gavel className="h-5 w-5" />}
-        title="Licitações"
-        subtitle="Oportunidades compatíveis com a sua empresa, atualizadas todos os dias."
-      />
+  const ufs = filterOptions?.ufs.map((u) => u.value) ?? [];
+  const modalidades = filterOptions?.modalidades.map((m) => m.value) ?? [];
 
-      {/* Resumo */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+  const atualizarDados = () => {
+    void loadStats();
+    void loadList();
+    toast.success("Dados atualizados");
+  };
+
+  const handleToggleMira = async (item: Licitacao) => {
+    const res = await toggleLicitacaoMira(item.idNum);
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao atualizar mira");
+      return;
+    }
+    toast.success(res.message || (res.na_mira ? "Adicionada à mira" : "Removida da mira"));
+    setMiraCount((c) => (res.na_mira ? c + 1 : Math.max(0, c - 1)));
+    void loadList();
+    void loadStats();
+  };
+
+  return (
+    <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 sm:py-10">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+            <Gavel className="h-6 w-6 text-primary" />
+            Licitações
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Portal PNCP/ComprasNet — marque oportunidades com{" "}
+            <Heart className="inline h-3.5 w-3.5 fill-rose-500 text-rose-500" /> e acompanhe na sua
+            mira
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => toast.info("Radar em breve")}>
+            <Radar className="mr-2 h-4 w-4" />
+            Radar
+          </Button>
+          <Button variant="outline" size="sm" disabled>
+            <Download className="mr-2 h-4 w-4" />
+            Exportar mira
+          </Button>
+          <Button variant="outline" size="sm" disabled>
+            <GitCompare className="mr-2 h-4 w-4" />
+            Comparar
+          </Button>
+          <Button variant="outline" size="sm" onClick={atualizarDados} disabled={statsLoading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${statsLoading ? "animate-spin" : ""}`} />
+            Atualizar
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <LicitacoesIndicators stats={stats} loading={statsLoading} />
+      </div>
+
+      {/* Match pessoal — complementa os KPIs do PNCP */}
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <TrendingUp className="h-3.5 w-3.5" /> Compatíveis hoje
             </div>
             <p className="mt-1 text-2xl font-bold">
-              {licitacoes.filter((l) => l.match >= 70).length}
+              {kpis?.abertas_hoje ?? "—"}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Star className="h-3.5 w-3.5" /> Match alto (85%+)
+              <Star className="h-3.5 w-3.5" /> Na minha mira
             </div>
             <p className="mt-1 text-2xl font-bold">
-              {licitacoes.filter((l) => l.match >= 85).length}
+              {kpis?.na_mira ?? miraCount}
             </p>
           </CardContent>
         </Card>
@@ -279,21 +308,48 @@ function LicitacoesPage() {
               <Calendar className="h-3.5 w-3.5" /> Encerram esta semana
             </div>
             <p className="mt-1 text-2xl font-bold">
-              {licitacoes.filter((l) => l.diasRestantes <= 7).length}
+              {kpis?.encerram_semana ?? "—"}
             </p>
           </CardContent>
         </Card>
       </div>
 
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        <Button
+          variant={abaLista === "todas" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setAbaLista("todas")}
+        >
+          <FileSearch className="mr-2 h-4 w-4" />
+          Todas as licitações
+        </Button>
+        <Button
+          variant={abaLista === "mira" ? "default" : "outline"}
+          size="sm"
+          className={
+            abaLista === "mira"
+              ? "bg-rose-600 hover:bg-rose-700"
+              : "border-rose-500/30 text-rose-600 hover:bg-rose-500/10"
+          }
+          onClick={() => setAbaLista("mira")}
+        >
+          <Heart className="mr-2 h-4 w-4" />
+          Na minha mira
+          {miraCount > 0 && (
+            <Badge className="ml-2 border-0 bg-white/20 text-xs">{miraCount}</Badge>
+          )}
+        </Button>
+      </div>
+
       {/* Busca + Filtros */}
-      <Card className="mt-6">
+      <Card className="mt-4">
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="O que você quer vender? Ex.: material de escritório"
+              placeholder="Buscar por número, controle PNCP, órgão, UASG ou objeto..."
               className="pl-9"
             />
           </div>
@@ -357,7 +413,15 @@ function LicitacoesPage() {
 
       {/* Lista */}
       <div className="mt-4 grid gap-3">
-        {filtradas.map((l) => (
+        {listLoading && (
+          <Card>
+            <CardContent className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Carregando licitações...
+            </CardContent>
+          </Card>
+        )}
+        {!listLoading && filtradas.map((l) => (
           <Card
             key={l.id}
             className={l.destaque ? "border-primary/40 ring-1 ring-primary/20" : ""}
@@ -374,9 +438,9 @@ function LicitacoesPage() {
                     >
                       <Sparkles className="h-3 w-3" /> {l.match}% match
                     </span>
-                    {l.destaque && (
-                      <span className="text-[11px] font-medium text-primary">
-                        ⭐ Recomendado para você
+                    {l.na_mira && (
+                      <span className="text-[11px] font-medium text-rose-600">
+                        ❤️ Na sua mira
                       </span>
                     )}
                   </div>
@@ -401,16 +465,27 @@ function LicitacoesPage() {
                       {l.prazo}
                     </p>
                   </div>
-                  <Button size="sm" onClick={() => setDetalhe(l)}>
-                    Ver detalhes
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className={l.na_mira ? "text-rose-600" : "text-muted-foreground"}
+                      onClick={() => void handleToggleMira(l)}
+                      aria-label={l.na_mira ? "Remover da mira" : "Adicionar à mira"}
+                    >
+                      <Heart className={`h-4 w-4 ${l.na_mira ? "fill-current" : ""}`} />
+                    </Button>
+                    <Button size="sm" onClick={() => setDetalhe(l)}>
+                      Ver detalhes
+                    </Button>
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
         ))}
 
-        {filtradas.length === 0 && (
+        {!listLoading && filtradas.length === 0 && (
           <Card>
             <CardContent className="p-8 text-center text-sm text-muted-foreground">
               Nenhuma licitação encontrada com esses filtros. Tente outra palavra-chave.
@@ -419,12 +494,42 @@ function LicitacoesPage() {
         )}
       </div>
 
+      {!listLoading && totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {total.toLocaleString("pt-BR")} licitações — página {page} de {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Próxima
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <FiltrosDialog
         open={filtroAberto}
         onOpenChange={setFiltroAberto}
         filtros={filtros}
         setFiltros={setFiltros}
-        total={filtradas.length}
+        total={total}
+        ufs={ufs}
+        modalidades={modalidades}
       />
 
       <DetalheDialog
@@ -453,12 +558,16 @@ function FiltrosDialog({
   filtros,
   setFiltros,
   total,
+  ufs,
+  modalidades,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   filtros: Filtros;
   setFiltros: (f: Filtros) => void;
   total: number;
+  ufs: string[];
+  modalidades: string[];
 }) {
   const toggleUf = (uf: string) =>
     setFiltros({
@@ -664,6 +773,12 @@ function DetalheDialog({
   return (
     <Dialog open={!!licitacao} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="h-[92vh] max-h-[92vh] w-[96vw] max-w-6xl overflow-hidden p-0 sm:rounded-2xl">
+        <DialogTitle className="sr-only">
+          Detalhes da licitação — {licitacao.objeto}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          {licitacao.orgao} · {licitacao.modalidade} · Abertura {licitacao.abertura}
+        </DialogDescription>
         <div className="flex h-full flex-col md:flex-row">
           {/* SIDEBAR ESQUERDA - WIZARD */}
           <aside className="relative w-full overflow-hidden border-b md:w-72 md:shrink-0 md:border-b-0 md:border-r">
@@ -686,10 +801,12 @@ function DetalheDialog({
               >
                 {licitacao.modalidade}
               </Badge>
-              <h2 className="mt-3 text-lg font-bold leading-tight">
-                {licitacao.objeto}
+              <h2 className="mt-3 text-sm font-semibold leading-snug line-clamp-3">
+                {licitacao.orgao}
               </h2>
-              <p className="mt-2 text-xs text-white/80">{licitacao.orgao}</p>
+              <p className="mt-1.5 text-[11px] text-white/70">
+                {licitacao.uf} · {licitacao.segmento} · Nº {licitacao.id}
+              </p>
 
               <div className="mt-4 rounded-xl bg-white/10 p-3 backdrop-blur">
                 <p className="text-[10px] uppercase tracking-wide text-white/70">

@@ -6,7 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Plus, Clock, AlertTriangle, Search, Filter } from "lucide-react";
-import { TicketRespostaModal, type TicketItem } from "@/components/admin/ticket-resposta-modal";
+import {
+  TicketRespostaModal,
+  type TicketItem,
+  type TicketRespostaOptions,
+  situacaoPadraoAposEnvio,
+} from "@/components/admin/ticket-resposta-modal";
 import { NovoTicketModal, type NovoTicketData } from "@/components/admin/novo-ticket-modal";
 import { toast } from "sonner";
 
@@ -106,13 +111,34 @@ function SuportePage() {
     setRespOpen(true);
   };
 
-  const responderTicket = (ticketId: string, _msg: string, fechar: boolean) => {
-    if (!fechar || !selected) return;
+  const resolverSituacaoDestino = (
+    colunaAtual: Coluna,
+    opcoes: TicketRespostaOptions,
+  ): Coluna => {
+    if (opcoes.modoSituacao === "manual" && opcoes.situacaoManual) {
+      return opcoes.situacaoManual as Coluna;
+    }
+    return situacaoPadraoAposEnvio(colunaAtual, !!opcoes.marcarResolvido) as Coluna;
+  };
+
+  const responderTicket = (ticketId: string, _msg: string, opcoes: TicketRespostaOptions) => {
+    if (!selected) return;
+    const destino = resolverSituacaoDestino(selected.coluna, opcoes);
+    if (destino === selected.coluna) return;
+
     setBoard((prev) => {
       const next: Record<Coluna, Ticket[]> = { ...prev };
-      next[selected.coluna] = prev[selected.coluna].filter((t) => t.id !== ticketId);
       const ticket = prev[selected.coluna].find((t) => t.id === ticketId);
-      if (ticket) next.Resolvido = [{ ...ticket, sla: { restante: "Ok", tom: "ok" } }, ...prev.Resolvido];
+      if (!ticket) return prev;
+
+      next[selected.coluna] = prev[selected.coluna].filter((t) => t.id !== ticketId);
+
+      const slaFechado =
+        destino === "Resolvido" || destino === "Fechado"
+          ? { restante: "Ok", tom: "ok" as const }
+          : ticket.sla;
+
+      next[destino] = [{ ...ticket, sla: slaFechado }, ...prev[destino]];
       return next;
     });
   };

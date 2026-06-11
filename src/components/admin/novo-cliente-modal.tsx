@@ -25,7 +25,7 @@ import { toast } from "sonner";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCriar?: (cliente: NovoClienteData) => void;
+  onCriar?: (cliente: NovoClienteData) => void | Promise<void>;
 }
 
 export interface NovoClienteData {
@@ -104,16 +104,20 @@ export function NovoClienteModal({ open, onOpenChange, onCriar }: Props) {
     revisar: true,
   };
 
-  const criar = () => {
+  const criar = async () => {
     if (!canNext.empresa || !canNext.contato) {
       toast.error("Preencha os campos obrigatórios");
       return;
     }
-    onCriar?.(data);
-    toast.success(`Cliente ${data.razao} criado com sucesso`);
-    setData(empty);
-    setStep("empresa");
-    onOpenChange(false);
+    try {
+      await onCriar?.(data);
+      toast.success(`Cliente ${data.razao} criado com sucesso`);
+      setData(empty);
+      setStep("empresa");
+      onOpenChange(false);
+    } catch {
+      /* erro tratado no callback */
+    }
   };
 
   return (

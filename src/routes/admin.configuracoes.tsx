@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { fetchEmailSettings, fetchIaSettings, fetchStorageSettings } from "@/lib/admin-settings-api";
 import {
   Mail,
   MessageCircle,
@@ -22,15 +23,15 @@ export const Route = createFileRoute("/admin/configuracoes")({
 });
 
 const cards: { key: ConfigModuleKey; icon: any; titulo: string; desc: string; chip: string; tom: string }[] = [
-  { key: "emails", icon: Mail, titulo: "E-mails", desc: "Templates, remetente, SMTP", chip: "12 templates", tom: "blue" },
+  { key: "emails", icon: Mail, titulo: "E-mails", desc: "Templates, remetente, SMTP", chip: "Carregando…", tom: "blue" },
   { key: "whatsapp", icon: MessageCircle, titulo: "WhatsApp", desc: "API oficial, webhooks, atendentes", chip: "Conectado", tom: "emerald" },
-  { key: "ia", icon: Bot, titulo: "IA", desc: "Modelo, prompts, limites de uso", chip: "Lovable AI", tom: "violet" },
+  { key: "ia", icon: Bot, titulo: "IA", desc: "Modelo, prompts, limites de uso", chip: "Carregando…", tom: "violet" },
   { key: "financeiro", icon: DollarSign, titulo: "Financeiro", desc: "Gateway PIX, cartão, boleto, juros e multa", chip: "PIX + Asaas", tom: "emerald" },
   { key: "sicaf", icon: FileCheck2, titulo: "SICAF", desc: "Níveis obrigatórios, automações de vencimento", chip: "Níveis I–VI", tom: "amber" },
   { key: "seguranca", icon: Shield, titulo: "Segurança", desc: "2FA, sessões, política de senhas, IP allow-list", chip: "2FA opcional", tom: "rose" },
   { key: "usuarios", icon: Users, titulo: "Usuários e Papéis", desc: "Admin, Operador, Consulta — RBAC granular", chip: "8 ativos", tom: "blue" },
   { key: "googleads", icon: TrendingUp, titulo: "Google Ads", desc: "Conta MCC, tag de conversão, atribuição", chip: "Conectado", tom: "emerald" },
-  { key: "armazenamento", icon: Cloud, titulo: "Armazenamento", desc: "Bucket de documentos, retenção, versionamento", chip: "120 GB usados", tom: "slate" },
+  { key: "armazenamento", icon: Cloud, titulo: "Armazenamento", desc: "Bucket de documentos, retenção, versionamento", chip: "Carregando…", tom: "slate" },
   { key: "integracoes", icon: Plug, titulo: "Integrações", desc: "API pública, webhooks de saída, Zapier, n8n", chip: "5 conexões", tom: "violet" },
 ];
 
@@ -45,6 +46,37 @@ const tomCls: Record<string, string> = {
 
 function ConfiguracoesPage() {
   const [openKey, setOpenKey] = useState<ConfigModuleKey | null>(null);
+  const [emailChip, setEmailChip] = useState("…");
+  const [iaChip, setIaChip] = useState("…");
+  const [storageChip, setStorageChip] = useState("…");
+
+  const carregarChips = useCallback(async () => {
+    try {
+      const { templateCount, settings } = await fetchEmailSettings();
+      const prov = settings.smtp_provider || "smtp";
+      setEmailChip(`${templateCount} template(s) · ${prov}`);
+    } catch {
+      setEmailChip("Configurar");
+    }
+    try {
+      const { status } = await fetchIaSettings();
+      setIaChip(status.configured ? `${status.model}` : "Não configurada");
+    } catch {
+      setIaChip("Configurar");
+    }
+    try {
+      const { status } = await fetchStorageSettings();
+      const uso = status.usage;
+      const prov = status.provider === "s3" ? "S3" : "Cloud";
+      setStorageChip(uso ? `${uso.usedGb} GB · ${prov}` : prov);
+    } catch {
+      setStorageChip("Configurar");
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregarChips();
+  }, [carregarChips]);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8">
@@ -68,7 +100,15 @@ function ConfiguracoesPage() {
                 <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${tomCls[c.tom]}`}>
                   <Icon className="h-5 w-5" />
                 </div>
-                <Badge variant="secondary" className="text-[10px]">{c.chip}</Badge>
+                <Badge variant="secondary" className="text-[10px]">
+                  {c.key === "emails"
+                    ? emailChip
+                    : c.key === "ia"
+                      ? iaChip
+                      : c.key === "armazenamento"
+                        ? storageChip
+                        : c.chip}
+                </Badge>
               </div>
               <h3 className="mt-3 text-sm font-semibold">{c.titulo}</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">{c.desc}</p>
@@ -91,7 +131,12 @@ function ConfiguracoesPage() {
       <ConfiguracaoModal
         moduleKey={openKey}
         open={openKey !== null}
-        onOpenChange={(o) => !o && setOpenKey(null)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setOpenKey(null);
+            void carregarChips();
+          }
+        }}
       />
     </div>
   );

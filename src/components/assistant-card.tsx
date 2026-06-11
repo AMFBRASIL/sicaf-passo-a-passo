@@ -11,29 +11,7 @@ export type AssistantAlert = {
   severidade: "danger" | "warn";
 };
 
-const defaultAlerts: AssistantAlert[] = [
-  {
-    empresa: "JR Construtora EIRELI",
-    cnpj: "23.456.789/0001-11",
-    problema: "SICAF vencido em 14/10/2025",
-    severidade: "danger",
-  },
-  {
-    empresa: "Nova Filial Brasília LTDA",
-    cnpj: "34.567.890/0001-22",
-    problema: "Sem cadastro SICAF — regularize",
-    severidade: "warn",
-  },
-  {
-    empresa: "JR Comércio e Serviços ME",
-    cnpj: "12.345.678/0001-99",
-    problema: "Certidão Estadual vence em breve",
-    severidade: "warn",
-  },
-];
-
-
-export function AssistantCard({ alerts = defaultAlerts }: { alerts?: AssistantAlert[] }) {
+export function AssistantCard({ alerts = [] }: { alerts?: AssistantAlert[] }) {
   return (
     <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-card to-accent/30 shadow-soft">
       <CardContent className="p-5">
@@ -47,11 +25,14 @@ export function AssistantCard({ alerts = defaultAlerts }: { alerts?: AssistantAl
               <Sparkles className="h-3.5 w-3.5 text-warning" />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Analisei suas últimas 3 empresas. Veja o que precisa de ação:
+              {alerts.length > 0
+                ? `Identificamos ${alerts.length} empresa(s) que precisam de ação:`
+                : "Nenhuma pendência crítica nas suas empresas no momento."}
             </p>
           </div>
         </div>
 
+        {alerts.length > 0 ? (
         <ul className="mt-4 space-y-2">
           {alerts.slice(0, 3).map((a) => (
             <li
@@ -83,7 +64,7 @@ export function AssistantCard({ alerts = defaultAlerts }: { alerts?: AssistantAl
                 variant={a.severidade === "danger" ? "default" : "outline"}
                 className="mt-2 h-8 w-full gap-1 text-xs"
               >
-                <Link to="/certidoes" search={{ cnpj: a.cnpj }}>
+                <Link to="/assistente" search={{ cnpj: a.cnpj }}>
                   Executar agora
                   <ArrowRight className="h-3 w-3" />
                 </Link>
@@ -91,6 +72,14 @@ export function AssistantCard({ alerts = defaultAlerts }: { alerts?: AssistantAl
             </li>
           ))}
         </ul>
+        ) : (
+          <Button asChild size="sm" variant="outline" className="mt-4 w-full gap-1">
+            <Link to="/empresas">
+              Ver empresas
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </Button>
+        )}
       </CardContent>
     </Card>
   );

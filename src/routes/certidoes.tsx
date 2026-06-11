@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { z } from "zod";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
-import { empresasMock, type EmpresaData } from "@/routes/empresas";
+import { useCallback, useEffect, useState } from "react";
 import {
   ClipboardCheck,
   RefreshCw,
@@ -16,13 +16,15 @@ import {
   History,
   CheckCircle2,
   AlertTriangle,
-  Activity,
   Sparkles,
   Building2,
   MapPin,
   User,
   Phone,
   CalendarIcon,
+  Loader2,
+  Upload,
+  ArrowLeft,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,8 +32,20 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { PageHeader, StatusBadge, StatusDot } from "@/components/page-header";
-import { useState } from "react";
+import { PageHeader, StatusBadge, StatusDot, PageContainer } from "@/components/page-header";
+import {
+  buildEmpresaCardFromCertidoes,
+  buildHistoricoMonitor,
+  fetchCertidoesStatus,
+  filterMonitoringCertidoes,
+  mapCertidaoToUi,
+  resolveClienteIdCertidoes,
+  salvarCertidaoMonitoramento,
+  type CertidaoUi,
+  type HistoricoMonitorItem,
+} from "@/lib/certidoes-api";
+import { resolveEmpresaPorCnpj } from "@/lib/documentos-api";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -62,76 +76,184 @@ export const Route = createFileRoute("/certidoes")({
   component: CertPage,
 });
 
-type Cert = {
+type EmpresaCard = {
+  clienteId: number;
   nome: string;
-  emissor: string;
-  status: "ok" | "warn" | "danger";
-  validade: string;
-  diasRestantes: number;
+  cnpj: string;
+  cidade: string;
+  uf: string;
+  telefone: string;
+  email: string;
+  responsavel: string;
 };
 
-const certs: Cert[] = [
-  { nome: "Certidão Federal (Receita + PGFN)", emissor: "Receita Federal", status: "ok", validade: "12/08/2026", diasRestantes: 187 },
-  { nome: "Certidão Estadual", emissor: "SEFAZ/SP", status: "warn", validade: "30/12/2025", diasRestantes: 26 },
-  { nome: "Certidão Municipal", emissor: "Prefeitura de São Paulo", status: "ok", validade: "05/04/2026", diasRestantes: 122 },
-  { nome: "FGTS — CRF", emissor: "Caixa Econômica Federal", status: "ok", validade: "18/02/2026", diasRestantes: 77 },
-  { nome: "Trabalhista — CNDT", emissor: "TST", status: "danger", validade: "Vencida em 02/11/2025", diasRestantes: -33 },
-];
-
-const historico = [
-  { quando: "Hoje, 06:12", acao: "Varredura automática concluída", detalhe: "5 certidões verificadas no portal oficial", icon: Activity, tone: "ok" as const },
-  { quando: "Ontem, 09:00", acao: "Alerta enviado por WhatsApp", detalhe: "Estadual vence em 27 dias", icon: MessageCircle, tone: "warn" as const },
-  { quando: "Há 3 dias", acao: "CNDT detectada como vencida", detalhe: "Notificação enviada por e-mail e push", icon: AlertTriangle, tone: "danger" as const },
-  { quando: "Há 7 dias", acao: "Nova certidão emitida automaticamente", detalhe: "FGTS — CRF renovada com sucesso", icon: CheckCircle2, tone: "ok" as const },
-];
+function historicoIcon(tone: HistoricoMonitorItem["tone"]) {
+  if (tone === "ok") return CheckCircle2;
+  if (tone === "warn") return MessageCircle;
+  return AlertTriangle;
+}
 
 function CertPage() {
   const { cnpj } = Route.useSearch();
-  const empresa = cnpj ? empresasMock.find((e) => e.cnpj === cnpj) : undefined;
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [empresa, setEmpresa] = useState<EmpresaCard | null>(null);
+  const [certs, setCerts] = useState<CertidaoUi[]>([]);
+  const [historico, setHistorico] = useState<HistoricoMonitorItem[]>([]);
+  const [ultimaVerificacao, setUltimaVerificacao] = useState<string>("");
 
   const [canais, setCanais] = useState({ email: true, whatsapp: true, push: true, sms: false });
-  const [modalCert, setModalCert] = useState<Cert | null>(null);
+  const [modalCert, setModalCert] = useState<CertidaoUi | null>(null);
   const [dataCertidao, setDataCertidao] = useState<Date | undefined>(undefined);
   const [codigoCertidao, setCodigoCertidao] = useState("");
+  const [arquivoCert, setArquivoCert] = useState<File | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  const recarregar = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    setErro(null);
+
+    const resolved = await resolveClienteIdCertidoes(cnpj || undefined);
+    if (!resolved.ok || !resolved.clienteId) {
+      const msg = resolved.error || "Empresa não encontrada";
+      setErro(msg);
+      setEmpresa(null);
+      setCerts([]);
+      setLoading(false);
+      setRefreshing(false);
+      if (!silent) toast.error(msg);
+      return;
+    }
+
+    const status = await fetchCertidoesStatus(resolved.clienteId);
+    const docBusca = cnpj || status.cliente?.documento || "";
+    const empresaExtra = docBusca
+      ? await resolveEmpresaPorCnpj(docBusca)
+      : { ok: false as const };
+
+    if (!status.ok || !status.items) {
+      const msg = status.error || "Erro ao carregar certidões";
+      setErro(msg);
+      setLoading(false);
+      setRefreshing(false);
+      toast.error(msg);
+      return;
+    }
+
+    const monitor = filterMonitoringCertidoes(status.items).map(mapCertidaoToUi);
+    const card = buildEmpresaCardFromCertidoes(status, {
+      cidade: empresaExtra.ok ? empresaExtra.empresa?.cidade : "",
+      uf: empresaExtra.ok ? empresaExtra.empresa?.uf : "",
+      telefone: empresaExtra.ok ? empresaExtra.empresa?.telefone : "",
+      email: empresaExtra.ok ? empresaExtra.empresa?.email : "",
+      responsavel: empresaExtra.ok ? empresaExtra.empresa?.responsavel : "",
+    });
+
+    setEmpresa(card);
+    setCerts(monitor);
+    setHistorico(buildHistoricoMonitor(monitor));
+    setUltimaVerificacao(
+      new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    );
+    setLoading(false);
+    setRefreshing(false);
+  }, [cnpj]);
+
+  useEffect(() => {
+    void recarregar();
+  }, [recarregar]);
 
   const validas = certs.filter((c) => c.status === "ok").length;
   const venceBreve = certs.filter((c) => c.status === "warn").length;
   const vencidas = certs.filter((c) => c.status === "danger").length;
-  const score = Math.round((validas / certs.length) * 100);
+  const score = certs.length ? Math.round((validas / certs.length) * 100) : 0;
 
-  const handleOpenModal = (cert: Cert) => {
+  const handleOpenModal = (cert: CertidaoUi) => {
     setModalCert(cert);
     setDataCertidao(undefined);
     setCodigoCertidao("");
+    setArquivoCert(null);
   };
 
   const handleCloseModal = () => {
     setModalCert(null);
     setDataCertidao(undefined);
     setCodigoCertidao("");
+    setArquivoCert(null);
+    setSalvando(false);
   };
 
-  const handleSalvar = () => {
-    // Aqui seria feita a lógica de salvar a certidão
+  const handleSalvar = async () => {
+    if (!modalCert || !empresa?.clienteId || !arquivoCert) return;
+    setSalvando(true);
+    const res = await salvarCertidaoMonitoramento({
+      clienteId: empresa.clienteId,
+      tipoId: modalCert.tipoId,
+      arquivo: arquivoCert,
+      dataValidade: dataCertidao ? format(dataCertidao, "yyyy-MM-dd") : undefined,
+      codigo: codigoCertidao,
+      requerCodigo: modalCert.requerCodigo,
+      requerValidade: modalCert.requerValidade,
+    });
+    setSalvando(false);
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao salvar certidão");
+      return;
+    }
+    toast.success(res.message || "Certidão salva com sucesso");
     handleCloseModal();
+    void recarregar(true);
   };
+
+  if (loading) {
+    return (
+      <PageContainer>
+        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-sm">Carregando certidões da empresa...</p>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  if (!empresa) {
+    return (
+      <PageContainer>
+        <Button asChild variant="ghost" size="sm" className="mb-3 -ml-2 gap-1">
+          <Link to="/empresas"><ArrowLeft className="h-4 w-4" /> Voltar para Empresas</Link>
+        </Button>
+        <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
+          <Building2 className="h-10 w-10 text-muted-foreground/50" />
+          <p className="text-sm font-medium">{erro || "Empresa não encontrada"}</p>
+          <Button asChild><Link to="/empresas">Selecionar empresa</Link></Button>
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+    <PageContainer>
       <PageHeader
         icon={<ClipboardCheck className="h-5 w-5" />}
         title="Monitoramento de Certidões"
         subtitle="Acompanhamos suas certidões 24h por dia e avisamos antes que vençam."
         action={
-          <Button variant="outline" className="gap-2">
-            <RefreshCw className="h-4 w-4" />
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={refreshing}
+            onClick={() => void recarregar(true)}
+          >
+            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
             Verificar agora
           </Button>
         }
       />
 
-      {empresa && (
-        <Card className="mt-4 border-l-4 border-l-primary">
+      <Card className="mt-4 border-l-4 border-l-primary">
           <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3 min-w-0">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -151,7 +273,6 @@ function CertPage() {
             </div>
           </CardContent>
         </Card>
-      )}
 
       {/* Hero monitoring card */}
       <Card className="mt-6 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background shadow-lift">
@@ -167,7 +288,9 @@ function CertPage() {
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Saúde documental: {score}%</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Última varredura há 12 minutos · próxima em 1h47
+                {ultimaVerificacao
+                  ? `Última verificação às ${ultimaVerificacao} · ${certs.length} certidões fiscais monitoradas`
+                  : `${certs.length} certidões fiscais monitoradas`}
               </p>
             </div>
             <Progress value={score} className="h-2.5" />
@@ -178,12 +301,14 @@ function CertPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2 lg:items-end">
-            <Button size="lg" className="gap-2">
-              <Sparkles className="h-4 w-4" />
-              Renovar pendentes com IA
+            <Button asChild size="lg" className="gap-2">
+              <Link to="/assistente" search={{ cnpj: empresa.cnpj }}>
+                <Sparkles className="h-4 w-4" />
+                Renovar pendentes com IA
+              </Link>
             </Button>
             <Button asChild variant="ghost" size="sm">
-              <Link to="/sicaf">Ver impacto no SICAF →</Link>
+              <Link to="/sicaf" search={{ cnpj: empresa.cnpj }}>Ver impacto no SICAF →</Link>
             </Button>
           </div>
         </CardContent>
@@ -194,7 +319,7 @@ function CertPage() {
         <div className="space-y-4">
           {certs.map((c) => (
             <Card
-              key={c.nome}
+              key={c.codigo}
               className={
                 c.status === "danger"
                   ? "border-danger/30"
@@ -222,14 +347,22 @@ function CertPage() {
                   )}
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  {c.status === "ok" ? (
-                    <Button variant="outline" size="sm">
-                      <Download className="mr-1.5 h-4 w-4" />
-                      Baixar
+                  {c.status === "ok" && c.arquivoUrl ? (
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={c.arquivoUrl} target="_blank" rel="noopener noreferrer">
+                        <Download className="mr-1.5 h-4 w-4" />
+                        Baixar
+                      </a>
                     </Button>
-                  ) : (
+                  ) : c.uploadManual ? (
                     <Button size="sm" onClick={() => handleOpenModal(c)}>
                       Resolver agora
+                    </Button>
+                  ) : (
+                    <Button size="sm" asChild>
+                      <Link to="/assistente" search={{ cnpj: empresa.cnpj }}>
+                        Atualizar via assistente
+                      </Link>
                     </Button>
                   )}
                 </div>
@@ -255,14 +388,14 @@ function CertPage() {
               <ChannelRow
                 icon={<Mail className="h-4 w-4" />}
                 label="E-mail"
-                value="joao@empresa.com.br"
+                value={empresa.email || "Não informado"}
                 checked={canais.email}
                 onChange={(v) => setCanais((s) => ({ ...s, email: v }))}
               />
               <ChannelRow
                 icon={<MessageCircle className="h-4 w-4" />}
                 label="WhatsApp"
-                value="(11) 9 8765-4321"
+                value={empresa.telefone || "Não informado"}
                 checked={canais.whatsapp}
                 onChange={(v) => setCanais((s) => ({ ...s, whatsapp: v }))}
               />
@@ -293,7 +426,7 @@ function CertPage() {
             <CardContent>
               <ol className="space-y-4">
                 {historico.map((h, i) => {
-                  const Icon = h.icon;
+                  const Icon = historicoIcon(h.tone);
                   return (
                     <li key={i} className="flex gap-3">
                       <div
@@ -349,6 +482,27 @@ function CertPage() {
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
+              <Label>Arquivo da certidão (PDF)</Label>
+              <label
+                htmlFor="cert-upload"
+                className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 px-4 py-5 text-center transition hover:border-primary/50"
+              >
+                <Upload className="h-5 w-5 text-primary" />
+                <span className="text-sm font-medium">
+                  {arquivoCert ? arquivoCert.name : "Clique para selecionar o PDF"}
+                </span>
+                <input
+                  id="cert-upload"
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  className="hidden"
+                  onChange={(e) => setArquivoCert(e.target.files?.[0] ?? null)}
+                />
+              </label>
+            </div>
+
+            {modalCert?.requerValidade && (
+            <div className="space-y-2">
               <Label htmlFor="data-validade">Data de validade</Label>
               <Popover>
                 <PopoverTrigger asChild>
@@ -375,7 +529,9 @@ function CertPage() {
                 </PopoverContent>
               </Popover>
             </div>
+            )}
 
+            {modalCert?.requerCodigo && (
             <div className="space-y-2">
               <Label htmlFor="codigo-certidao">Código / Número da certidão</Label>
               <Input
@@ -385,19 +541,28 @@ function CertPage() {
                 onChange={(e) => setCodigoCertidao(e.target.value)}
               />
             </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={handleCloseModal}>
               Cancelar
             </Button>
-            <Button onClick={handleSalvar} disabled={!dataCertidao || !codigoCertidao}>
-              Salvar certidão
+            <Button
+              onClick={() => void handleSalvar()}
+              disabled={
+                salvando ||
+                !arquivoCert ||
+                (modalCert?.requerValidade && !dataCertidao) ||
+                (modalCert?.requerCodigo && !codigoCertidao.trim())
+              }
+            >
+              {salvando ? "Salvando..." : "Salvar certidão"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }
 

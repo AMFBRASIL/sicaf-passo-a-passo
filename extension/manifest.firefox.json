@@ -1,0 +1,87 @@
+{
+  "manifest_version": 3,
+  "name": "CadBrasil - Assistente SICAF",
+  "version": "1.0.2",
+  "description": "Assistente inteligente para cadastro SICAF. Abre o portal SICAF Gov.br e fornece chat IA para auxiliar no credenciamento.",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "storage",
+    "downloads",
+    "scripting",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "https://www3.comprasnet.gov.br/*",
+    "https://*.comprasnet.gov.br/*",
+    "https://acesso.gov.br/*",
+    "https://*.acesso.gov.br/*",
+    "https://fornecedor.cadbrasil.com.br/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www3.comprasnet.gov.br/*",
+        "https://*.comprasnet.gov.br/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://fornecedor.cadbrasil.com.br/*"
+      ],
+      "js": [
+        "cadbrasil-detect.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "CadBrasil SICAF - Clique para abrir o assistente",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "sidebar_action": {
+    "default_title": "Assistente CadBrasil IA",
+    "default_panel": "sidebar.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "pageworld.js"
+      ],
+      "matches": [
+        "https://www3.comprasnet.gov.br/*",
+        "https://*.comprasnet.gov.br/*"
+      ]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "assistente-sicaf@cadbrasil.com",
+      "strict_min_version": "121.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  }
+}

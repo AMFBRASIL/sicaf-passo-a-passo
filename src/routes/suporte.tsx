@@ -1,5 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  criarTicket,
+  fetchTicket,
+  fetchTickets,
+  mapTicketStatusUi,
+  responderTicket,
+  type TicketMensagem,
+  type TicketResumo,
+} from "@/lib/tickets-api";
 import {
   AlertCircle,
   ArrowLeft,
@@ -22,6 +31,7 @@ import {
   Wrench,
   X,
   Zap,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,10 +44,24 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { PageHeader, StatusBadge } from "@/components/page-header";
+import { PageHeader, StatusBadge, PageContainer } from "@/components/page-header";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import wizardBg from "@/assets/wizard-bg.jpg";
+
+/** WhatsApp suporte — DDD 11 + 2122-0202 */
+const WHATSAPP_SUPORTE_NUMERO = "5511121220202";
+
+function buildWhatsAppSuporteUrl(nomeUsuario?: string | null): string {
+  const texto = nomeUsuario?.trim()
+    ? `Olá! Meu nome é ${nomeUsuario.trim()}. Estou na página de Suporte do portal CADBRASIL e preciso de ajuda.`
+    : "Olá! Estou na página de Suporte do portal CADBRASIL e preciso de ajuda.";
+  return `https://wa.me/${WHATSAPP_SUPORTE_NUMERO}?text=${encodeURIComponent(texto)}`;
+}
+
+const WHATSAPP_BUTTON_CLASS =
+  "mt-3 gap-2 bg-[#25D366] text-white shadow-sm hover:bg-[#20BD5A] hover:text-white";
 
 export const Route = createFileRoute("/suporte")({
   head: () => ({
@@ -68,60 +92,30 @@ type Chamado = {
   mensagens: ChamadoMsg[];
 };
 
-const chamadosIniciais: Chamado[] = [
-  {
-    codigo: "CB-2025-0482",
-    titulo: "Dúvida sobre Nível IV",
-    data: "02/12/2025",
-    status: "warn",
-    label: "Em atendimento",
-    categoria: "SICAF / Cadastro",
-    prioridade: "Média",
-    responsavel: "Marina Costa",
-    mensagens: [
-      {
-        autor: "voce",
-        nome: "Você",
-        data: "02/12/2025 09:14",
-        texto:
-          "Olá! Tentei avançar para o Nível IV do SICAF mas o sistema retorna um erro de qualificação técnica. Podem me ajudar a entender o que falta?",
-      },
-      {
-        autor: "suporte",
-        nome: "Marina • Suporte CADBRASIL",
-        data: "02/12/2025 10:02",
-        texto:
-          "Oi! Já estou analisando seu cadastro. Notei que faltam 2 atestados de capacidade técnica vigentes. Posso te enviar o modelo padrão aceito pelo SICAF?",
-      },
-    ],
-  },
-  {
-    codigo: "CB-2025-0471",
-    titulo: "Renovação de certidão estadual",
-    data: "20/11/2025",
-    status: "ok",
-    label: "Resolvido",
-    categoria: "Documentos & Certidões",
-    prioridade: "Baixa",
-    responsavel: "Rafael Lima",
-    mensagens: [
-      {
-        autor: "voce",
-        nome: "Você",
-        data: "20/11/2025 14:22",
-        texto: "Minha certidão estadual venceu, como faço para renovar pelo portal?",
-      },
-      {
-        autor: "suporte",
-        nome: "Rafael • Suporte CADBRASIL",
-        data: "20/11/2025 14:41",
-        texto:
-          "Já emitimos a nova certidão e anexamos ao seu cadastro. Tudo regularizado!",
-      },
-    ],
-  },
-];
+function mapMensagens(msgs: TicketMensagem[]): ChamadoMsg[] {
+  return msgs.map((m) => ({
+    autor: m.sender === "client" ? "voce" : "suporte",
+    nome: m.senderName,
+    data: m.date,
+    texto: m.message,
+  }));
+}
 
+function mapTicketResumo(t: TicketResumo, msgs: TicketMensagem[] = []): Chamado {
+  const ui = mapTicketStatusUi(t.status);
+  const pri = t.priority ? t.priority.charAt(0).toUpperCase() + t.priority.slice(1) : "Média";
+  return {
+    codigo: t.id,
+    titulo: t.title,
+    data: t.createdAt?.split(" ")[0] || t.createdAt,
+    status: ui.status,
+    label: ui.label,
+    categoria: categoriaExibicao(t.category),
+    prioridade: pri as Chamado["prioridade"],
+    responsavel: t.assignee || "Suporte CADBRASIL",
+    mensagens: mapMensagens(msgs),
+  };
+}
 
 type Categoria = {
   id: string;
@@ -140,6 +134,21 @@ const categorias: Categoria[] = [
   { id: "outro", titulo: "Outro assunto", descricao: "Não encontrei minha categoria", icon: HelpCircle, cor: "text-muted-foreground" },
 ];
 
+const CATEGORIA_DB_LABELS: Record<string, string> = {
+  sicaf: "SICAF / Cadastro",
+  suporte: "Documentos & Certidões",
+  financeiro: "Pagamentos & Faturas",
+  bug: "Problema técnico",
+  melhoria: "Serviços com IA",
+  outro: "Outro assunto",
+};
+
+function categoriaExibicao(idOuEnum: string): string {
+  const cat = categorias.find((c) => c.id === idOuEnum);
+  if (cat) return cat.titulo;
+  return CATEGORIA_DB_LABELS[idOuEnum] || idOuEnum;
+}
+
 const prioridades = [
   { id: "baixa", label: "Baixa", desc: "Posso esperar", cor: "border-border" },
   { id: "media", label: "Média", desc: "Preciso resolver em breve", cor: "border-warning/40" },
@@ -156,7 +165,7 @@ const steps = [
   { id: 5, title: "Revisão", desc: "Confira e envie" },
 ];
 
-function NovoChamadoDialog() {
+function NovoChamadoDialog({ onCreated }: { onCreated?: () => void }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [categoria, setCategoria] = useState<string | null>(null);
@@ -184,10 +193,21 @@ function NovoChamadoDialog() {
     setAnexos([]);
   };
 
-  const enviar = () => {
-    toast.success("Chamado aberto! Em breve um especialista vai te responder.");
+  const enviar = async () => {
+    const res = await criarTicket({
+      titulo: assunto.trim(),
+      descricao: mensagem.trim(),
+      categoria: categoria || "outro",
+      prioridade: prioridade || "media",
+    });
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao abrir chamado");
+      return;
+    }
+    toast.success(res.message || `Chamado ${res.codigo || ""} aberto!`);
     reset();
     setOpen(false);
+    onCreated?.();
   };
 
   const addFiles = (files: FileList | null) => {
@@ -710,57 +730,84 @@ function formatBytes(b: number) {
 
 
 function SupportPage() {
-  const [chamados, setChamados] = useState<Chamado[]>(chamadosIniciais);
+  const { user } = useAuth();
+  const whatsappUrl = buildWhatsAppSuporteUrl(user?.nome);
+  const [chamados, setChamados] = useState<Chamado[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const ticket = chamados.find((c) => c.codigo === aberto) ?? null;
 
-  const responder = (codigo: string, texto: string) => {
-    setChamados((prev) =>
-      prev.map((c) =>
-        c.codigo === codigo
-          ? {
-              ...c,
-              status: "warn",
-              label: "Aguardando suporte",
-              mensagens: [
-                ...c.mensagens,
-                {
-                  autor: "voce",
-                  nome: "Você",
-                  data: new Date().toLocaleString("pt-BR", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                  texto,
-                },
-              ],
-            }
-          : c,
-      ),
-    );
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    const res = await fetchTickets();
+    if (res.ok && res.tickets) {
+      setChamados(res.tickets.map((t) => mapTicketResumo(t)));
+    } else if (!res.ok) {
+      toast.error(res.error || "Erro ao carregar chamados");
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
+
+  useEffect(() => {
+    if (!aberto) return;
+    void (async () => {
+      const det = await fetchTicket(aberto);
+      if (det.ok && det.ticket) {
+        setChamados((prev) =>
+          prev.map((c) =>
+            c.codigo === aberto
+              ? mapTicketResumo(det.ticket!, det.ticket!.messages)
+              : c,
+          ),
+        );
+      }
+    })();
+  }, [aberto]);
+
+  const responder = async (codigo: string, texto: string) => {
+    const res = await responderTicket(codigo, texto);
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao enviar resposta");
+      return;
+    }
+    const det = await fetchTicket(codigo);
+    if (det.ok && det.ticket) {
+      setChamados((prev) =>
+        prev.map((c) => (c.codigo === codigo ? mapTicketResumo(det.ticket!, det.ticket!.messages) : c)),
+      );
+    }
     toast.success("Resposta enviada!");
   };
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
+    <PageContainer>
       <PageHeader
         icon={<Headphones className="h-5 w-5" />}
         title="Suporte"
         subtitle="Estamos aqui para te ajudar — sem termos técnicos."
-        action={<NovoChamadoDialog />}
+        action={<NovoChamadoDialog onCreated={() => void carregar()} />}
       />
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <Card className="border-primary/20">
           <CardContent className="flex items-start gap-3 p-5">
-            <MessageCircle className="mt-0.5 h-6 w-6 text-success" />
-            <div>
+            <MessageCircle className="mt-0.5 h-6 w-6 text-[#25D366]" />
+            <div className="min-w-0 flex-1">
               <p className="font-semibold">WhatsApp</p>
-              <p className="mt-0.5 text-sm text-muted-foreground">Resposta em até 5 minutos no horário comercial.</p>
-              <Button variant="link" className="mt-1 h-auto p-0">Iniciar conversa →</Button>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Resposta em até 5 minutos no horário comercial.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">(11) 2122-0202</p>
+              <Button asChild size="sm" className={WHATSAPP_BUTTON_CLASS}>
+                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="h-4 w-4" />
+                  Iniciar conversa no WhatsApp
+                </a>
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -780,8 +827,19 @@ function SupportPage() {
           <CardTitle className="text-base font-semibold">Seus chamados</CardTitle>
         </CardHeader>
         <CardContent>
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Carregando chamados...
+            </div>
+          )}
+          {!loading && chamados.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Nenhum chamado aberto. Clique em &quot;Novo chamado&quot; para falar com o suporte.
+            </p>
+          )}
           <ul className="divide-y divide-border">
-            {chamados.map((c) => (
+            {!loading && chamados.map((c) => (
               <li key={c.codigo}>
                 <button
                   type="button"
@@ -816,7 +874,7 @@ function SupportPage() {
         onOpenChange={(v) => !v && setAberto(null)}
         onResponder={responder}
       />
-    </div>
+    </PageContainer>
   );
 }
 

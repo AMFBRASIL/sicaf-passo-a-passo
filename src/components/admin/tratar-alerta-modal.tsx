@@ -22,6 +22,11 @@ import wizardBg from "@/assets/wizard-bg.jpg";
 import { toast } from "sonner";
 
 export interface AlertaItem {
+  id?: string;
+  categoria?: string;
+  referenciaId?: number;
+  clienteId?: number | null;
+  acaoUrl?: string | null;
   tipo: string;
   cli: string;
   det: string;

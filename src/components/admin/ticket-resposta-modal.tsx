@@ -4,7 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useState } from "react";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useEffect, useMemo, useState } from "react";
 import {
   Ticket,
   MessageSquare,
@@ -28,12 +36,34 @@ export interface TicketItem {
   data: string;
 }
 
+/** Situações do kanban em /admin/suporte */
+export const TICKET_SITUACOES = [
+  "Novo",
+  "Triagem",
+  "Em andamento",
+  "Aguardando Cliente",
+  "Aguardando Governo",
+  "Resolvido",
+  "Fechado",
+] as const;
+
+export type TicketSituacao = (typeof TICKET_SITUACOES)[number];
+export type ModoSituacaoTicket = "padrao" | "manual";
+
+export type TicketRespostaOptions = {
+  modoSituacao: ModoSituacaoTicket;
+  /** Definida apenas quando modoSituacao === "manual" */
+  situacaoManual?: TicketSituacao;
+  /** Apenas no modo padrão: mover para Resolvido após envio */
+  marcarResolvido?: boolean;
+};
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   ticket: TicketItem | null;
   cliente?: { razao: string; responsavel: string };
-  onEnviar?: (ticketId: string, mensagem: string, fecharTicket: boolean) => void;
+  onEnviar?: (ticketId: string, mensagem: string, opcoes: TicketRespostaOptions) => void;
 }
 
 type StepKey = "contexto" | "mensagens" | "resposta" | "finalizar";
@@ -52,10 +82,44 @@ const respostasRapidas = [
   "Estamos aguardando a liberação do órgão, retornamos em breve.",
 ];
 
+export function situacaoPadraoAposEnvio(statusAtual: string, marcarResolvido: boolean): TicketSituacao {
+  if (marcarResolvido) return "Resolvido";
+  if (statusAtual === "Novo") return "Em andamento";
+  return (TICKET_SITUACOES.includes(statusAtual as TicketSituacao)
+    ? statusAtual
+    : "Em andamento") as TicketSituacao;
+}
+
+function descricaoSituacaoPadrao(statusAtual: string, marcarResolvido: boolean): string {
+  if (marcarResolvido) return "O ticket será movido para Resolvido.";
+  if (statusAtual === "Novo") return "Primeira resposta: o ticket irá para Em andamento.";
+  return `A situação permanece em «${statusAtual}».`;
+}
+
 export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnviar }: Props) {
   const [step, setStep] = useState<StepKey>("contexto");
   const [mensagem, setMensagem] = useState("");
-  const [fechar, setFechar] = useState(false);
+  const [modoSituacao, setModoSituacao] = useState<ModoSituacaoTicket>("padrao");
+  const [situacaoManual, setSituacaoManual] = useState<TicketSituacao>("Em andamento");
+  const [marcarResolvido, setMarcarResolvido] = useState(false);
+
+  useEffect(() => {
+    if (!open || !ticket) return;
+    setStep("contexto");
+    setMensagem("");
+    setModoSituacao("padrao");
+    setMarcarResolvido(false);
+    const atual = TICKET_SITUACOES.includes(ticket.status as TicketSituacao)
+      ? (ticket.status as TicketSituacao)
+      : "Em andamento";
+    setSituacaoManual(atual);
+  }, [open, ticket?.id, ticket?.status]);
+
+  const situacaoPrevista = useMemo((): TicketSituacao => {
+    if (!ticket) return "Em andamento";
+    if (modoSituacao === "manual") return situacaoManual;
+    return situacaoPadraoAposEnvio(ticket.status, marcarResolvido);
+  }, [ticket, modoSituacao, situacaoManual, marcarResolvido]);
 
   if (!ticket) return null;
 
@@ -64,10 +128,22 @@ export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnv
       toast.error("Escreva uma mensagem antes de enviar");
       return;
     }
-    onEnviar?.(ticket.id, mensagem, fechar);
-    toast.success(fechar ? "Resposta enviada e ticket fechado" : "Resposta enviada ao cliente");
+    const opcoes: TicketRespostaOptions = {
+      modoSituacao,
+      situacaoManual: modoSituacao === "manual" ? situacaoManual : undefined,
+      marcarResolvido: modoSituacao === "padrao" ? marcarResolvido : undefined,
+    };
+    onEnviar?.(ticket.id, mensagem, opcoes);
+    const msgSucesso =
+      situacaoPrevista === "Fechado"
+        ? "Resposta enviada e ticket fechado"
+        : situacaoPrevista !== ticket.status
+          ? `Resposta enviada · situação: ${situacaoPrevista}`
+          : "Resposta enviada ao cliente";
+    toast.success(msgSucesso);
     setMensagem("");
-    setFechar(false);
+    setModoSituacao("padrao");
+    setMarcarResolvido(false);
     setStep("contexto");
     onOpenChange(false);
   };
@@ -232,15 +308,88 @@ export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnv
                       <Button variant="outline" size="sm" className="gap-1.5">
                         <Paperclip className="h-3.5 w-3.5" /> Anexar
                       </Button>
-                      <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={fechar}
-                          onChange={(e) => setFechar(e.target.checked)}
-                          className="h-3.5 w-3.5"
-                        />
-                        Marcar ticket como resolvido após envio
-                      </label>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Situação do ticket
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Atual: <span className="font-medium text-foreground">{ticket.status}</span>
+                          {situacaoPrevista !== ticket.status && (
+                            <>
+                              {" "}
+                              → <span className="font-medium text-primary">{situacaoPrevista}</span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={modoSituacao === "padrao" ? "default" : "outline"}
+                          className="h-8 text-xs"
+                          onClick={() => setModoSituacao("padrao")}
+                        >
+                          Padrão (automático)
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={modoSituacao === "manual" ? "default" : "outline"}
+                          className="h-8 text-xs"
+                          onClick={() => setModoSituacao("manual")}
+                        >
+                          Definir manualmente
+                        </Button>
+                      </div>
+
+                      {modoSituacao === "padrao" ? (
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground">
+                            {descricaoSituacaoPadrao(ticket.status, marcarResolvido)}
+                          </p>
+                          <label className="flex items-center gap-2 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={marcarResolvido}
+                              onChange={(e) => setMarcarResolvido(e.target.checked)}
+                              className="h-3.5 w-3.5"
+                            />
+                            Marcar como resolvido após envio
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="situacao-manual" className="text-xs">
+                            Nova situação
+                          </Label>
+                          <Select
+                            value={situacaoManual}
+                            onValueChange={(v) => setSituacaoManual(v as TicketSituacao)}
+                          >
+                            <SelectTrigger id="situacao-manual" className="h-9 text-sm">
+                              <SelectValue placeholder="Selecione a situação" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {TICKET_SITUACOES.map((s) => (
+                                <SelectItem key={s} value={s}>
+                                  {s}
+                                  {s === ticket.status ? " (atual)" : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-[11px] text-muted-foreground">
+                            Use para reabrir, aguardar cliente/governo ou fechar o chamado.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -256,9 +405,18 @@ export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnv
                     <div className="grid grid-cols-2 gap-3">
                       <InfoCard label="Destinatário" value={cliente?.responsavel || "Cliente"} />
                       <InfoCard
-                        label="Ação"
-                        value={fechar ? "Enviar e fechar ticket" : "Enviar resposta"}
+                        label="Situação após envio"
+                        value={
+                          situacaoPrevista === ticket.status
+                            ? `Manter em ${ticket.status}`
+                            : `${ticket.status} → ${situacaoPrevista}`
+                        }
                       />
+                      <InfoCard
+                        label="Modo"
+                        value={modoSituacao === "padrao" ? "Padrão (automático)" : "Manual"}
+                      />
+                      <InfoCard label="Ação" value="Enviar resposta ao cliente" />
                     </div>
                   </div>
                 )}

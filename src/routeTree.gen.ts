@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SuporteRouteImport } from './routes/suporte'
+import { Route as SicafAssistantChatRouteImport } from './routes/sicaf-assistant-chat'
+import { Route as SicafAssistantRouteImport } from './routes/sicaf-assistant'
 import { Route as SicafRouteImport } from './routes/sicaf'
 import { Route as ServicosIaRouteImport } from './routes/servicos-ia'
 import { Route as ServicosRouteImport } from './routes/servicos'
@@ -21,11 +23,13 @@ import { Route as MissoesRouteImport } from './routes/missoes'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LicitacoesRouteImport } from './routes/licitacoes'
 import { Route as FaltamRouteImport } from './routes/faltam'
+import { Route as EmpresasLegacyRouteImport } from './routes/empresas-legacy'
 import { Route as EmpresasRouteImport } from './routes/empresas'
 import { Route as DocumentosRouteImport } from './routes/documentos'
 import { Route as ConcluidoRouteImport } from './routes/concluido'
 import { Route as ColaboradoresRouteImport } from './routes/colaboradores'
 import { Route as CertidoesRouteImport } from './routes/certidoes'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AssistenteRouteImport } from './routes/assistente'
 import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -51,6 +55,16 @@ import { Route as AdminAlertasRouteImport } from './routes/admin.alertas'
 const SuporteRoute = SuporteRouteImport.update({
   id: '/suporte',
   path: '/suporte',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SicafAssistantChatRoute = SicafAssistantChatRouteImport.update({
+  id: '/sicaf-assistant-chat',
+  path: '/sicaf-assistant-chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SicafAssistantRoute = SicafAssistantRouteImport.update({
+  id: '/sicaf-assistant',
+  path: '/sicaf-assistant',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SicafRoute = SicafRouteImport.update({
@@ -108,6 +122,11 @@ const FaltamRoute = FaltamRouteImport.update({
   path: '/faltam',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EmpresasLegacyRoute = EmpresasLegacyRouteImport.update({
+  id: '/empresas-legacy',
+  path: '/empresas-legacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EmpresasRoute = EmpresasRouteImport.update({
   id: '/empresas',
   path: '/empresas',
@@ -131,6 +150,11 @@ const ColaboradoresRoute = ColaboradoresRouteImport.update({
 const CertidoesRoute = CertidoesRouteImport.update({
   id: '/certidoes',
   path: '/certidoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AssistenteRoute = AssistenteRouteImport.update({
@@ -244,11 +268,13 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
+  '/auth': typeof AuthRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
+  '/empresas-legacy': typeof EmpresasLegacyRoute
   '/faltam': typeof FaltamRoute
   '/licitacoes': typeof LicitacoesRoute
   '/login': typeof LoginRoute
@@ -260,6 +286,8 @@ export interface FileRoutesByFullPath {
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
+  '/sicaf-assistant': typeof SicafAssistantRoute
+  '/sicaf-assistant-chat': typeof SicafAssistantChatRoute
   '/suporte': typeof SuporteRoute
   '/admin/alertas': typeof AdminAlertasRoute
   '/admin/atendimento': typeof AdminAtendimentoRoute
@@ -283,11 +311,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
+  '/auth': typeof AuthRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
+  '/empresas-legacy': typeof EmpresasLegacyRoute
   '/faltam': typeof FaltamRoute
   '/licitacoes': typeof LicitacoesRoute
   '/login': typeof LoginRoute
@@ -299,6 +329,8 @@ export interface FileRoutesByTo {
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
+  '/sicaf-assistant': typeof SicafAssistantRoute
+  '/sicaf-assistant-chat': typeof SicafAssistantChatRoute
   '/suporte': typeof SuporteRoute
   '/admin/alertas': typeof AdminAlertasRoute
   '/admin/atendimento': typeof AdminAtendimentoRoute
@@ -324,11 +356,13 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
+  '/auth': typeof AuthRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
+  '/empresas-legacy': typeof EmpresasLegacyRoute
   '/faltam': typeof FaltamRoute
   '/licitacoes': typeof LicitacoesRoute
   '/login': typeof LoginRoute
@@ -340,6 +374,8 @@ export interface FileRoutesById {
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
+  '/sicaf-assistant': typeof SicafAssistantRoute
+  '/sicaf-assistant-chat': typeof SicafAssistantChatRoute
   '/suporte': typeof SuporteRoute
   '/admin/alertas': typeof AdminAlertasRoute
   '/admin/atendimento': typeof AdminAtendimentoRoute
@@ -366,11 +402,13 @@ export interface FileRouteTypes {
     | '/admin'
     | '/ajuda'
     | '/assistente'
+    | '/auth'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
     | '/documentos'
     | '/empresas'
+    | '/empresas-legacy'
     | '/faltam'
     | '/licitacoes'
     | '/login'
@@ -382,6 +420,8 @@ export interface FileRouteTypes {
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
+    | '/sicaf-assistant'
+    | '/sicaf-assistant-chat'
     | '/suporte'
     | '/admin/alertas'
     | '/admin/atendimento'
@@ -405,11 +445,13 @@ export interface FileRouteTypes {
     | '/'
     | '/ajuda'
     | '/assistente'
+    | '/auth'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
     | '/documentos'
     | '/empresas'
+    | '/empresas-legacy'
     | '/faltam'
     | '/licitacoes'
     | '/login'
@@ -421,6 +463,8 @@ export interface FileRouteTypes {
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
+    | '/sicaf-assistant'
+    | '/sicaf-assistant-chat'
     | '/suporte'
     | '/admin/alertas'
     | '/admin/atendimento'
@@ -445,11 +489,13 @@ export interface FileRouteTypes {
     | '/admin'
     | '/ajuda'
     | '/assistente'
+    | '/auth'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
     | '/documentos'
     | '/empresas'
+    | '/empresas-legacy'
     | '/faltam'
     | '/licitacoes'
     | '/login'
@@ -461,6 +507,8 @@ export interface FileRouteTypes {
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
+    | '/sicaf-assistant'
+    | '/sicaf-assistant-chat'
     | '/suporte'
     | '/admin/alertas'
     | '/admin/atendimento'
@@ -486,11 +534,13 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   AjudaRoute: typeof AjudaRoute
   AssistenteRoute: typeof AssistenteRoute
+  AuthRoute: typeof AuthRoute
   CertidoesRoute: typeof CertidoesRoute
   ColaboradoresRoute: typeof ColaboradoresRoute
   ConcluidoRoute: typeof ConcluidoRoute
   DocumentosRoute: typeof DocumentosRoute
   EmpresasRoute: typeof EmpresasRoute
+  EmpresasLegacyRoute: typeof EmpresasLegacyRoute
   FaltamRoute: typeof FaltamRoute
   LicitacoesRoute: typeof LicitacoesRoute
   LoginRoute: typeof LoginRoute
@@ -502,6 +552,8 @@ export interface RootRouteChildren {
   ServicosRoute: typeof ServicosRoute
   ServicosIaRoute: typeof ServicosIaRoute
   SicafRoute: typeof SicafRoute
+  SicafAssistantRoute: typeof SicafAssistantRoute
+  SicafAssistantChatRoute: typeof SicafAssistantChatRoute
   SuporteRoute: typeof SuporteRoute
 }
 
@@ -512,6 +564,20 @@ declare module '@tanstack/react-router' {
       path: '/suporte'
       fullPath: '/suporte'
       preLoaderRoute: typeof SuporteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sicaf-assistant-chat': {
+      id: '/sicaf-assistant-chat'
+      path: '/sicaf-assistant-chat'
+      fullPath: '/sicaf-assistant-chat'
+      preLoaderRoute: typeof SicafAssistantChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sicaf-assistant': {
+      id: '/sicaf-assistant'
+      path: '/sicaf-assistant'
+      fullPath: '/sicaf-assistant'
+      preLoaderRoute: typeof SicafAssistantRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sicaf': {
@@ -591,6 +657,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FaltamRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/empresas-legacy': {
+      id: '/empresas-legacy'
+      path: '/empresas-legacy'
+      fullPath: '/empresas-legacy'
+      preLoaderRoute: typeof EmpresasLegacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/empresas': {
       id: '/empresas'
       path: '/empresas'
@@ -624,6 +697,13 @@ declare module '@tanstack/react-router' {
       path: '/certidoes'
       fullPath: '/certidoes'
       preLoaderRoute: typeof CertidoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assistente': {
@@ -823,11 +903,13 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   AjudaRoute: AjudaRoute,
   AssistenteRoute: AssistenteRoute,
+  AuthRoute: AuthRoute,
   CertidoesRoute: CertidoesRoute,
   ColaboradoresRoute: ColaboradoresRoute,
   ConcluidoRoute: ConcluidoRoute,
   DocumentosRoute: DocumentosRoute,
   EmpresasRoute: EmpresasRoute,
+  EmpresasLegacyRoute: EmpresasLegacyRoute,
   FaltamRoute: FaltamRoute,
   LicitacoesRoute: LicitacoesRoute,
   LoginRoute: LoginRoute,
@@ -839,8 +921,20 @@ const rootRouteChildren: RootRouteChildren = {
   ServicosRoute: ServicosRoute,
   ServicosIaRoute: ServicosIaRoute,
   SicafRoute: SicafRoute,
+  SicafAssistantRoute: SicafAssistantRoute,
+  SicafAssistantChatRoute: SicafAssistantChatRoute,
   SuporteRoute: SuporteRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

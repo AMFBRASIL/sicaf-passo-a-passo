@@ -14,61 +14,11 @@ type Tarefa = {
   empresa: string;
   acaoLabel: string;
   link: "/empresas" | "/sicaf" | "/certidoes" | "/pagamentos" | "/assistente";
+  linkSearch?: { cnpj?: string };
   tempoEstimado?: string;
 };
 
-const TAREFAS: Tarefa[] = [
-  {
-    id: "t1",
-    prioridade: "urgente",
-    titulo: "Pagar taxa CADBRASIL",
-    descricao: "Liberação do SICAF depende deste pagamento.",
-    empresa: "Comércio Atlântico ME",
-    acaoLabel: "Ir para pagamento",
-    link: "/empresas",
-    tempoEstimado: "2 min",
-  },
-  {
-    id: "t2",
-    prioridade: "urgente",
-    titulo: "Renovar Certidão Trabalhista",
-    descricao: "Vencida há 3 dias — risco de bloqueio em editais.",
-    empresa: "Serviços Modelo EIRELI",
-    acaoLabel: "Renovar agora",
-    link: "/certidoes",
-    tempoEstimado: "5 min",
-  },
-  {
-    id: "t3",
-    prioridade: "atencao",
-    titulo: "SICAF expira em 12 dias",
-    descricao: "Atualize agora para evitar perder oportunidades.",
-    empresa: "Tech Solutions Brasil",
-    acaoLabel: "Atualizar SICAF",
-    link: "/sicaf",
-    tempoEstimado: "12 min",
-  },
-  {
-    id: "t4",
-    prioridade: "atencao",
-    titulo: "Certidão Estadual vence em 5 dias",
-    descricao: "Antecipe a renovação para evitar impactos.",
-    empresa: "Comércio Atlântico ME",
-    acaoLabel: "Ver certidão",
-    link: "/certidoes",
-    tempoEstimado: "5 min",
-  },
-  {
-    id: "t5",
-    prioridade: "info",
-    titulo: "Habilitar Nível V e VI",
-    descricao: "Complete o cadastro para concorrer em mais editais.",
-    empresa: "Construtora Horizonte LTDA",
-    acaoLabel: "Concluir cadastro",
-    link: "/sicaf",
-    tempoEstimado: "8 min",
-  },
-];
+export type { Tarefa };
 
 const STYLE: Record<Prioridade, { ring: string; chip: string; icon: string; label: string; Icon: typeof AlertTriangle }> = {
   urgente: {
@@ -94,9 +44,25 @@ const STYLE: Record<Prioridade, { ring: string; chip: string; icon: string; labe
   },
 };
 
-export function CentralTarefas() {
-  const urgentes = TAREFAS.filter((t) => t.prioridade === "urgente").length;
-  const atencao = TAREFAS.filter((t) => t.prioridade === "atencao").length;
+export function CentralTarefas({ tarefas = [] }: { tarefas?: Tarefa[] }) {
+  const urgentes = tarefas.filter((t) => t.prioridade === "urgente").length;
+  const atencao = tarefas.filter((t) => t.prioridade === "atencao").length;
+
+  if (tarefas.length === 0) {
+    return (
+      <Card className="overflow-hidden border-primary/20 shadow-soft">
+        <CardHeader className="bg-gradient-to-br from-success/10 via-background to-background">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <ListChecks className="h-4 w-4 text-success" />
+            Central de Tarefas
+          </CardTitle>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Nenhuma pendência urgente no momento. Seu portfólio está em dia.
+          </p>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden border-primary/20 shadow-soft">
@@ -118,12 +84,12 @@ export function CentralTarefas() {
           </p>
         </div>
         <span className="hidden rounded-full bg-background px-3 py-1 text-xs font-semibold shadow-sm sm:inline-block">
-          {TAREFAS.length} no total
+          {tarefas.length} no total
         </span>
       </CardHeader>
       <CardContent className="p-0">
         <ul className="divide-y divide-border">
-          {TAREFAS.map((t) => {
+          {tarefas.map((t) => {
             const s = STYLE[t.prioridade];
             const Icon = s.Icon;
             return (
@@ -149,7 +115,7 @@ export function CentralTarefas() {
                   </p>
                 </div>
                 <Button asChild size="sm" variant={t.prioridade === "urgente" ? "default" : "outline"} className="gap-1.5 self-start sm:self-center">
-                  <Link to={t.link}>
+                  <Link to={t.link} search={t.linkSearch}>
                     {t.acaoLabel}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Link>

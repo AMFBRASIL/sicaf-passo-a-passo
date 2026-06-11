@@ -27,6 +27,7 @@ interface Props {
   cliente: ClienteDetalhe | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  onSalvar?: (data: FormState) => Promise<boolean>;
 }
 
 type StepKey = "empresa" | "contato" | "acesso" | "revisar";
@@ -60,7 +61,7 @@ function gerarSenha() {
   return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
-export function EditarClienteModal({ cliente, open, onOpenChange }: Props) {
+export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Props) {
   const [step, setStep] = useState<StepKey>("empresa");
   const [showSenha, setShowSenha] = useState(false);
   const [data, setData] = useState<FormState>({
@@ -101,8 +102,13 @@ export function EditarClienteModal({ cliente, open, onOpenChange }: Props) {
     revisar: true,
   };
 
-  const salvar = () => {
-    toast.success(`Dados de ${data.razao} atualizados`);
+  const salvar = async () => {
+    if (onSalvar) {
+      const ok = await onSalvar(data);
+      if (!ok) return;
+    } else {
+      toast.success(`Dados de ${data.razao} atualizados`);
+    }
     onOpenChange(false);
   };
 

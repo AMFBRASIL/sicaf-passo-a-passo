@@ -1,18 +1,27 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  FileText, Upload, CheckCircle2, Circle, ArrowLeft, Building2, MapPin, ShieldCheck, Loader2, Plus,
+  FileText, Upload, CheckCircle2, Circle, ArrowLeft, Building2, ShieldCheck, Loader2, Plus,
+  Bot, Hash, Calendar, AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { PageHeader, StatusBadge } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader, PageContainer } from "@/components/page-header";
+import { DocumentoUploadModal } from "@/components/documento-upload-modal";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from "@/components/ui/dialog";
-import { empresasMock, statusLabel, NIVEIS_SICAF, type EmpresaData } from "@/routes/empresas";
+  calcSaudeDocumentalFromDocs,
+  SaudeDocumentalCard,
+} from "@/components/saude-documental-card";
+import { NIVEIS_SICAF, type EmpresaData } from "@/lib/empresas-shared";
+import {
+  fetchDocumentosChecklist,
+  resolveEmpresaPorCnpj,
+  type DocChecklistItem,
+} from "@/lib/documentos-api";
+import { getDocRequirementLabels, getDocUploadRules } from "@/lib/sicaf-document-rules";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type DocSearch = { cnpj?: string };
 
@@ -29,65 +38,116 @@ export const Route = createFileRoute("/documentos")({
   component: DocsPage,
 });
 
-type DocStatus = "ok" | "pendente";
-interface DocItem {
-  id: string;
-  nome: string;
-  descricao: string;
-  status: DocStatus;
-  validade?: string;
-}
+type DocItem = DocChecklistItem;
 
-const docsPorNivel: Record<number, DocItem[]> = {
-  1: [
-    { id: "1-cnpj", nome: "Cartão CNPJ", descricao: "Comprovante de inscrição na Receita Federal.", status: "ok", validade: "12/03/2026" },
-    { id: "1-end", nome: "Comprovante de endereço", descricao: "Conta de consumo recente da sede da empresa.", status: "ok", validade: "20/04/2026" },
-  ],
-  2: [
-    { id: "2-contrato", nome: "Contrato Social consolidado", descricao: "Última versão registrada na Junta Comercial.", status: "ok", validade: "—" },
-    { id: "2-rg", nome: "RG e CPF dos sócios", descricao: "Documentos pessoais dos representantes legais.", status: "ok" },
-    { id: "2-procuracao", nome: "Procuração (se aplicável)", descricao: "Para representação por terceiros.", status: "pendente" },
-  ],
-  3: [
-    { id: "3-receita", nome: "Certidão Conjunta Federal", descricao: "Receita Federal e PGFN — débitos tributários.", status: "ok", validade: "15/05/2026" },
-    { id: "3-fgts", nome: "Certidão de Regularidade do FGTS", descricao: "Emitida pela Caixa Econômica Federal.", status: "ok", validade: "30/03/2026" },
-    { id: "3-cndt", nome: "Certidão Negativa de Débitos Trabalhistas (CNDT)", descricao: "Emitida pelo TST.", status: "pendente" },
-  ],
-  4: [
-    { id: "4-est", nome: "Certidão Estadual", descricao: "Negativa de débitos da Fazenda Estadual.", status: "pendente" },
-    { id: "4-mun", nome: "Certidão Municipal", descricao: "Negativa de débitos da Fazenda Municipal.", status: "ok", validade: "10/06/2026" },
-  ],
-  5: [
-    { id: "5-acervo", nome: "Atestado de capacidade técnica", descricao: "Comprovação de execução de serviços compatíveis.", status: "pendente" },
-    { id: "5-registro", nome: "Registro em conselho de classe", descricao: "CREA, CRC, OAB ou similar conforme a atividade.", status: "ok", validade: "31/12/2026" },
-  ],
-  6: [
-    { id: "6-balanco", nome: "Balanço Patrimonial e DRE", descricao: "Último exercício social exigível, assinado pelo contador.", status: "pendente" },
-    { id: "6-cndfalencia", nome: "Certidão Negativa de Falência", descricao: "Distribuidor da sede da empresa.", status: "ok", validade: "08/04/2026" },
-  ],
-};
+function mapSicafFromStatus(status?: string): EmpresaData["sicaf"] {
+  const s = String(status || "").toLowerCase();
+  if (s === "ativo") return "ativo";
+  if (s === "vencendo") return "atencao";
+  if (s === "vencido") return "vencido";
+  return "sem_cadastro";
+}
 
 function DocsPage() {
   const { cnpj } = Route.useSearch();
-  const empresa: EmpresaData | undefined = empresasMock.find((e) => e.cnpj === cnpj) ?? empresasMock[0];
-  const [items, setItems] = useState<Record<string, DocItem>>(() => {
-    const map: Record<string, DocItem> = {};
-    Object.values(docsPorNivel).flat().forEach((d) => { map[d.id] = d; });
-    return map;
-  });
+  const [empresa, setEmpresa] = useState<EmpresaData | null>(null);
+  const [docsPorNivel, setDocsPorNivel] = useState<Record<number, DocItem[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
   const [uploadDoc, setUploadDoc] = useState<DocItem | null>(null);
+  const [ultimaVerificacao, setUltimaVerificacao] = useState<string | null>(null);
 
-  const allDocs = Object.values(items);
-  const done = allDocs.filter((d) => d.status === "ok").length;
-  const total = allDocs.length;
-  const meta = statusLabel[empresa.sicaf];
-
-  const handleUploaded = (doc: DocItem, validade?: string) => {
-    setItems((p) => ({ ...p, [doc.id]: { ...p[doc.id], status: "ok", validade: validade || p[doc.id].validade } }));
+  const recarregar = async (cnpjBusca?: string) => {
+    setLoading(true);
+    setErro(null);
+    const resolved = await resolveEmpresaPorCnpj(cnpjBusca || cnpj || "");
+    if (!resolved.ok || !resolved.empresa?.clienteId) {
+      const msg = resolved.error || "Selecione uma empresa em /empresas";
+      setErro(msg);
+      setEmpresa(null);
+      toast.error(msg);
+      setLoading(false);
+      return;
+    }
+    const checklist = await fetchDocumentosChecklist(resolved.empresa.clienteId);
+    if (!checklist.ok) {
+      toast.error(checklist.error || "Erro ao carregar documentos");
+      setLoading(false);
+      return;
+    }
+    const emp: EmpresaData = {
+      ...resolved.empresa,
+      nome: checklist.cliente?.razaoSocial || resolved.empresa.nome,
+      cnpj: checklist.cliente?.documento || resolved.empresa.cnpj,
+      email: checklist.cliente?.email || resolved.empresa.email,
+      telefone: checklist.cliente?.telefone || resolved.empresa.telefone,
+      endereco: checklist.cliente?.endereco || resolved.empresa.endereco,
+      cidade: checklist.cliente?.cidade || resolved.empresa.cidade,
+      uf: checklist.cliente?.estado || resolved.empresa.uf,
+      inscricaoEstadual: checklist.cliente?.inscricaoEstadual || "",
+      inscricaoMunicipal: checklist.cliente?.inscricaoMunicipal || "",
+      ramoAtividade: checklist.cliente?.ramoAtividade || "",
+      sicaf: mapSicafFromStatus(checklist.sicafStatus),
+      proximoPasso: "",
+      acao: resolved.empresa.acao,
+    };
+    setEmpresa(emp);
+    setDocsPorNivel(checklist.docsPorNivel || {});
+    setUltimaVerificacao(
+      new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+    );
+    setLoading(false);
   };
 
+  useEffect(() => {
+    void recarregar(cnpj);
+  }, [cnpj]);
+
+  const allDocs = useMemo(() => Object.values(docsPorNivel).flat(), [docsPorNivel]);
+  const saudeStats = useMemo(() => {
+    const base = calcSaudeDocumentalFromDocs(allDocs);
+    return {
+      ...base,
+      ultimaVerificacao,
+      labelMonitorado: `${base.total} documento${base.total === 1 ? "" : "s"} do SICAF monitorados`,
+    };
+  }, [allDocs, ultimaVerificacao]);
+
+  if (loading) {
+    return (
+      <PageContainer>
+        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground gap-3">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <p className="text-sm">Carregando documentos da empresa...</p>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  if (!empresa) {
+    return (
+      <PageContainer>
+        <Button asChild variant="ghost" size="sm" className="mb-3 -ml-2 gap-1">
+          <Link to="/empresas"><ArrowLeft className="h-4 w-4" /> Voltar para Empresas</Link>
+        </Button>
+        <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
+          <Building2 className="h-10 w-10 text-muted-foreground/50" />
+          <p className="text-sm font-medium text-foreground">{erro || "Empresa não encontrada"}</p>
+          <p className="text-xs text-muted-foreground max-w-md">
+            {cnpj
+              ? `Não foi possível localizar o CNPJ ${cnpj}. Verifique o cadastro ou escolha a empresa em Empresas.`
+              : "Informe o CNPJ na URL ou selecione uma empresa em Empresas."}
+          </p>
+          <Button asChild>
+            <Link to="/empresas">Ir para Empresas</Link>
+          </Button>
+        </div>
+      </PageContainer>
+    );
+  }
+
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+    <PageContainer>
       <Button asChild variant="ghost" size="sm" className="mb-3 -ml-2 gap-1">
         <Link to="/empresas"><ArrowLeft className="h-4 w-4" /> Voltar para Empresas</Link>
       </Button>
@@ -95,51 +155,21 @@ function DocsPage() {
       <PageHeader
         icon={<FileText className="h-5 w-5" />}
         title="Documentos da empresa"
-        subtitle={`${done} de ${total} documentos enviados — organizados por nível do SICAF`}
+        subtitle={
+          <span className="font-mono text-sm">
+            CNPJ {empresa.cnpj}
+          </span>
+        }
       />
 
-      {/* Cabeçalho com dados da empresa */}
-      <Card className="mt-6 overflow-hidden">
-        <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent px-5 py-4 border-b">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Building2 className="h-3.5 w-3.5" /> Empresa selecionada
-              </div>
-              <h2 className="mt-1 text-lg font-bold leading-tight truncate">{empresa.nome}</h2>
-              <p className="text-sm text-muted-foreground">CNPJ {empresa.cnpj}</p>
-            </div>
-            <StatusBadge status={meta.status}>{meta.label}</StatusBadge>
-          </div>
-        </div>
-        <CardContent className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
-          <Info label="Inscrição Estadual" value={empresa.inscricaoEstadual} />
-          <Info label="Inscrição Municipal" value={empresa.inscricaoMunicipal} />
-          <Info label="Ramo" value={empresa.ramoAtividade} />
-          <Info label="Endereço" value={`${empresa.endereco} — ${empresa.cidade}/${empresa.uf}`} icon={<MapPin className="h-3.5 w-3.5" />} />
-          <Info label="Telefone" value={empresa.telefone} />
-          <Info label="E-mail" value={empresa.email} />
-        </CardContent>
-      </Card>
-
-      {/* Progresso geral */}
-      <Card className="mt-4">
-        <CardContent className="p-5">
-          <div className="flex items-center justify-between gap-3 mb-2">
-            <p className="text-sm font-medium">Progresso geral</p>
-            <p className="text-sm text-muted-foreground">{Math.round((done / total) * 100)}%</p>
-          </div>
-          <Progress value={(done / total) * 100} className="h-3" />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Faltam {total - done} documentos para concluir os 6 níveis do SICAF.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="mt-4">
+        <SaudeDocumentalCard stats={saudeStats} cnpj={empresa.cnpj} />
+      </div>
 
       {/* Checklist por nível */}
       <div className="mt-6 space-y-4">
         {NIVEIS_SICAF.map((nivel) => {
-          const lista = docsPorNivel[nivel.num].map((d) => items[d.id]);
+          const lista = docsPorNivel[nivel.num] || [];
           const nivelDone = lista.filter((d) => d.status === "ok").length;
           const completo = nivelDone === lista.length;
           return (
@@ -175,33 +205,64 @@ function DocsPage() {
               </CardHeader>
               <CardContent className="p-0">
                 <ul className="divide-y divide-border">
-                  {lista.map((d) => (
-                    <li key={d.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                      <div className="flex items-start gap-3 min-w-0">
-                        {d.status === "ok" ? (
-                          <CheckCircle2 className="h-5 w-5 shrink-0 text-success mt-0.5" />
-                        ) : (
-                          <Circle className="h-5 w-5 shrink-0 text-muted-foreground/40 mt-0.5" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium leading-tight truncate">{d.nome}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{d.descricao}</p>
-                          {d.status === "ok" && d.validade && d.validade !== "—" && (
-                            <p className="text-[11px] text-success mt-0.5">Válido até {d.validade}</p>
+                  {lista.map((d) => {
+                    const rules = getDocUploadRules(d.codigo, d.nivelSicaf ?? null);
+                    const autoOnly = d.uploadManual === false || !rules.uploadManual;
+                    const enviado = d.status === "ok";
+                    return (
+                      <li key={d.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                        <div className="flex items-start gap-3 min-w-0">
+                          {enviado ? (
+                            <CheckCircle2 className="h-5 w-5 shrink-0 text-success mt-0.5" />
+                          ) : d.status === "vencida" || d.status === "vencendo" ? (
+                            <AlertTriangle className={cn(
+                              "h-5 w-5 shrink-0 mt-0.5",
+                              d.status === "vencida" ? "text-destructive" : "text-warning",
+                            )} />
+                          ) : (
+                            <Circle className="h-5 w-5 shrink-0 text-muted-foreground/40 mt-0.5" />
                           )}
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium leading-tight truncate">{d.nome}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{d.descricao}</p>
+                            <DocRequisitosBadges doc={d} />
+                            {enviado && d.validade && d.validade !== "—" && (
+                              <p className="text-[11px] text-success mt-1">Válido até {d.validade}</p>
+                            )}
+                            {d.status === "vencida" && (
+                              <p className="text-[11px] text-destructive mt-1">Documento vencido — reenvie</p>
+                            )}
+                            {d.status === "vencendo" && (
+                              <p className="text-[11px] text-warning mt-1">Vence em breve — atualize</p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant={d.status === "ok" ? "outline" : "default"}
-                        className="gap-1.5 shrink-0"
-                        onClick={() => setUploadDoc(d)}
-                      >
-                        {d.status === "ok" ? <Upload className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                        {d.status === "ok" ? "Substituir" : "Enviar"}
-                      </Button>
-                    </li>
-                  ))}
+                        <Button
+                          size="sm"
+                          variant={enviado ? "outline" : "default"}
+                          className="gap-1.5 shrink-0"
+                          onClick={() => setUploadDoc(d)}
+                        >
+                          {autoOnly ? (
+                            <>
+                              <Bot className="h-3.5 w-3.5" />
+                              {enviado ? "Ver" : "Assistente"}
+                            </>
+                          ) : enviado ? (
+                            <>
+                              <Upload className="h-3.5 w-3.5" />
+                              Substituir
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3.5 w-3.5" />
+                              Enviar
+                            </>
+                          )}
+                        </Button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </CardContent>
             </Card>
@@ -209,141 +270,49 @@ function DocsPage() {
         })}
       </div>
 
-      <UploadDocDialog
+      <DocumentoUploadModal
+        open={!!uploadDoc}
+        onOpenChange={(open) => !open && setUploadDoc(null)}
+        clienteId={empresa.clienteId!}
+        clienteNome={empresa.nome}
+        clienteDocumento={empresa.cnpj}
         doc={uploadDoc}
-        empresa={empresa}
-        onClose={() => setUploadDoc(null)}
-        onUploaded={handleUploaded}
+        onSuccess={() => void recarregar(cnpj)}
       />
-    </div>
+    </PageContainer>
   );
 }
 
-function Info({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
+function DocRequisitosBadges({ doc }: { doc: DocItem }) {
+  const rules = getDocUploadRules(doc.codigo, doc.nivelSicaf ?? null);
+  const uploadManual = doc.uploadManual !== false && rules.uploadManual;
+  const labels = getDocRequirementLabels({
+    pdf: uploadManual,
+    codigo: doc.requerCodigo ?? rules.codigo,
+    validade: doc.requerValidade ?? rules.validade,
+    uploadManual,
+  });
+
+  if (!labels.length) return null;
+
   return (
-    <div className="min-w-0">
-      <p className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">{icon}{label}</p>
-      <p className="text-sm font-medium mt-0.5 truncate">{value}</p>
+    <div className="mt-1.5 flex flex-wrap gap-1">
+      {labels.map((label) => (
+        <Badge
+          key={label}
+          variant="secondary"
+          className={cn(
+            "text-[10px] px-1.5 py-0 font-normal gap-1",
+            label === "Assistente SICAF" && "bg-amber-500/10 text-amber-700 border-amber-500/20",
+          )}
+        >
+          {label === "Assistente SICAF" && <Bot className="h-2.5 w-2.5" />}
+          {label === "Código" && <Hash className="h-2.5 w-2.5" />}
+          {label === "Validade" && <Calendar className="h-2.5 w-2.5" />}
+          {label === "PDF" && <FileText className="h-2.5 w-2.5" />}
+          {label}
+        </Badge>
+      ))}
     </div>
-  );
-}
-
-function UploadDocDialog({
-  doc, empresa, onClose, onUploaded,
-}: {
-  doc: DocItem | null;
-  empresa: EmpresaData;
-  onClose: () => void;
-  onUploaded: (doc: DocItem, validade?: string) => void;
-}) {
-  const [arquivo, setArquivo] = useState<File | null>(null);
-  const [validade, setValidade] = useState("");
-  const [estado, setEstado] = useState<"form" | "enviando" | "ok">("form");
-
-  useEffect(() => {
-    if (!doc) {
-      setArquivo(null);
-      setValidade("");
-      setEstado("form");
-    }
-  }, [doc]);
-
-  if (!doc) return null;
-  const pode = arquivo && estado === "form";
-
-  const enviar = () => {
-    setEstado("enviando");
-    setTimeout(() => {
-      setEstado("ok");
-      setTimeout(() => {
-        onUploaded(doc, validade);
-        onClose();
-      }, 1100);
-    }, 1500);
-  };
-
-  return (
-    <Dialog open={!!doc} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <Upload className="h-6 w-6" />
-          </div>
-          <DialogTitle className="text-center text-xl">{doc.nome}</DialogTitle>
-          <DialogDescription className="text-center">
-            {empresa.nome} · CNPJ {empresa.cnpj}
-          </DialogDescription>
-        </DialogHeader>
-
-        {estado === "form" && (
-          <div className="space-y-4 py-2">
-            <p className="text-xs text-muted-foreground text-center">{doc.descricao}</p>
-            <div className="space-y-2">
-              <Label>Arquivo do documento</Label>
-              <label
-                htmlFor="doc-file"
-                className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 px-4 py-6 text-center transition hover:border-primary/50 hover:bg-primary/5"
-              >
-                <Upload className="h-6 w-6 text-primary" />
-                <span className="text-sm font-medium">
-                  {arquivo ? arquivo.name : "Clique para selecionar o arquivo"}
-                </span>
-                <span className="text-xs text-muted-foreground">PDF, JPG ou PNG · até 10 MB</span>
-                <input
-                  id="doc-file"
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  className="hidden"
-                  onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
-                />
-              </label>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="validade">Validade (opcional)</Label>
-              <Input
-                id="validade"
-                type="date"
-                value={validade}
-                onChange={(e) => setValidade(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Avisaremos você 30 dias antes do vencimento.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {estado === "enviando" && (
-          <div className="flex flex-col items-center gap-3 py-8">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="text-sm font-medium">Enviando documento…</p>
-            <p className="text-xs text-muted-foreground">Validando arquivo e anexando à empresa</p>
-          </div>
-        )}
-
-        {estado === "ok" && (
-          <div className="flex flex-col items-center gap-3 py-8">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-success/15 text-success">
-              <CheckCircle2 className="h-8 w-8" />
-            </div>
-            <p className="text-base font-semibold">Documento enviado!</p>
-            <p className="text-center text-xs text-muted-foreground">
-              {doc.nome} foi anexado à empresa.
-            </p>
-          </div>
-        )}
-
-        {estado === "form" && (
-          <DialogFooter>
-            <Button variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button onClick={enviar} disabled={!pode} className="gap-2">
-              <Upload className="h-4 w-4" />
-              Enviar documento
-            </Button>
-          </DialogFooter>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }

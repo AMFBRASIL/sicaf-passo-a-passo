@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { fetchProntidao, type EmpresaProntidao } from "@/lib/prontidao-api";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Building2,
   Search,
@@ -32,56 +35,32 @@ export const Route = createFileRoute("/prontidao")({
   component: ProntidaoPage,
 });
 
-type Empresa = {
-  id: string;
-  razao: string;
-  cnpj: string;
-  uf: string;
-  score: number;
-  sicaf: { nivel: number; status: "ok" | "warn" | "danger" };
-  certidoes: { ok: number; warn: number; danger: number };
-  docs: { ok: number; total: number };
-  prioridade: "alta" | "media" | "baixa";
-  acao: string;
-};
-
-const empresas: Empresa[] = [
-  {
-    id: "1", razao: "Construtora Aurora LTDA", cnpj: "12.345.678/0001-90", uf: "SP",
-    score: 92, sicaf: { nivel: 6, status: "ok" }, certidoes: { ok: 5, warn: 0, danger: 0 },
-    docs: { ok: 18, total: 18 }, prioridade: "baixa", acao: "Pronta para licitar. Habilitada nos 6 níveis SICAF.",
-  },
-  {
-    id: "2", razao: "TechFlow Soluções ME", cnpj: "98.765.432/0001-10", uf: "MG",
-    score: 76, sicaf: { nivel: 4, status: "warn" }, certidoes: { ok: 4, warn: 1, danger: 0 },
-    docs: { ok: 14, total: 16 }, prioridade: "media", acao: "Renovar certidão estadual e enviar balanço para subir ao nível V.",
-  },
-  {
-    id: "3", razao: "Logística Brasil S/A", cnpj: "55.444.333/0001-22", uf: "RJ",
-    score: 58, sicaf: { nivel: 3, status: "warn" }, certidoes: { ok: 3, warn: 1, danger: 1 },
-    docs: { ok: 11, total: 16 }, prioridade: "alta", acao: "CNDT vencida + 5 documentos faltando. Resolver hoje.",
-  },
-  {
-    id: "4", razao: "Verde Vale Engenharia", cnpj: "33.222.111/0001-44", uf: "RS",
-    score: 41, sicaf: { nivel: 2, status: "danger" }, certidoes: { ok: 2, warn: 1, danger: 2 },
-    docs: { ok: 9, total: 18 }, prioridade: "alta", acao: "SICAF crítico. 9 documentos pendentes para reativar cadastro.",
-  },
-  {
-    id: "5", razao: "Saúde+ Distribuidora", cnpj: "77.888.999/0001-55", uf: "PR",
-    score: 85, sicaf: { nivel: 5, status: "ok" }, certidoes: { ok: 5, warn: 0, danger: 0 },
-    docs: { ok: 17, total: 18 }, prioridade: "baixa", acao: "Falta apenas atestado técnico para alcançar nível VI.",
-  },
-];
+type Empresa = EmpresaProntidao;
 
 function ProntidaoPage() {
   const [query, setQuery] = useState("");
   const [ordem, setOrdem] = useState<"score" | "prioridade">("prioridade");
+  const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [resumo, setResumo] = useState({ media: 0, prontas: 0, atencao: 0, criticas: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      const res = await fetchProntidao(query);
+      if (!res.ok) {
+        toast.error(res.error || "Erro ao carregar prontidão");
+        setLoading(false);
+        return;
+      }
+      setEmpresas(res.empresas || []);
+      if (res.resumo) setResumo(res.resumo);
+      setLoading(false);
+    })();
+  }, [query]);
 
   const filtradas = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let list = empresas.filter(
-      (e) => !q || e.razao.toLowerCase().includes(q) || e.cnpj.includes(q),
-    );
+    let list = [...empresas];
     list = [...list].sort((a, b) => {
       if (ordem === "score") return b.score - a.score;
       const pri = { alta: 0, media: 1, baixa: 2 } as const;
@@ -90,13 +69,19 @@ function ProntidaoPage() {
     return list;
   }, [query, ordem]);
 
-  const media = Math.round(empresas.reduce((s, e) => s + e.score, 0) / empresas.length);
-  const prontas = empresas.filter((e) => e.score >= 80).length;
-  const atencao = empresas.filter((e) => e.score >= 50 && e.score < 80).length;
-  const criticas = empresas.filter((e) => e.score < 50).length;
+  const { media, prontas, atencao, criticas } = resumo;
+
+  if (loading) {
+    return (
+      <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 sm:py-10 flex flex-col items-center justify-center gap-3 text-muted-foreground min-h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <p className="text-sm">Calculando prontidão das empresas...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+    <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 sm:py-10">
       <PageHeader
         icon={<Gauge className="h-5 w-5" />}
         title="Prontidão para Licitar"
@@ -111,7 +96,7 @@ function ProntidaoPage() {
 
       {/* Hero */}
       <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_1fr]">
-        <HeroScore media={media} />
+        <HeroScore media={media} total={empresas.length} />
         <KpiCard tone="ok" icon={<CheckCircle2 className="h-4 w-4" />} label="Prontas para licitar" value={prontas} hint="Score ≥ 80" />
         <KpiCard tone="warn" icon={<TrendingUp className="h-4 w-4" />} label="Em ajuste" value={atencao} hint="Score 50–79" />
         <KpiCard tone="danger" icon={<AlertTriangle className="h-4 w-4" />} label="Críticas" value={criticas} hint="Score abaixo de 50" />
@@ -177,7 +162,7 @@ function ProntidaoPage() {
   );
 }
 
-function HeroScore({ media }: { media: number }) {
+function HeroScore({ media, total }: { media: number; total: number }) {
   const tone = media >= 80 ? "ok" : media >= 50 ? "warn" : "danger";
   const ring =
     tone === "ok"
@@ -208,7 +193,7 @@ function HeroScore({ media }: { media: number }) {
         </div>
         <div>
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Score médio do portfólio</p>
-          <p className="mt-0.5 text-lg font-bold">{empresas.length} empresas monitoradas</p>
+          <p className="mt-0.5 text-lg font-bold">{total} empresas monitoradas</p>
           <p className="mt-0.5 text-xs text-muted-foreground">Atualizado há 12 minutos</p>
         </div>
       </CardContent>
