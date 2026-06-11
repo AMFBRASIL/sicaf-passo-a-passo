@@ -16,7 +16,9 @@
     "https://*.comprasnet.gov.br/*",
     "https://acesso.gov.br/*",
     "https://*.acesso.gov.br/*",
-    "https://fornecedor.cadbrasil.com.br/*"
+    "https://*.cadbrasil.com.br/*",
+    "https://fornecedor.cadbrasil.com.br/*",
+    "https://homolog.cadbrasil.com.br/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -37,7 +39,9 @@
     },
     {
       "matches": [
-        "https://fornecedor.cadbrasil.com.br/*"
+        "https://*.cadbrasil.com.br/*",
+        "https://fornecedor.cadbrasil.com.br/*",
+        "https://homolog.cadbrasil.com.br/*"
       ],
       "js": [
         "cadbrasil-detect.js"

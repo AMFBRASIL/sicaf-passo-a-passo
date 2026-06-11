@@ -17,13 +17,17 @@
     "https://*.comprasnet.gov.br/*",
     "https://acesso.gov.br/*",
     "https://*.acesso.gov.br/*",
+    "https://*.cadbrasil.com.br/*",
     "https://fornecedor.cadbrasil.com.br/*",
+    "https://homolog.cadbrasil.com.br/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
   "externally_connectable": {
     "matches": [
+      "https://*.cadbrasil.com.br/*",
       "https://fornecedor.cadbrasil.com.br/*",
+      "https://homolog.cadbrasil.com.br/*",
       "http://localhost/*",
       "http://127.0.0.1/*"
     ]
@@ -46,7 +50,9 @@
       "matches": [
         "http://localhost/*",
         "http://127.0.0.1/*",
-        "https://fornecedor.cadbrasil.com.br/*"
+        "https://*.cadbrasil.com.br/*",
+        "https://fornecedor.cadbrasil.com.br/*",
+        "https://homolog.cadbrasil.com.br/*"
       ],
       "js": [
         "cadbrasil-detect.js"
