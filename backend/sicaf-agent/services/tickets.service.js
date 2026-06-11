@@ -183,17 +183,16 @@ function _ticketStatusLabel(status) {
   return map[status] || status || '—';
 }
 
+/** Valores aceitos pelo ENUM `tickets.status` no MySQL. */
 const TICKET_STATUS_DB_VALIDOS = new Set([
   'aberto',
-  'triagem',
   'em_andamento',
   'aguardando_cliente',
-  'aguardando_governo',
   'resolvido',
   'fechado',
 ]);
 
-/** Converte rótulo do kanban admin ou slug para status no banco. */
+/** Converte rótulo do kanban admin ou slug para status no banco (ENUM). */
 function _normalizeStatusDb(raw) {
   const s = String(raw || '')
     .trim()
@@ -205,10 +204,10 @@ function _normalizeStatusDb(raw) {
   const map = {
     novo: 'aberto',
     aberto: 'aberto',
-    triagem: 'triagem',
+    triagem: 'aberto',
     em_andamento: 'em_andamento',
     aguardando_cliente: 'aguardando_cliente',
-    aguardando_governo: 'aguardando_governo',
+    aguardando_governo: 'em_andamento',
     resolvido: 'resolvido',
     fechado: 'fechado',
   };
@@ -834,6 +833,11 @@ async function listarTicketsAdmin(opts = {}) {
         'c.razao_social as cliente_nome'
       );
 
+    try {
+      const hasDeletedAt = await db.schema.hasColumn('tickets', 'deleted_at');
+      if (hasDeletedAt) query = query.whereNull('t.deleted_at');
+    } catch (_) {}
+
     if (opts.status && opts.status !== 'todos') {
       query = query.where('t.status', opts.status);
     }
@@ -866,19 +870,21 @@ async function listarTicketsAdmin(opts = {}) {
       }
     }
 
-    // Verificar última mensagem de cada ticket (aguardando resposta do suporte)
+    // Última mensagem de cada ticket (aguardando resposta do suporte)
     let lastMsgByTicket = {};
     if (ticketIds.length > 0) {
-      const lastMsgs = await db('ticket_mensagens as tm')
-        .join(
-          db.raw('(SELECT ticket_id, MAX(id) as max_id FROM ticket_mensagens WHERE ticket_id IN (' + ticketIds.map(() => '?').join(',') + ') GROUP BY ticket_id) as latest', ticketIds),
-          function () {
-            this.on('tm.ticket_id', '=', 'latest.ticket_id').andOn('tm.id', '=', 'latest.max_id');
-          }
-        )
-        .select('tm.ticket_id', 'tm.remetente_tipo');
-      for (const m of lastMsgs) {
-        lastMsgByTicket[m.ticket_id] = m.remetente_tipo;
+      const lastMsgIds = await db('ticket_mensagens')
+        .whereIn('ticket_id', ticketIds)
+        .groupBy('ticket_id')
+        .select(db.raw('ticket_id, MAX(id) as max_id'));
+      const ids = lastMsgIds.map((r) => r.max_id).filter(Boolean);
+      if (ids.length > 0) {
+        const lastMsgs = await db('ticket_mensagens')
+          .whereIn('id', ids)
+          .select('ticket_id', 'remetente_tipo');
+        for (const m of lastMsgs) {
+          lastMsgByTicket[m.ticket_id] = m.remetente_tipo;
+        }
       }
     }
 
@@ -893,7 +899,9 @@ async function listarTicketsAdmin(opts = {}) {
 
       // Ticket aguarda resposta se a última mensagem foi do cliente
       const ultimoRemetente = lastMsgByTicket[t.id] || null;
-      const aguardandoResposta = ultimoRemetente === 'client' && (t.status === 'aberto' || t.status === 'em_andamento');
+      const aguardandoResposta =
+        t.status === 'aguardando_cliente' ||
+        (ultimoRemetente === 'client' && (t.status === 'aberto' || t.status === 'em_andamento'));
 
       return {
         id: t.codigo || `TK-${String(t.id).padStart(3, '0')}`,

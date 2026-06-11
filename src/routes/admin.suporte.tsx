@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { Plus, Clock, AlertTriangle, Search, Filter, Loader2, RefreshCw } from "lucide-react";
+import { Plus, Clock, AlertTriangle, Search, Filter, Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import {
   TicketRespostaModal,
   type TicketItem,
@@ -72,6 +72,8 @@ function SuportePage() {
     { autor: string; tipo: "cliente" | "agente"; data: string; texto: string }[]
   >([]);
   const [enviandoResposta, setEnviandoResposta] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [totalApi, setTotalApi] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaDebounced(busca), 350);
@@ -80,13 +82,25 @@ function SuportePage() {
 
   const carregar = useCallback(async () => {
     setLoading(true);
-    const res = await fetchAdminTickets(buscaDebounced);
-    setLoading(false);
-    if (!res.ok) {
-      toast.error(res.error || "Erro ao carregar tickets");
-      return;
+    setErro(null);
+    try {
+      const res = await fetchAdminTickets(buscaDebounced);
+      if (!res.ok) {
+        const msg = res.error || "Erro ao carregar tickets";
+        setErro(msg);
+        toast.error(msg);
+        return;
+      }
+      const lista = res.tickets || [];
+      setTotalApi(lista.length);
+      setBoard(ticketsParaBoard(lista));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro ao carregar tickets";
+      setErro(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
     }
-    setBoard(ticketsParaBoard(res.tickets || []));
   }, [buscaDebounced]);
 
   useEffect(() => {
@@ -207,7 +221,13 @@ function SuportePage() {
           <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Central de Suporte</h1>
           <p className="text-sm text-muted-foreground">
             Kanban com SLA, responsável e histórico ·{" "}
-            <span className="font-medium text-foreground">{totalAbertos}</span> tickets em aberto
+            <span className="font-medium text-foreground">{totalAbertos}</span> em aberto
+            {totalApi > 0 && (
+              <>
+                {" "}
+                · <span className="font-medium text-foreground">{totalApi}</span> no banco
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -238,6 +258,20 @@ function SuportePage() {
           </Button>
         </div>
       </div>
+
+      {erro && (
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-800 dark:text-rose-200">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">Não foi possível carregar os tickets</p>
+            <p className="mt-1 text-rose-700/90 dark:text-rose-300/90">{erro}</p>
+            <p className="mt-2 text-xs opacity-80">
+              Confira se o backend foi atualizado (<code className="font-mono">git pull</code> + build) e se você está
+              logado como administrador.
+            </p>
+          </div>
+        </div>
+      )}
 
       {loading && Object.values(board).every((col) => col.length === 0) ? (
         <div className="flex items-center justify-center py-24 text-muted-foreground">

@@ -65,29 +65,65 @@ const COLUNAS: ColunaKanban[] = [
   "Fechado",
 ];
 
-export function statusDbParaColuna(status: string, aguardandoResposta = false): ColunaKanban {
+export function statusDbParaColuna(
+  status: string,
+  aguardandoResposta = false,
+  temAtribuido = false,
+): ColunaKanban {
   const s = String(status || "").toLowerCase();
   if (s === "fechado") return "Fechado";
   if (s === "resolvido") return "Resolvido";
-  if (s === "aguardando_governo") return "Aguardando Governo";
   if (s === "aguardando_cliente" || aguardandoResposta) return "Aguardando Cliente";
-  if (s === "triagem") return "Triagem";
   if (s === "em_andamento") return "Em andamento";
-  if (s === "aberto") return "Novo";
+  if (s === "aberto") return temAtribuido ? "Triagem" : "Novo";
   return "Em andamento";
 }
 
+/** Mapeia coluna do kanban para ENUM válido em `tickets.status`. */
 export function colunaParaStatusDb(coluna: ColunaKanban | TicketSituacao): string {
   const map: Record<string, string> = {
     Novo: "aberto",
-    Triagem: "triagem",
+    Triagem: "aberto",
     "Em andamento": "em_andamento",
     "Aguardando Cliente": "aguardando_cliente",
-    "Aguardando Governo": "aguardando_governo",
+    "Aguardando Governo": "em_andamento",
     Resolvido: "resolvido",
     Fechado: "fechado",
   };
   return map[coluna] || "em_andamento";
+}
+
+async function parseApiJson<T>(res: Response): Promise<T & { ok: boolean; error?: string }> {
+  const text = await res.text();
+  let data: T & { ok?: boolean; error?: string };
+  try {
+    data = JSON.parse(text) as T & { ok?: boolean; error?: string };
+  } catch {
+    return {
+      ok: false,
+      error: res.ok
+        ? "Resposta inválida da API"
+        : `Erro HTTP ${res.status}${text ? `: ${text.slice(0, 120)}` : ""}`,
+    } as T & { ok: boolean; error?: string };
+  }
+
+  if (!res.ok) {
+    return {
+      ...data,
+      ok: false,
+      error:
+        data.error ||
+        (res.status === 401
+          ? "Sessão expirada — faça login novamente"
+          : res.status === 403
+            ? "Acesso restrito a administradores"
+            : res.status === 404
+              ? "Rota /api/tickets-admin não encontrada — atualize o backend no VPS"
+              : `Erro HTTP ${res.status}`),
+    };
+  }
+
+  return { ...data, ok: data.ok !== false };
 }
 
 export function prioridadeParaUi(p: string): "Alta" | "Média" | "Baixa" {
@@ -128,16 +164,17 @@ export function formatSlaUi(minutes: number, status: string): { restante: string
 }
 
 export function mapTicketApiParaKanban(t: AdminTicketApi): TicketKanban {
+  const temAtribuido = !!t.assignee && t.assignee !== "Não atribuído";
   return {
     id: t.id,
     dbId: t.dbId,
     titulo: t.title,
     cli: t.client,
-    resp: t.assignee === "Não atribuído" ? "—" : t.assignee,
+    resp: temAtribuido ? t.assignee : "—",
     sla: formatSlaUi(t.slaMinutes, t.status),
     prio: prioridadeParaUi(t.priority),
     data: t.createdAt,
-    coluna: statusDbParaColuna(t.status, !!t.aguardandoResposta),
+    coluna: statusDbParaColuna(t.status, !!t.aguardandoResposta, temAtribuido),
   };
 }
 
@@ -157,21 +194,15 @@ export async function fetchAdminTickets(search = "") {
   const params = new URLSearchParams();
   if (search.trim()) params.set("search", search.trim());
   const res = await apiFetch(`/api/tickets-admin?${params.toString()}`);
-  return res.json() as Promise<{
-    ok: boolean;
+  return parseApiJson<{
     tickets?: AdminTicketApi[];
     counts?: Record<string, number>;
-    error?: string;
-  }>;
+  }>(res);
 }
 
 export async function fetchAdminTicketDetalhe(id: string) {
   const res = await apiFetch(`/api/tickets-admin/${encodeURIComponent(id)}`);
-  return res.json() as Promise<{
-    ok: boolean;
-    ticket?: AdminTicketDetalhe;
-    error?: string;
-  }>;
+  return parseApiJson<{ ticket?: AdminTicketDetalhe }>(res);
 }
 
 export async function criarTicketAdmin(payload: {
@@ -186,13 +217,11 @@ export async function criarTicketAdmin(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return res.json() as Promise<{
-    ok: boolean;
+  return parseApiJson<{
     codigo?: string;
     id?: number;
-    error?: string;
     message?: string;
-  }>;
+  }>(res);
 }
 
 export async function responderTicketAdmin(
@@ -207,11 +236,7 @@ export async function responderTicketAdmin(
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return res.json() as Promise<{
-    ok: boolean;
-    status?: string;
-    error?: string;
-  }>;
+  return parseApiJson<{ status?: string }>(res);
 }
 
 export async function atualizarTicketAdmin(id: string, payload: { status?: string; prioridade?: string }) {
@@ -219,5 +244,5 @@ export async function atualizarTicketAdmin(id: string, payload: { status?: strin
     method: "PATCH",
     body: JSON.stringify(payload),
   });
-  return res.json() as Promise<{ ok: boolean; error?: string; message?: string }>;
+  return parseApiJson<{ message?: string }>(res);
 }
