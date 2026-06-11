@@ -9,6 +9,139 @@ const VALID_STATUSES = ['Ativo', 'Vencendo', 'Vencido', 'Pendente', 'Cancelado',
 const STATUS_COM_EMAIL = ['Vencido', 'Vencendo', 'Pendente', 'Suspenso', 'Cancelado'];
 /** Status que exigem data de pagamento + motivo (ativa vigência e financeiro). */
 const STATUS_COM_DATA_PAGAMENTO = ['Ativo', 'Vencendo'];
+const TEMPLATE_CANCELAMENTO_FALLBACK_ID = 21;
+const TEMPLATE_ALERTA_FALLBACK_ID = 24;
+
+async function findCancelamentoTemplate(db) {
+  const ativo = () => db('templates_email').whereRaw('COALESCE(ativo, 1) = 1');
+  try {
+    let row = await ativo()
+      .whereRaw('LOWER(COALESCE(codigo, \'\')) IN (?, ?, ?)', [
+        'cancelamento',
+        'cancelamento_sicaf',
+        'sicaf_cancelamento',
+      ])
+      .orderBy('id')
+      .first();
+    if (row) return row;
+
+    row = await ativo().whereRaw('LOWER(nome) LIKE ?', ['%cancelamento%']).orderBy('id').first();
+    if (row) return row;
+
+    row = await ativo().where('id', TEMPLATE_CANCELAMENTO_FALLBACK_ID).first();
+    return row || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function findAlertaTemplate(db) {
+  try {
+    let row = await db('templates_email')
+      .whereRaw('COALESCE(ativo, 1) = 1')
+      .where('id', TEMPLATE_ALERTA_FALLBACK_ID)
+      .first();
+    if (row) return row;
+
+    row = await db('templates_email')
+      .whereRaw('COALESCE(ativo, 1) = 1')
+      .whereRaw('LOWER(nome) LIKE ?', ['%alerta%'])
+      .orderBy('id')
+      .first();
+    return row || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function sendStatusEmailNotification(db, {
+  status,
+  sicaf,
+  oldDisplayStatus,
+  mensagem,
+  usuarioId,
+}) {
+  const cliente = await db('clientes').where('id', sicaf.cliente_id).first();
+  const emailDestino = String(cliente?.email || '').trim();
+  if (!emailDestino) {
+    return { enviado: false, motivo: 'sem_email_destino' };
+  }
+
+  if (status === 'Cancelado') {
+    const templateRow = await findCancelamentoTemplate(db);
+    if (!templateRow) {
+      return {
+        enviado: false,
+        motivo: 'template_nao_encontrado',
+        templateId: TEMPLATE_CANCELAMENTO_FALLBACK_ID,
+      };
+    }
+
+    const emailAvisos = require('./email-avisos.service');
+    const envio = await emailAvisos.enviarAvisoCliente({
+      clienteId: sicaf.cliente_id,
+      templateDbId: templateRow.id,
+      to: emailDestino,
+      mensagemAdicional: String(mensagem || '').trim(),
+      usuarioId,
+    });
+
+    if (!envio.ok) {
+      return {
+        enviado: false,
+        motivo: 'erro_envio',
+        erro: envio.error || 'Falha ao enviar',
+        templateId: templateRow.id,
+        templateNome: templateRow.nome,
+      };
+    }
+
+    return {
+      enviado: !envio.simulado,
+      simulado: Boolean(envio.simulado),
+      templateId: templateRow.id,
+      templateNome: templateRow.nome,
+      para: emailDestino,
+      tipo: 'cancelamento',
+    };
+  }
+
+  const templateRow = await findAlertaTemplate(db);
+  if (!templateRow) {
+    return { enviado: false, motivo: 'template_nao_encontrado', templateId: TEMPLATE_ALERTA_FALLBACK_ID };
+  }
+
+  const nomeCliente = cliente.razao_social || cliente.nome_fantasia || '';
+  const envio = await emailService.sendTemplate(templateRow.nome, {
+    to: emailDestino,
+    vars: {
+      nome: nomeCliente,
+      email: emailDestino,
+      documento: cliente.documento || '',
+      status_anterior: oldDisplayStatus,
+      status_novo: status,
+      status,
+      data_atual: new Date().toLocaleDateString('pt-BR'),
+      empresa_nome: nomeCliente,
+      mensagem_adicional: String(mensagem || '').trim(),
+    },
+  });
+
+  return envio.ok
+    ? {
+        enviado: true,
+        templateId: templateRow.id,
+        templateNome: templateRow.nome,
+        para: emailDestino,
+        tipo: 'alerta',
+      }
+    : {
+        enviado: false,
+        motivo: 'erro_envio',
+        erro: envio.error || 'Falha ao enviar',
+        templateId: templateRow.id,
+      };
+}
 
 function isPaidTaxaStatus(status) {
   const s = String(status || '').trim().toLowerCase();
@@ -155,6 +288,9 @@ async function updateSicafStatusManual({ sicafId, status, usuarioId, mensagem, d
   if (STATUS_COM_DATA_PAGAMENTO.includes(status) && !String(mensagem || '').trim()) {
     return { ok: false, error: 'Informe o motivo/observação para registro no histórico' };
   }
+  if (status === 'Cancelado' && !String(mensagem || '').trim()) {
+    return { ok: false, error: 'Informe o motivo do cancelamento para registro no histórico e no e-mail' };
+  }
 
   const sicaf = await db('sicaf_cadastros').where('id', sicafId).first();
   if (!sicaf) return { ok: false, error: 'Cadastro SICAF não encontrado' };
@@ -216,36 +352,13 @@ async function updateSicafStatusManual({ sicafId, status, usuarioId, mensagem, d
   let emailNotificacao = { enviado: false, motivo: 'status_ativo' };
   if (STATUS_COM_EMAIL.includes(status)) {
     try {
-      const cliente = await db('clientes').where('id', sicaf.cliente_id).first();
-      const emailDestino = String(cliente?.email || '').trim();
-      if (!emailDestino) {
-        emailNotificacao = { enviado: false, motivo: 'sem_email_destino' };
-      } else {
-        const isCancelamento = status === 'Cancelado';
-        const templateId = isCancelamento ? 21 : 24;
-        const templateRow = await db('templates_email').where('id', templateId).first();
-        if (!templateRow) {
-          emailNotificacao = { enviado: false, motivo: 'template_nao_encontrado', templateId };
-        } else {
-          const nomeCliente = cliente.razao_social || cliente.nome_fantasia || '';
-          const envio = await emailService.sendTemplate(templateRow.nome, {
-            to: emailDestino,
-            vars: {
-              nome: nomeCliente,
-              email: emailDestino,
-              documento: cliente.documento || '',
-              status_anterior: oldDisplayStatus,
-              status_novo: status,
-              status,
-              data_atual: new Date().toLocaleDateString('pt-BR'),
-              empresa_nome: nomeCliente,
-            },
-          });
-          emailNotificacao = envio.ok
-            ? { enviado: true, templateId, para: emailDestino, tipo: isCancelamento ? 'cancelamento' : 'alerta' }
-            : { enviado: false, motivo: 'erro_envio', erro: envio.error || 'Falha ao enviar', templateId };
-        }
-      }
+      emailNotificacao = await sendStatusEmailNotification(db, {
+        status,
+        sicaf,
+        oldDisplayStatus,
+        mensagem: String(mensagem || '').trim(),
+        usuarioId,
+      });
     } catch (emailErr) {
       emailNotificacao = { enviado: false, motivo: 'erro_envio', erro: emailErr.message };
     }

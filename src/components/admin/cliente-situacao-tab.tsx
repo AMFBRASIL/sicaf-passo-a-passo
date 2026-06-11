@@ -87,7 +87,8 @@ const SICAF_STATUSES = [
 ] as const;
 
 /** Exige data do pagamento + motivo (SICAF e financeiro). */
-const STATUS_COM_MODAL = new Set(["Ativo", "Vencendo"]);
+const STATUS_COM_MODAL_PAGAMENTO = new Set(["Ativo", "Vencendo"]);
+const STATUS_CANCELADO = "Cancelado";
 
 function statusBadgeClass(status: string) {
   if (status === "Ativo" || status === "Vencendo") return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500";
@@ -138,13 +139,18 @@ export function SituacaoTab({
 
   const submitStatusChange = async (newStatus: string, mensagem?: string) => {
     if (!sicafId || newStatus === statusAtual) return;
-    const exigePagamento = STATUS_COM_MODAL.has(newStatus);
+    const exigePagamento = STATUS_COM_MODAL_PAGAMENTO.has(newStatus);
+    const isCancelamento = newStatus === STATUS_CANCELADO;
     if (exigePagamento && !dataInicioSicaf) {
       toast.error("Informe a data do pagamento.");
       return;
     }
-    if (exigePagamento && !mensagem?.trim()) {
-      toast.error("Informe o motivo/observação para o histórico.");
+    if ((exigePagamento || isCancelamento) && !mensagem?.trim()) {
+      toast.error(
+        isCancelamento
+          ? "Informe o motivo do cancelamento."
+          : "Informe o motivo/observação para o histórico.",
+      );
       return;
     }
 
@@ -166,12 +172,20 @@ export function SituacaoTab({
         toast.success("Pagamento registrado no financeiro do cliente.");
       }
       if (res.emailNotificacao?.enviado) {
-        toast.success("E-mail de notificação enviado ao cliente.");
+        toast.success(
+          newStatus === STATUS_CANCELADO
+            ? "E-mail de cancelamento enviado ao cliente."
+            : "E-mail de notificação enviado ao cliente.",
+        );
+      } else if (res.emailNotificacao?.simulado) {
+        toast.warning("E-mail registrado (SMTP não configurado — modo simulação).");
       } else if (res.emailNotificacao && !res.emailNotificacao.enviado && newStatus !== "Ativo") {
         const motivo =
           res.emailNotificacao.motivo === "sem_email_destino"
             ? "Cliente sem e-mail cadastrado"
-            : res.emailNotificacao.erro || "Falha no envio do e-mail";
+            : res.emailNotificacao.motivo === "template_nao_encontrado"
+              ? "Template de cancelamento não encontrado no sistema"
+              : res.emailNotificacao.erro || "Falha no envio do e-mail";
         toast.warning(motivo);
       }
 
@@ -189,9 +203,11 @@ export function SituacaoTab({
 
   const handleChangeStatus = (newStatus: string) => {
     if (!sicafId || newStatus === statusAtual || salvando) return;
-    if (STATUS_COM_MODAL.has(newStatus)) {
+    if (STATUS_COM_MODAL_PAGAMENTO.has(newStatus) || newStatus === STATUS_CANCELADO) {
       setPendingStatus(newStatus);
-      setDataInicioSicaf(new Date().toISOString().slice(0, 10));
+      if (STATUS_COM_MODAL_PAGAMENTO.has(newStatus)) {
+        setDataInicioSicaf(new Date().toISOString().slice(0, 10));
+      }
       setHistoricoMsg("");
       setShowConfirmDialog(true);
       return;
@@ -200,10 +216,15 @@ export function SituacaoTab({
   };
 
   const pendingMeta = SICAF_STATUSES.find((s) => s.value === pendingStatus);
-  const dialogTitulo =
-    pendingStatus === "Vencendo" ? "Regularizar SICAF" : "Ativar SICAF";
-  const dialogSubtitulo =
-    "Informe a data do pagamento e o motivo — a vigência do SICAF e o financeiro serão atualizados.";
+  const isPendingCancelamento = pendingStatus === STATUS_CANCELADO;
+  const dialogTitulo = isPendingCancelamento
+    ? "Cancelar SICAF"
+    : pendingStatus === "Vencendo"
+      ? "Regularizar SICAF"
+      : "Ativar SICAF";
+  const dialogSubtitulo = isPendingCancelamento
+    ? "O cliente receberá o e-mail de cancelamento. Informe o motivo para o histórico."
+    : "Informe a data do pagamento e o motivo — a vigência do SICAF e o financeiro serão atualizados.";
 
   if (carregando) {
     return (
@@ -321,8 +342,16 @@ export function SituacaoTab({
           <DialogTitle className="sr-only">{dialogTitulo}</DialogTitle>
           <div className="space-y-5 py-1">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10">
-                <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+              <div
+                className={`flex h-12 w-12 items-center justify-center rounded-xl ${
+                  isPendingCancelamento ? "bg-gray-500/10" : "bg-emerald-500/10"
+                }`}
+              >
+                {isPendingCancelamento ? (
+                  <Ban className="h-6 w-6 text-gray-600 dark:text-gray-400" />
+                ) : (
+                  <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+                )}
               </div>
               <div>
                 <h3 className="font-bold text-lg">{dialogTitulo}</h3>
@@ -330,7 +359,13 @@ export function SituacaoTab({
               </div>
             </div>
 
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-2">
+            <div
+              className={`rounded-lg border p-3 space-y-2 ${
+                isPendingCancelamento
+                  ? "border-gray-500/20 bg-gray-500/5"
+                  : "border-emerald-500/20 bg-emerald-500/5"
+              }`}
+            >
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Status atual:</span>
                 <Badge className={statusBadgeClass(statusAtual)}>{statusAtual}</Badge>
@@ -349,22 +384,34 @@ export function SituacaoTab({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Data do pagamento <span className="text-red-500">*</span>
-              </label>
-              <Input
-                type="date"
-                value={dataInicioSicaf}
-                onChange={(e) => setDataInicioSicaf(e.target.value)}
-                disabled={salvando}
-                max={new Date().toISOString().slice(0, 10)}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                O SICAF passa a valer por 1 ano a partir desta data. O financeiro (taxa/pagamento) será
-                atualizado com a mesma data.
-              </p>
-            </div>
+            {isPendingCancelamento && (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground">
+                  Será enviado automaticamente o <strong>template de cancelamento</strong> para{" "}
+                  <strong>{cliente.email || "o e-mail do cliente"}</strong>.
+                </p>
+              </div>
+            )}
+
+            {!isPendingCancelamento && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  Data do pagamento <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={dataInicioSicaf}
+                  onChange={(e) => setDataInicioSicaf(e.target.value)}
+                  disabled={salvando}
+                  max={new Date().toISOString().slice(0, 10)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  O SICAF passa a valer por 1 ano a partir desta data. O financeiro (taxa/pagamento) será
+                  atualizado com a mesma data.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
@@ -373,13 +420,19 @@ export function SituacaoTab({
               <Textarea
                 value={historicoMsg}
                 onChange={(e) => setHistoricoMsg(e.target.value)}
-                placeholder="Ex: Pagamento confirmado via transferência bancária, comprovante recebido por e-mail..."
+                placeholder={
+                  isPendingCancelamento
+                    ? "Ex: Cancelamento solicitado pelo cliente, inadimplência recorrente, encerramento de atividades..."
+                    : "Ex: Pagamento confirmado via transferência bancária, comprovante recebido por e-mail..."
+                }
                 rows={3}
                 className="resize-none"
                 disabled={salvando}
               />
               <p className="text-[11px] text-muted-foreground">
-                Registrado no histórico do cliente e no financeiro.
+                {isPendingCancelamento
+                  ? "Registrado no histórico e incluído no e-mail de cancelamento."
+                  : "Registrado no histórico do cliente e no financeiro."}
               </p>
             </div>
 
@@ -394,17 +447,30 @@ export function SituacaoTab({
                 }}
                 disabled={salvando}
               >
-                Cancelar
+                Voltar
               </Button>
               <Button
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                disabled={!historicoMsg.trim() || !dataInicioSicaf || salvando}
+                className={`flex-1 ${
+                  isPendingCancelamento
+                    ? "bg-gray-700 hover:bg-gray-800"
+                    : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
+                disabled={
+                  !historicoMsg.trim() ||
+                  (!isPendingCancelamento && !dataInicioSicaf) ||
+                  salvando
+                }
                 onClick={() => pendingStatus && void submitStatusChange(pendingStatus, historicoMsg.trim())}
               >
                 {salvando ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Salvando...
+                  </>
+                ) : isPendingCancelamento ? (
+                  <>
+                    <Ban className="h-4 w-4 mr-2" />
+                    Confirmar cancelamento
                   </>
                 ) : (
                   <>

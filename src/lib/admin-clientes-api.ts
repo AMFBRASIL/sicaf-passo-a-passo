@@ -567,8 +567,11 @@ export type UpdateSicafStatusManualResult = {
   dataInicio?: string | null;
   emailNotificacao?: {
     enviado: boolean;
+    simulado?: boolean;
     motivo?: string;
     erro?: string;
+    templateNome?: string;
+    tipo?: string;
   };
   financeiro?: {
     taxaAtualizada?: boolean;

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useEffect, useState } from "react";
 import {
   Bot,
@@ -31,28 +31,18 @@ import {
 } from "lucide-react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { toast } from "sonner";
+import {
+  GATILHOS_CATALOG,
+  GATILHOS_GRUPOS,
+  TEMPLATES_IA,
+  gatilhoLabel,
+  type FluxoAutomacao,
+  type AcaoAutomacaoTipo,
+} from "@/lib/automacoes-catalog";
 
-export interface FluxoAutomacao {
-  id?: string;
-  nome: string;
-  descricao?: string;
-  gatilho: string;
-  gatilhoTipo: string;
-  condicoes?: string;
-  acoes: { tipo: AcaoTipo; label: string; config?: string; delay?: string }[];
-  ativo: boolean;
-  rodou?: number;
-}
+export type { FluxoAutomacao };
 
-type AcaoTipo =
-  | "email"
-  | "whatsapp"
-  | "ticket"
-  | "tarefa"
-  | "cobranca"
-  | "acesso"
-  | "alerta"
-  | "agendar";
+type AcaoTipo = AcaoAutomacaoTipo;
 
 const ACAO_CATALOG: { tipo: AcaoTipo; label: string; icon: any; desc: string }[] = [
   { tipo: "email", label: "Enviar e-mail", icon: Mail, desc: "Mensagem por e-mail com template" },
@@ -65,46 +55,7 @@ const ACAO_CATALOG: { tipo: AcaoTipo; label: string; icon: any; desc: string }[]
   { tipo: "agendar", label: "Agendar follow-up", icon: Calendar, desc: "Lembrete futuro" },
 ];
 
-const GATILHOS = [
-  { value: "pagamento_recebido", label: "Cliente pagou fatura" },
-  { value: "certidao_vencendo", label: "Certidão vence em X dias" },
-  { value: "boleto_vencendo", label: "Boleto vence em X dias" },
-  { value: "score_risco", label: "Score de cancelamento alto" },
-  { value: "sicaf_pendente", label: "SICAF com pendência" },
-  { value: "novo_cliente", label: "Novo cliente cadastrado" },
-  { value: "ticket_sla", label: "Ticket próximo do SLA" },
-  { value: "manual", label: "Disparo manual" },
-];
-
-const TEMPLATES_IA = [
-  {
-    nome: "Boas-vindas após pagamento",
-    gatilho: "pagamento_recebido",
-    acoes: [
-      { tipo: "ticket" as const, label: "Criar ticket de onboarding" },
-      { tipo: "email" as const, label: "E-mail de boas-vindas", delay: "imediato" },
-      { tipo: "acesso" as const, label: "Liberar acesso ao SICAF" },
-    ],
-  },
-  {
-    nome: "Régua de cobrança",
-    gatilho: "boleto_vencendo",
-    acoes: [
-      { tipo: "whatsapp" as const, label: "Lembrete D-3", delay: "3 dias antes" },
-      { tipo: "email" as const, label: "Aviso D-1", delay: "1 dia antes" },
-      { tipo: "cobranca" as const, label: "Gerar 2ª via PIX", delay: "no vencimento" },
-    ],
-  },
-  {
-    nome: "Retenção de cliente em risco",
-    gatilho: "score_risco",
-    acoes: [
-      { tipo: "alerta" as const, label: "Avisar gerente da conta" },
-      { tipo: "email" as const, label: "Oferta de retenção" },
-      { tipo: "agendar" as const, label: "Follow-up em 7 dias" },
-    ],
-  },
-];
+const GATILHOS = GATILHOS_CATALOG;
 
 type StepKey = "info" | "gatilho" | "acoes" | "revisar";
 
@@ -188,7 +139,7 @@ export function FluxoAutomacaoModal({ open, onOpenChange, fluxo, onSalvar }: Pro
         ...data,
         nome: data.nome || tpl.nome,
         gatilhoTipo: tpl.gatilho,
-        gatilho: GATILHOS.find((g) => g.value === tpl.gatilho)?.label ?? "",
+        gatilho: GATILHOS.find((g) => g.value === tpl.gatilho)?.label ?? gatilhoLabel(tpl.gatilho),
         acoes: tpl.acoes.map((a) => ({ ...a })),
       });
       setIaLoading(false);
@@ -202,7 +153,7 @@ export function FluxoAutomacaoModal({ open, onOpenChange, fluxo, onSalvar }: Pro
       ...data,
       nome: data.nome || t.nome,
       gatilhoTipo: t.gatilho,
-      gatilho: GATILHOS.find((g) => g.value === t.gatilho)?.label ?? "",
+      gatilho: GATILHOS.find((g) => g.value === t.gatilho)?.label ?? gatilhoLabel(t.gatilho),
       acoes: t.acoes.map((a) => ({ ...a })),
     });
     toast.success(`Template aplicado: ${t.nome}`);
@@ -372,14 +323,23 @@ export function FluxoAutomacaoModal({ open, onOpenChange, fluxo, onSalvar }: Pro
                           setData({
                             ...data,
                             gatilhoTipo: v,
-                            gatilho: GATILHOS.find((g) => g.value === v)?.label ?? "",
+                            gatilho: gatilhoLabel(v),
                           })
                         }
                       >
                         <SelectTrigger><SelectValue placeholder="Selecione o gatilho" /></SelectTrigger>
-                        <SelectContent>
-                          {GATILHOS.map((g) => (
-                            <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
+                        <SelectContent className="max-h-[min(420px,70vh)]">
+                          {GATILHOS_GRUPOS.map((grupo) => (
+                            <SelectGroup key={grupo}>
+                              <SelectLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                {grupo}
+                              </SelectLabel>
+                              {GATILHOS.filter((g) => g.grupo === grupo).map((g) => (
+                                <SelectItem key={g.value} value={g.value}>
+                                  {g.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
                           ))}
                         </SelectContent>
                       </Select>

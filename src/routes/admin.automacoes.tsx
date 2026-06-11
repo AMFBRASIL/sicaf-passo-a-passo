@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Bot, Zap, Mail, MessageCircle, FileCheck2, DollarSign, ArrowRight, Plus, Pencil, Bell, Calendar, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { FluxoAutomacaoModal, type FluxoAutomacao } from "@/components/admin/fluxo-automacao-modal";
+import { FLUXOS_EXEMPLO } from "@/lib/automacoes-catalog";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/automacoes")({
@@ -23,58 +24,7 @@ const ICONS: Record<string, any> = {
   agendar: Calendar,
 };
 
-const fluxosIniciais: FluxoAutomacao[] = [
-  {
-    id: "1",
-    nome: "Boas-vindas ao pagar",
-    gatilho: "Cliente pagou primeira fatura",
-    gatilhoTipo: "pagamento_recebido",
-    acoes: [
-      { tipo: "ticket", label: "Criar ticket", delay: "imediato" },
-      { tipo: "email", label: "Enviar e-mail de boas-vindas", delay: "imediato" },
-      { tipo: "acesso", label: "Liberar acesso ao SICAF", delay: "imediato" },
-    ],
-    ativo: true,
-    rodou: 142,
-  },
-  {
-    id: "2",
-    nome: "Aviso de certidão vencendo",
-    gatilho: "Certidão vence em 15 dias",
-    gatilhoTipo: "certidao_vencendo",
-    acoes: [
-      { tipo: "whatsapp", label: "WhatsApp para responsável", delay: "imediato" },
-      { tipo: "email", label: "E-mail com checklist", delay: "1 dia depois" },
-      { tipo: "tarefa", label: "Criar tarefa para operador", delay: "imediato" },
-    ],
-    ativo: true,
-    rodou: 68,
-  },
-  {
-    id: "3",
-    nome: "Cobrança automática",
-    gatilho: "Boleto vence em 3 dias",
-    gatilhoTipo: "boleto_vencendo",
-    acoes: [
-      { tipo: "whatsapp", label: "Lembrete WhatsApp", delay: "3 dias antes" },
-      { tipo: "cobranca", label: "Gerar 2ª via PIX", delay: "no vencimento" },
-    ],
-    ativo: true,
-    rodou: 231,
-  },
-  {
-    id: "4",
-    nome: "Recuperar cliente em risco",
-    gatilho: "Score de cancelamento > 75%",
-    gatilhoTipo: "score_risco",
-    acoes: [
-      { tipo: "alerta", label: "Alertar gerente da conta", delay: "imediato" },
-      { tipo: "email", label: "Oferta de retenção", delay: "1 dia depois" },
-    ],
-    ativo: false,
-    rodou: 14,
-  },
-];
+const fluxosIniciais: FluxoAutomacao[] = FLUXOS_EXEMPLO;
 
 function AutomacoesPage() {
   const [fluxos, setFluxos] = useState<FluxoAutomacao[]>(fluxosIniciais);
