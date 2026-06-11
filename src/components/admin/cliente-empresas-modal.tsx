@@ -151,7 +151,7 @@ export function ClienteEmpresasModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-5xl w-[95vw] p-0 gap-0 overflow-hidden sm:max-w-5xl">
         <DialogTitle className="sr-only">{cliente.nome} — Empresas</DialogTitle>
         <DialogDescription className="sr-only">
           Selecione uma empresa para abrir o painel detalhado.

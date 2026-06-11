@@ -557,41 +557,37 @@ export async function criarAdminClienteNota(
   return data;
 }
 
-export async function updateSicafStatusManual(payload: {
-  sicafId: number;
-  status: string;
-  mensagem?: string;
-  dataInicio?: string;
-}): Promise<{
+export type UpdateSicafStatusManualResult = {
   ok: boolean;
   message?: string;
   error?: string;
   oldStatus?: string;
   newStatus?: string;
   novaValidade?: string | null;
+  dataInicio?: string | null;
   emailNotificacao?: {
     enviado: boolean;
     motivo?: string;
     erro?: string;
   };
-}> {
+  financeiro?: {
+    taxaAtualizada?: boolean;
+    pagamentosAtualizados?: number;
+    renovacoesConcluidas?: number;
+  };
+};
+
+export async function updateSicafStatusManual(payload: {
+  sicafId: number;
+  status: string;
+  mensagem?: string;
+  dataInicio?: string;
+}): Promise<UpdateSicafStatusManualResult> {
   const res = await apiFetch("/api/sicaf/update-status", {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return res.json() as Promise<{
-    ok: boolean;
-    message?: string;
-    error?: string;
-    oldStatus?: string;
-    newStatus?: string;
-    novaValidade?: string | null;
-    emailNotificacao?: {
-      enviado: boolean;
-      motivo?: string;
-      erro?: string;
-    };
-  }>;
+  return res.json() as UpdateSicafStatusManualResult;
 }
 
 export type ContratoDigitalUi = {

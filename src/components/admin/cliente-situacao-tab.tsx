@@ -86,6 +86,9 @@ const SICAF_STATUSES = [
   },
 ] as const;
 
+/** Exige data do pagamento + motivo (SICAF e financeiro). */
+const STATUS_COM_MODAL = new Set(["Ativo", "Vencendo"]);
+
 function statusBadgeClass(status: string) {
   if (status === "Ativo" || status === "Vencendo") return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500";
   if (status === "Pendente") return "bg-amber-500/10 text-amber-600 dark:text-amber-500";
@@ -108,7 +111,7 @@ export function SituacaoTab({
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [historicoMsg, setHistoricoMsg] = useState("");
   const [dataInicioSicaf, setDataInicioSicaf] = useState(() => new Date().toISOString().slice(0, 10));
-  const [showAtivarDialog, setShowAtivarDialog] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   const carregar = useCallback(async () => {
     if (!Number.isFinite(clienteId)) return;
@@ -135,8 +138,13 @@ export function SituacaoTab({
 
   const submitStatusChange = async (newStatus: string, mensagem?: string) => {
     if (!sicafId || newStatus === statusAtual) return;
-    if (newStatus === "Ativo" && !dataInicioSicaf) {
-      toast.error("Informe a data de início do SICAF.");
+    const exigePagamento = STATUS_COM_MODAL.has(newStatus);
+    if (exigePagamento && !dataInicioSicaf) {
+      toast.error("Informe a data do pagamento.");
+      return;
+    }
+    if (exigePagamento && !mensagem?.trim()) {
+      toast.error("Informe o motivo/observação para o histórico.");
       return;
     }
 
@@ -146,7 +154,7 @@ export function SituacaoTab({
         sicafId,
         status: newStatus,
         mensagem,
-        dataInicio: newStatus === "Ativo" ? dataInicioSicaf : undefined,
+        dataInicio: exigePagamento ? dataInicioSicaf : undefined,
       });
       if (!res.ok) {
         toast.error(res.error || "Erro ao alterar status.");
@@ -154,6 +162,9 @@ export function SituacaoTab({
       }
 
       toast.success(res.message || `Status alterado para ${newStatus}`);
+      if (res.financeiro?.taxaAtualizada) {
+        toast.success("Pagamento registrado no financeiro do cliente.");
+      }
       if (res.emailNotificacao?.enviado) {
         toast.success("E-mail de notificação enviado ao cliente.");
       } else if (res.emailNotificacao && !res.emailNotificacao.enviado && newStatus !== "Ativo") {
@@ -165,7 +176,7 @@ export function SituacaoTab({
       }
 
       setStatusAtual(newStatus);
-      setShowAtivarDialog(false);
+      setShowConfirmDialog(false);
       setPendingStatus(null);
       setHistoricoMsg("");
       onUpdated?.();
@@ -178,13 +189,21 @@ export function SituacaoTab({
 
   const handleChangeStatus = (newStatus: string) => {
     if (!sicafId || newStatus === statusAtual || salvando) return;
-    if (newStatus === "Ativo" && statusAtual !== "Ativo") {
+    if (STATUS_COM_MODAL.has(newStatus)) {
       setPendingStatus(newStatus);
-      setShowAtivarDialog(true);
+      setDataInicioSicaf(new Date().toISOString().slice(0, 10));
+      setHistoricoMsg("");
+      setShowConfirmDialog(true);
       return;
     }
     void submitStatusChange(newStatus);
   };
+
+  const pendingMeta = SICAF_STATUSES.find((s) => s.value === pendingStatus);
+  const dialogTitulo =
+    pendingStatus === "Vencendo" ? "Regularizar SICAF" : "Ativar SICAF";
+  const dialogSubtitulo =
+    "Informe a data do pagamento e o motivo — a vigência do SICAF e o financeiro serão atualizados.";
 
   if (carregando) {
     return (
@@ -287,10 +306,10 @@ export function SituacaoTab({
       </div>
 
       <Dialog
-        open={showAtivarDialog}
+        open={showConfirmDialog}
         onOpenChange={(v) => {
           if (!salvando) {
-            setShowAtivarDialog(v);
+            setShowConfirmDialog(v);
             if (!v) {
               setPendingStatus(null);
               setHistoricoMsg("");
@@ -299,32 +318,40 @@ export function SituacaoTab({
         }}
       >
         <DialogContent className="max-w-md">
-          <DialogTitle className="sr-only">Ativar SICAF</DialogTitle>
+          <DialogTitle className="sr-only">{dialogTitulo}</DialogTitle>
           <div className="space-y-5 py-1">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10">
                 <CheckCircle2 className="h-6 w-6 text-emerald-500" />
               </div>
               <div>
-                <h3 className="font-bold text-lg">Ativar SICAF</h3>
-                <p className="text-sm text-muted-foreground">Informe o motivo da ativação para registro no histórico</p>
+                <h3 className="font-bold text-lg">{dialogTitulo}</h3>
+                <p className="text-sm text-muted-foreground">{dialogSubtitulo}</p>
               </div>
             </div>
 
             <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Status atual:</span>
-                <Badge className="bg-red-500/10 text-red-500">{statusAtual}</Badge>
+                <Badge className={statusBadgeClass(statusAtual)}>{statusAtual}</Badge>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Novo status:</span>
-                <Badge className="bg-emerald-500/10 text-emerald-500">Ativo</Badge>
+                <Badge
+                  className={
+                    pendingMeta
+                      ? `${pendingMeta.bg} ${pendingMeta.text}`
+                      : "bg-emerald-500/10 text-emerald-500"
+                  }
+                >
+                  {pendingStatus || "—"}
+                </Badge>
               </div>
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Data de início do SICAF <span className="text-red-500">*</span>
+                Data do pagamento <span className="text-red-500">*</span>
               </label>
               <Input
                 type="date"
@@ -334,7 +361,8 @@ export function SituacaoTab({
                 max={new Date().toISOString().slice(0, 10)}
               />
               <p className="text-[11px] text-muted-foreground">
-                Use a data real do pagamento para iniciar a vigência do SICAF.
+                O SICAF passa a valer por 1 ano a partir desta data. O financeiro (taxa/pagamento) será
+                atualizado com a mesma data.
               </p>
             </div>
 
@@ -345,11 +373,14 @@ export function SituacaoTab({
               <Textarea
                 value={historicoMsg}
                 onChange={(e) => setHistoricoMsg(e.target.value)}
-                placeholder="Ex: Pagamento confirmado via transferência bancária..."
+                placeholder="Ex: Pagamento confirmado via transferência bancária, comprovante recebido por e-mail..."
                 rows={3}
                 className="resize-none"
                 disabled={salvando}
               />
+              <p className="text-[11px] text-muted-foreground">
+                Registrado no histórico do cliente e no financeiro.
+              </p>
             </div>
 
             <div className="flex gap-3">
@@ -357,7 +388,7 @@ export function SituacaoTab({
                 variant="outline"
                 className="flex-1"
                 onClick={() => {
-                  setShowAtivarDialog(false);
+                  setShowConfirmDialog(false);
                   setPendingStatus(null);
                   setHistoricoMsg("");
                 }}
@@ -378,7 +409,7 @@ export function SituacaoTab({
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Confirmar Ativação
+                    Confirmar alteração
                   </>
                 )}
               </Button>

@@ -7,6 +7,104 @@ const { resolveSicafDisplayStatus, calcDaysRemaining } = require('../utils/sicaf
 
 const VALID_STATUSES = ['Ativo', 'Vencendo', 'Vencido', 'Pendente', 'Cancelado', 'Suspenso'];
 const STATUS_COM_EMAIL = ['Vencido', 'Vencendo', 'Pendente', 'Suspenso', 'Cancelado'];
+/** Status que exigem data de pagamento + motivo (ativa vigência e financeiro). */
+const STATUS_COM_DATA_PAGAMENTO = ['Ativo', 'Vencendo'];
+
+function isPaidTaxaStatus(status) {
+  const s = String(status || '').trim().toLowerCase();
+  return ['pago', 'paga', 'aprovado', 'aprovada', 'liberado', 'liberada'].includes(s);
+}
+
+function parseDataInicio(dataInicioRaw) {
+  const dataInicio = String(dataInicioRaw || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio)) {
+    return { ok: false, error: 'dataInicio é obrigatória no formato YYYY-MM-DD' };
+  }
+  const [y, m, d] = dataInicio.split('-').map(Number);
+  const dtInicio = new Date(Date.UTC(y, m - 1, d));
+  if (
+    Number.isNaN(dtInicio.getTime()) ||
+    dtInicio.getUTCFullYear() !== y ||
+    dtInicio.getUTCMonth() !== m - 1 ||
+    dtInicio.getUTCDate() !== d
+  ) {
+    return { ok: false, error: 'dataInicio inválida. Informe uma data real no formato YYYY-MM-DD' };
+  }
+  const dtValidade = new Date(dtInicio);
+  dtValidade.setUTCFullYear(dtValidade.getUTCFullYear() + 1);
+  const validadeStr = dtValidade.toISOString().slice(0, 10);
+  const now = new Date();
+  const nowUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const valUtc = Date.UTC(dtValidade.getUTCFullYear(), dtValidade.getUTCMonth(), dtValidade.getUTCDate());
+  const diasValidade = Math.ceil((valUtc - nowUtc) / (1000 * 60 * 60 * 24));
+  return {
+    ok: true,
+    dataInicioAplicada: dataInicio,
+    validadeStr,
+    diasValidade,
+    credenciamentoAnual: 1,
+  };
+}
+
+async function syncFinanceiroPagamentoManual(db, {
+  clienteId,
+  sicafId,
+  dataInicio,
+  usuarioId,
+  mensagem,
+  targetStatus,
+}) {
+  const resumo = { taxaAtualizada: false, pagamentosAtualizados: 0, renovacoesConcluidas: 0 };
+
+  let taxa = await db('taxas_sicaf')
+    .where({ cliente_id: clienteId, sicaf_id: sicafId })
+    .orderBy('created_at', 'desc')
+    .first();
+
+  if (!taxa) {
+    taxa = await db('taxas_sicaf').where({ cliente_id: clienteId }).orderBy('created_at', 'desc').first();
+  }
+
+  if (taxa) {
+    const updates = { data_pagamento: dataInicio };
+    if (!isPaidTaxaStatus(taxa.status)) {
+      updates.status = 'Pago';
+    }
+    await db('taxas_sicaf').where('id', taxa.id).update(updates);
+    resumo.taxaAtualizada = true;
+
+    for (const tabela of ['pagamentos', 'pagamentos_gerencianet']) {
+      try {
+        const n = await db(tabela)
+          .where({ origem: 'sicaf', origem_id: taxa.id })
+          .whereNotIn('status', ['pago', 'cancelado', 'estornado'])
+          .update({ status: 'pago', data_pagamento: dataInicio });
+        resumo.pagamentosAtualizados += Number(n) || 0;
+      } catch (_) {}
+    }
+  }
+
+  try {
+    const nRen = await db('sicaf_renovacoes')
+      .where({ sicaf_id: sicafId, cliente_id: clienteId, status: 'Pendente' })
+      .update({ status: 'Concluída' });
+    resumo.renovacoesConcluidas = Number(nRen) || 0;
+  } catch (_) {}
+
+  try {
+    const valorFmt = taxa?.valor != null ? `R$ ${parseFloat(taxa.valor).toFixed(2)}` : 'valor não informado';
+    await db('historico_acoes').insert({
+      cliente_id: clienteId,
+      usuario_id: usuarioId,
+      acao: `Financeiro — pagamento registrado manualmente em ${dataInicio} (${targetStatus}). Taxa ${taxa ? `#${taxa.id}` : 'n/a'} · ${valorFmt}. ${mensagem}`,
+      entidade: taxa ? 'taxas_sicaf' : 'sicaf_cadastros',
+      entidade_id: taxa?.id || sicafId,
+      created_at: db.fn.now(),
+    });
+  } catch (_) {}
+
+  return resumo;
+}
 
 function dbStatusForTarget(targetStatus) {
   if (['Ativo', 'Pendente', 'Suspenso', 'Cancelado'].includes(targetStatus)) return targetStatus;
@@ -23,40 +121,14 @@ function applyValidityForStatus(targetStatus, dataInicioRaw) {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
 
-  if (targetStatus === 'Ativo') {
-    const dataInicio = String(dataInicioRaw || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio)) {
-      return { ok: false, error: 'dataInicio é obrigatória no formato YYYY-MM-DD para ativar o SICAF' };
+  if (STATUS_COM_DATA_PAGAMENTO.includes(targetStatus)) {
+    if (!dataInicioRaw) {
+      return {
+        ok: false,
+        error: 'dataInicio é obrigatória para registrar o pagamento e iniciar a vigência do SICAF',
+      };
     }
-    const [y, m, d] = dataInicio.split('-').map(Number);
-    const dtInicio = new Date(Date.UTC(y, m - 1, d));
-    if (
-      Number.isNaN(dtInicio.getTime()) ||
-      dtInicio.getUTCFullYear() !== y ||
-      dtInicio.getUTCMonth() !== m - 1 ||
-      dtInicio.getUTCDate() !== d
-    ) {
-      return { ok: false, error: 'dataInicio inválida. Informe uma data real no formato YYYY-MM-DD' };
-    }
-    const dtValidade = new Date(dtInicio);
-    dtValidade.setUTCFullYear(dtValidade.getUTCFullYear() + 1);
-    const validadeStr = dtValidade.toISOString().slice(0, 10);
-    const nowUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const valUtc = Date.UTC(dtValidade.getUTCFullYear(), dtValidade.getUTCMonth(), dtValidade.getUTCDate());
-    const diasValidade = Math.ceil((valUtc - nowUtc) / (1000 * 60 * 60 * 24));
-    return {
-      ok: true,
-      dataInicioAplicada: dataInicio,
-      validadeStr,
-      diasValidade,
-      credenciamentoAnual: 1,
-    };
-  }
-
-  if (targetStatus === 'Vencendo') {
-    const validadeStr = addDaysUtc(now, 15);
-    const diasValidade = calcDaysRemaining(validadeStr);
-    return { ok: true, validadeStr, diasValidade: diasValidade ?? 15 };
+    return parseDataInicio(dataInicioRaw);
   }
 
   if (targetStatus === 'Vencido') {
@@ -75,6 +147,13 @@ async function updateSicafStatusManual({ sicafId, status, usuarioId, mensagem, d
   if (!sicafId) return { ok: false, error: 'sicafId é obrigatório' };
   if (!status || !VALID_STATUSES.includes(status)) {
     return { ok: false, error: `Status inválido. Valores aceitos: ${VALID_STATUSES.join(', ')}` };
+  }
+
+  if (STATUS_COM_DATA_PAGAMENTO.includes(status) && !String(dataInicio || '').trim()) {
+    return { ok: false, error: 'Informe a data do pagamento para alterar para ' + status };
+  }
+  if (STATUS_COM_DATA_PAGAMENTO.includes(status) && !String(mensagem || '').trim()) {
+    return { ok: false, error: 'Informe o motivo/observação para registro no histórico' };
   }
 
   const sicaf = await db('sicaf_cadastros').where('id', sicafId).first();
@@ -105,6 +184,18 @@ async function updateSicafStatusManual({ sicafId, status, usuarioId, mensagem, d
   }
 
   await db('sicaf_cadastros').where('id', sicafId).update(updatePayload);
+
+  let financeiro = null;
+  if (validity.dataInicioAplicada && STATUS_COM_DATA_PAGAMENTO.includes(status)) {
+    financeiro = await syncFinanceiroPagamentoManual(db, {
+      clienteId: sicaf.cliente_id,
+      sicafId,
+      dataInicio: validity.dataInicioAplicada,
+      usuarioId,
+      mensagem: String(mensagem || '').trim(),
+      targetStatus: status,
+    });
+  }
 
   const acaoBase = validity.dataInicioAplicada
     ? `Status SICAF alterado manualmente: ${oldDisplayStatus} → ${status} (início ${validity.dataInicioAplicada}, validade até ${validity.validadeStr})`
@@ -170,6 +261,7 @@ async function updateSicafStatusManual({ sicafId, status, usuarioId, mensagem, d
     novaValidade: validity.validadeStr || null,
     diasValidade: validity.diasValidade ?? null,
     emailNotificacao,
+    financeiro,
   };
 }
 
