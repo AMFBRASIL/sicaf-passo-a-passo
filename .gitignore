@@ -47,6 +47,9 @@ extension/dist/
 # Lock file alternativo (projeto usa bun)
 package-lock.json
 
+# Deploy VPS (secrets locais)
+scripts/deploy.env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
