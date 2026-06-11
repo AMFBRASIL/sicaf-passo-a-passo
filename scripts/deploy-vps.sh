@@ -27,22 +27,51 @@ PM2_BACKEND="${DEPLOY_PM2_BACKEND:-cadbrasil-backend}"
 NODE_VERSION="${DEPLOY_NODE_VERSION:-22}"
 SKIP_FRONTEND_BUILD="${SKIP_FRONTEND_BUILD:-0}"
 SKIP_BACKEND_BUILD="${SKIP_BACKEND_BUILD:-0}"
+DEPLOY_FORCE="${DEPLOY_FORCE:-0}"
+
+if [[ -n "${DEPLOY_NODE_BIN:-}" && -x "${DEPLOY_NODE_BIN}" ]]; then
+  export PATH="$(dirname "${DEPLOY_NODE_BIN}"):${PATH}"
+fi
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
 }
 
+on_err() {
+  log "ERRO: deploy abortado (linha ${BASH_LINENO[0]}, código ${1:-?})"
+}
+trap on_err ERR
+
 load_node() {
   export NVM_DIR="${NVM_DIR:-/www/server/nvm}"
   if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     # shellcheck disable=SC1091
-    source "$NVM_DIR/nvm.sh"
+    source "$NVM_DIR/nvm.sh" || true
     nvm use "$NODE_VERSION" >/dev/null 2>&1 || nvm use --delete-prefix "v${NODE_VERSION}" >/dev/null 2>&1 || true
   fi
-  if ! node -v | grep -q "v${NODE_VERSION%%.*}"; then
-    export PATH="/www/server/nvm/versions/node/v${NODE_VERSION}.22.3/bin:/www/server/nvm/versions/node/v${NODE_VERSION}.13.1/bin:$PATH"
+
+  if ! command -v node >/dev/null 2>&1; then
+    local dir
+    for dir in \
+      /www/server/nvm/versions/node/v"${NODE_VERSION}"* \
+      /www/server/nodejs/v"${NODE_VERSION}"*; do
+      if [[ -x "${dir}/bin/node" ]]; then
+        export PATH="${dir}/bin:${PATH}"
+        break
+      fi
+    done
   fi
-  log "Node: $(node -v) | npm: $(npm -v)"
+
+  if ! command -v node >/dev/null 2>&1; then
+    log "ERRO: Node.js ${NODE_VERSION} não encontrado no PATH."
+    log "Instale Node ${NODE_VERSION} no aaPanel ou defina DEPLOY_NODE_BIN no scripts/deploy.env"
+    exit 1
+  fi
+
+  local node_ver npm_ver
+  node_ver="$(node -v 2>/dev/null || echo '?')"
+  npm_ver="$(npm -v 2>/dev/null || echo '?')"
+  log "Node: ${node_ver} | npm: ${npm_ver}"
 }
 
 pm2_restart() {
@@ -66,12 +95,16 @@ git fetch origin "$BRANCH"
 git pull origin "$BRANCH" --ff-only
 AFTER="$(git rev-parse HEAD)"
 
-if [[ "$BEFORE" == "$AFTER" ]]; then
-  log "Sem commits novos ($AFTER). Nada a fazer."
+if [[ "$BEFORE" == "$AFTER" && "$DEPLOY_FORCE" != "1" ]]; then
+  log "Sem commits novos (${AFTER:0:7}). Nada a fazer. (use DEPLOY_FORCE=1 para rebuild mesmo assim)"
   exit 0
 fi
 
-log "Atualizado: ${BEFORE:0:7} → ${AFTER:0:7}"
+if [[ "$BEFORE" == "$AFTER" ]]; then
+  log "Sem commits novos — rebuild forçado (DEPLOY_FORCE=1)"
+else
+  log "Atualizado: ${BEFORE:0:7} → ${AFTER:0:7}"
+fi
 
 # ── Backend ───────────────────────────────────────────────────────────────────
 if [[ "$SKIP_BACKEND_BUILD" != "1" ]]; then
