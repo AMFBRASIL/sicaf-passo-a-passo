@@ -1,44 +1,14 @@
-import { useEffect, useState } from "react";
-import { CalendarClock, Bell, Trash2, Check } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { CalendarClock, Bell, Trash2, Check, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-
-type Agendamento = {
-  id: string;
-  empresa: string;
-  cnpj: string;
-  dataAlvo: string;
-  criadoEm: string;
-};
-
-const STORAGE_KEY = "cadbrasil-agendamentos";
-
-function load(): Agendamento[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return SEED;
-    return JSON.parse(raw);
-  } catch {
-    return SEED;
-  }
-}
-
-function save(items: Agendamento[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch {}
-}
-
-const SEED: Agendamento[] = [
-  {
-    id: "a1",
-    empresa: "Construtora Horizonte LTDA",
-    cnpj: "12.345.678/0001-90",
-    dataAlvo: new Date(Date.now() + 1000 * 60 * 60 * 24 * 90).toISOString(),
-    criadoEm: new Date().toISOString(),
-  },
-];
+import {
+  criarRevisaoAgendada,
+  fetchRevisoesAgendadas,
+  removerRevisaoAgendada,
+  type RevisaoAgendada,
+} from "@/lib/revisoes-agendadas-api";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
@@ -49,19 +19,57 @@ function diasAte(iso: string) {
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
-export function AgendamentosCard() {
-  const [items, setItems] = useState<Agendamento[]>([]);
+function subtituloItem(item: RevisaoAgendada) {
+  if (item.origem === "sicaf") {
+    const st = item.statusSicaf?.toLowerCase();
+    if (st === "vencendo") return "Vencimento do SICAF";
+    return "Renovação do cadastro SICAF";
+  }
+  if (item.mesesLembrete) return `Lembrete em ${item.mesesLembrete} meses`;
+  return "Revisão agendada";
+}
 
-  useEffect(() => {
-    setItems(load());
+export function AgendamentosCard() {
+  const [items, setItems] = useState<RevisaoAgendada[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    const res = await fetchRevisoesAgendadas();
+    setLoading(false);
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao carregar revisões agendadas");
+      setItems([]);
+      return;
+    }
+    setItems(res.agendamentos || []);
   }, []);
 
-  const remover = (id: string) => {
-    const next = items.filter((i) => i.id !== id);
-    setItems(next);
-    save(next);
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
+
+  const remover = async (item: RevisaoAgendada) => {
+    if (!item.removivel) return;
+    const res = await removerRevisaoAgendada(item.id);
+    if (!res.ok) {
+      toast.error(res.error || "Não foi possível remover");
+      return;
+    }
+    setItems((prev) => prev.filter((i) => i.id !== item.id));
     toast.success("Agendamento removido");
   };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Carregando revisões…
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (items.length === 0) return null;
 
@@ -73,7 +81,7 @@ export function AgendamentosCard() {
           Próximas revisões agendadas
         </CardTitle>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Lembretes automáticos antes da próxima atualização do SICAF.
+          Lembretes do seu portfólio e vencimentos do SICAF no banco CADBRASIL.
         </p>
       </CardHeader>
       <CardContent>
@@ -93,10 +101,19 @@ export function AgendamentosCard() {
                   <p className="text-xs text-muted-foreground">
                     {formatDate(a.dataAlvo)} · em {dias} dia{dias !== 1 ? "s" : ""}
                   </p>
+                  <p className="text-[10px] text-muted-foreground/80">{subtituloItem(a)}</p>
                 </div>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => remover(a.id)} aria-label="Remover">
-                  <Trash2 className="h-4 w-4 text-muted-foreground" />
-                </Button>
+                {a.removivel ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => void remover(a)}
+                    aria-label="Remover agendamento"
+                  >
+                    <Trash2 className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                ) : null}
               </li>
             );
           })}
@@ -109,6 +126,7 @@ export function AgendamentosCard() {
 type Props = {
   empresa: string;
   cnpj: string;
+  clienteId: number;
   onCriado?: () => void;
 };
 
@@ -118,25 +136,23 @@ const OPCOES: { meses: number; label: string }[] = [
   { meses: 12, label: "12 meses" },
 ];
 
-export function AgendarRevisao({ empresa, cnpj, onCriado }: Props) {
+export function AgendarRevisao({ empresa, cnpj, clienteId, onCriado }: Props) {
   const [selecionado, setSelecionado] = useState<number | null>(null);
+  const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
 
-  const agendar = (meses: number) => {
+  const agendar = async (meses: number) => {
     setSelecionado(meses);
-    const data = new Date();
-    data.setMonth(data.getMonth() + meses);
-    const novo: Agendamento = {
-      id: `${Date.now()}`,
-      empresa,
-      cnpj,
-      dataAlvo: data.toISOString(),
-      criadoEm: new Date().toISOString(),
-    };
-    const lista = [...load(), novo];
-    save(lista);
+    setSalvando(true);
+    const res = await criarRevisaoAgendada(clienteId, meses);
+    setSalvando(false);
+    if (!res.ok || !res.agendamento) {
+      toast.error(res.error || "Não foi possível agendar");
+      setSelecionado(null);
+      return;
+    }
     setSalvo(true);
-    toast.success(`Revisão agendada para ${formatDate(novo.dataAlvo)}`);
+    toast.success(`Revisão agendada para ${formatDate(res.agendamento.dataAlvo)}`);
     onCriado?.();
   };
 
@@ -149,7 +165,7 @@ export function AgendarRevisao({ empresa, cnpj, onCriado }: Props) {
         <div className="min-w-0 flex-1">
           <p className="font-semibold">Quer ser lembrado da próxima revisão?</p>
           <p className="text-xs text-muted-foreground">
-            Avisamos por e-mail e WhatsApp para você não perder o prazo.
+            {empresa} · CNPJ {cnpj}. Avisamos por e-mail e WhatsApp para você não perder o prazo.
           </p>
         </div>
       </div>
@@ -161,17 +177,22 @@ export function AgendarRevisao({ empresa, cnpj, onCriado }: Props) {
               key={o.meses}
               variant={ativo ? "default" : "outline"}
               size="sm"
-              onClick={() => agendar(o.meses)}
+              disabled={salvando}
+              onClick={() => void agendar(o.meses)}
               className="gap-1.5"
             >
-              {ativo && <Check className="h-3.5 w-3.5" />}
+              {salvando && ativo ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : ativo && salvo ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : null}
               {o.label}
             </Button>
           );
         })}
       </div>
       {salvo && (
-        <p className="mt-2 text-xs text-success">✓ Agendamento criado. Você pode editar a qualquer momento.</p>
+        <p className="mt-2 text-xs text-success">✓ Agendamento salvo no seu cadastro.</p>
       )}
     </div>
   );
