@@ -84,6 +84,14 @@ interface Passo {
   tempoMin: number;
 }
 
+function etapaSectionId(n: number) {
+  return `sicaf-etapa-${n}`;
+}
+
+function scrollToEtapa(n: number) {
+  document.getElementById(etapaSectionId(n))?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 const passosBase: Passo[] = [
   {
     n: 1,
@@ -824,39 +832,46 @@ function SicafPage() {
                       )}
                       <button
                         type="button"
-                        onClick={() => {
-                          if (status === "pending") return;
-                        if (p.n === 1) setPagamentoModal(true);
-                          else setModalAberto(p.n);
-                        }}
-                        disabled={status === "pending"}
-                        className={`absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition ${
-                          status === "done"
-                            ? "bg-success text-success-foreground hover:scale-110"
-                            : status === "current"
-                            ? "bg-primary text-primary-foreground ring-4 ring-primary/20 animate-pulse"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                        aria-label={`Etapa ${p.n}: ${p.titulo}`}
+                        onClick={() => scrollToEtapa(p.n)}
+                        className="group w-full rounded-lg text-left transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 -ml-1 pl-1 pr-2 py-0.5"
+                        aria-label={`Ir para etapa ${p.n}: ${p.titulo}`}
                       >
-                        {status === "done" ? (
-                          <CheckCircle2 className="h-4 w-4" />
-                        ) : status === "pending" ? (
-                          <Lock className="h-3 w-3" />
-                        ) : (
-                          p.n
-                        )}
+                        <span
+                          className={`absolute left-0 top-0 flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition group-hover:scale-105 ${
+                            status === "done"
+                              ? "bg-success text-success-foreground"
+                              : status === "current"
+                              ? "bg-primary text-primary-foreground ring-4 ring-primary/20 animate-pulse"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {status === "done" ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : status === "pending" ? (
+                            <Lock className="h-3 w-3" />
+                          ) : (
+                            p.n
+                          )}
+                        </span>
+                        <div className={status === "pending" ? "opacity-60" : ""}>
+                          <p
+                            className={`text-[10px] font-semibold uppercase tracking-wider ${
+                              status === "done"
+                                ? "text-success"
+                                : status === "current"
+                                  ? "text-primary"
+                                  : "text-muted-foreground"
+                            }`}
+                          >
+                            {status === "done"
+                              ? "Concluída"
+                              : status === "current"
+                                ? "Em andamento"
+                                : `Etapa ${p.n}`}
+                          </p>
+                          <p className="mt-0.5 text-xs font-semibold leading-tight">{p.titulo}</p>
+                        </div>
                       </button>
-                      <div className={status === "pending" ? "opacity-60" : ""}>
-                        <p className={`text-[10px] font-semibold uppercase tracking-wider ${
-                          status === "done" ? "text-success" :
-                          status === "current" ? "text-primary" :
-                          "text-muted-foreground"
-                        }`}>
-                          {status === "done" ? "Concluída" : status === "current" ? "Em andamento" : `Etapa ${p.n}`}
-                        </p>
-                        <p className="text-xs font-semibold leading-tight mt-0.5">{p.titulo}</p>
-                      </div>
                     </li>
                   );
                 })}
@@ -1041,13 +1056,14 @@ function SicafPage() {
           return (
             <Card
               key={p.n}
-              className={
+              id={etapaSectionId(p.n)}
+              className={`scroll-mt-24 ${
                 status === "current"
                   ? "border-primary/40 shadow-lift"
                   : status === "done"
-                  ? "bg-muted/40"
-                  : "opacity-70"
-              }
+                    ? "bg-muted/40"
+                    : "opacity-70"
+              }`}
             >
               <CardContent className="flex items-start gap-4 p-5">
                 <div
