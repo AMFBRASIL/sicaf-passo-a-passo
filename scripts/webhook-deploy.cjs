@@ -45,7 +45,16 @@ let deploying = false;
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] [webhook] ${msg}\n`;
-  fs.appendFileSync(LOG_FILE, line);
+  try {
+    fs.appendFileSync(LOG_FILE, line);
+  } catch {
+    const fallback = path.join(__dirname, "deploy-webhook.log");
+    try {
+      fs.appendFileSync(fallback, line);
+    } catch {
+      /* ignore */
+    }
+  }
   console.log(line.trim());
 }
 
