@@ -309,12 +309,14 @@ function AssistentePage() {
         title="Assistente CADBRASIL"
         subtitle={
           cnpj ? (
-            <span className="inline-flex flex-wrap items-center gap-1">
-              <span>
-                {empresaNome ? `${empresaNome} · ` : ""}
+            <span className="flex flex-col gap-0.5">
+              {empresaNome ? (
+                <span className="font-medium text-foreground leading-snug">{empresaNome}</span>
+              ) : null}
+              <span className="inline-flex flex-wrap items-center gap-1">
                 CNPJ <span className="font-mono">{cnpj}</span>
+                <CopyButton value={cnpj} label="CNPJ" />
               </span>
-              <CopyButton value={cnpj} label="CNPJ" />
             </span>
           ) : (
             "Envie sua Situação do Fornecedor e o assistente cuida do resto."
