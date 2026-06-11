@@ -6,7 +6,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type SettingsService = {
-  testEmailConnection: (to?: string) => Promise<{
+  testEmailConnection: (
+    to?: string,
+    settings?: Record<string, string>,
+  ) => Promise<{
     ok: boolean;
     message?: string;
     messageId?: string;
@@ -19,7 +22,10 @@ export async function POST(request: Request) {
     await requireLegacyUserId(request);
     const body = await request.json().catch(() => ({}));
     const svc = await getSicafAgentModule<SettingsService>("services/settings.service");
-    const result = await svc.testEmailConnection(body.to || body.email);
+    const result = await svc.testEmailConnection(
+      body.to || body.email,
+      body.settings || null,
+    );
     return NextResponse.json(result, { status: result.ok ? 200 : 400 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao testar envio de e-mail";

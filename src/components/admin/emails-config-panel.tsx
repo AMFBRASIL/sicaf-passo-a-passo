@@ -157,8 +157,7 @@ export function EmailsConfigPanel({ onSaved }: Props) {
     }
     setTesting(true);
     try {
-      if (settings) await saveEmailSettings(settings);
-      const msg = await testEmailSettings(testTo.trim());
+      const msg = await testEmailSettings(testTo.trim(), settings);
       toast.success(msg);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha no teste");

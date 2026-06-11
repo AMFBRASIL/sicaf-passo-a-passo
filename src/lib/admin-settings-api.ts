@@ -68,10 +68,21 @@ export async function saveEmailSettings(settings: EmailSettings): Promise<string
   return data.message || "Configurações salvas";
 }
 
-export async function testEmailSettings(to: string): Promise<string> {
+export function emailSettingsForApi(settings: EmailSettings): Partial<EmailSettings> {
+  const out: Partial<EmailSettings> = { ...settings };
+  for (const key of ["smtp_senha", "smtp_api_key", "smtp_secret_key"] as const) {
+    if (!out[key] || out[key] === EMAIL_SECRET_MASK) delete out[key];
+  }
+  return out;
+}
+
+export async function testEmailSettings(to: string, settings?: EmailSettings): Promise<string> {
+  const payload: { to: string; settings?: Partial<EmailSettings> } = { to };
+  if (settings) payload.settings = emailSettingsForApi(settings);
+
   const res = await apiFetch("/api/admin/settings/email/test", {
     method: "POST",
-    body: JSON.stringify({ to }),
+    body: JSON.stringify(payload),
   });
   const data = (await res.json()) as { ok: boolean; message?: string; error?: string };
   if (!data.ok) throw new Error(data.error || "Falha no teste de e-mail");

@@ -316,11 +316,11 @@ async function testStorageSettings() {
   }
 }
 
-async function testEmailConnection(testEmailTo) {
+async function testEmailConnection(testEmailTo, settingsOverride) {
   try {
     const emailService = require('./email.service');
     if (emailService.invalidateConfigCache) emailService.invalidateConfigCache();
-    return emailService.testConnection(testEmailTo);
+    return emailService.testConnection(testEmailTo, settingsOverride || null);
   } catch (e) {
     return { ok: false, error: e.message || 'Erro ao testar conexão' };
   }

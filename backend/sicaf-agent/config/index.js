@@ -75,6 +75,24 @@ const config = {
       .filter(Boolean),
   },
 
+  email: {
+    metodo: process.env.SMTP_METODO || process.env.EMAIL_METODO || "",
+    provider: process.env.SMTP_PROVIDER || process.env.EMAIL_PROVIDER || "",
+    host: process.env.SMTP_HOST || "",
+    port: process.env.SMTP_PORT || "587",
+    user: process.env.SMTP_USER || "",
+    pass: process.env.SMTP_PASSWORD || "",
+    tls: process.env.SMTP_TLS !== "false" && process.env.SMTP_SECURE !== "false",
+    apiKey:
+      process.env.MAILGUN_API_KEY ||
+      process.env.SMTP_API_KEY ||
+      process.env.MAILGUN_KEY ||
+      "",
+    secretKey: process.env.SMTP_SECRET_KEY || "",
+    fromEmail: process.env.SMTP_FROM_EMAIL || "",
+    fromName: process.env.SMTP_FROM_NAME || "CadBrasil",
+  },
+
   paths: {
     root: backendRoot,
     data: path.join(backendRoot, "data"),
