@@ -10,12 +10,28 @@ import {
   type RevisaoAgendada,
 } from "@/lib/revisoes-agendadas-api";
 
+const LEGACY_STORAGE_KEY = "cadbrasil-agendamentos";
+
+function parseDataAlvo(iso: string) {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  return parseDataAlvo(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function diasAte(iso: string) {
-  const diff = new Date(iso).getTime() - Date.now();
+  const alvo = parseDataAlvo(iso);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const diff = alvo.getTime() - hoje.getTime();
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
@@ -32,20 +48,33 @@ function subtituloItem(item: RevisaoAgendada) {
 export function AgendamentosCard() {
   const [items, setItems] = useState<RevisaoAgendada[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
-    const res = await fetchRevisoesAgendadas();
-    setLoading(false);
-    if (!res.ok) {
-      toast.error(res.error || "Erro ao carregar revisões agendadas");
+    setErro(null);
+    try {
+      const res = await fetchRevisoesAgendadas();
+      if (!res.ok) {
+        setItems([]);
+        setErro(res.error || "Não foi possível carregar as revisões");
+        return;
+      }
+      setItems(res.agendamentos || []);
+    } catch {
       setItems([]);
-      return;
+      setErro("Falha na conexão com o servidor");
+    } finally {
+      setLoading(false);
     }
-    setItems(res.agendamentos || []);
   }, []);
 
   useEffect(() => {
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      /* ignore — remove mock antigo do navegador */
+    }
     void carregar();
   }, [carregar]);
 
@@ -71,8 +100,6 @@ export function AgendamentosCard() {
     );
   }
 
-  if (items.length === 0) return null;
-
   return (
     <Card>
       <CardHeader>
@@ -81,10 +108,20 @@ export function AgendamentosCard() {
           Próximas revisões agendadas
         </CardTitle>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Lembretes do seu portfólio e vencimentos do SICAF no banco CADBRASIL.
+          Lembretes salvos e SICAF vencendo nos próximos 90 dias — dados do seu cadastro.
         </p>
       </CardHeader>
       <CardContent>
+        {erro ? (
+          <p className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
+            {erro}
+          </p>
+        ) : items.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Nenhuma revisão agendada no momento. Quando o SICAF de uma empresa estiver vencendo
+            ou você criar um lembrete, ele aparecerá aqui.
+          </p>
+        ) : (
         <ul className="space-y-2">
           {items.map((a) => {
             const dias = diasAte(a.dataAlvo);
@@ -118,6 +155,7 @@ export function AgendamentosCard() {
             );
           })}
         </ul>
+        )}
       </CardContent>
     </Card>
   );

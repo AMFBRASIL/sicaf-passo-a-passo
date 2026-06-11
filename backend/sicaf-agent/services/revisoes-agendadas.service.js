@@ -28,18 +28,45 @@ async function ensureRevisoesTable(db) {
   console.log('[RevisoesAgendadas] Tabela revisoes_agendadas criada.');
 }
 
-function parseBrDate(str) {
-  const m = String(str || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const d = new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
-  return Number.isNaN(d.getTime()) ? null : d;
+function parseDateInput(value) {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  const str = String(value).trim();
+  const br = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) {
+    return new Date(Number(br[3]), Number(br[2]) - 1, Number(br[1]));
+  }
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  }
+  const dt = new Date(str);
+  return Number.isNaN(dt.getTime()) ? null : new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
 }
 
 function toIsoDate(d) {
-  if (!d) return null;
-  const dt = d instanceof Date ? d : new Date(d);
-  if (Number.isNaN(dt.getTime())) return null;
-  return dt.toISOString();
+  const dt = parseDateInput(d);
+  if (!dt) return null;
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}T12:00:00.000Z`;
+}
+
+function startOfToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+/** SICAF entra na lista só quando a renovação está próxima (não todo cadastro ativo). */
+function sicafPrecisaRevisaoEmBreve(item) {
+  if (!item?.hasSicaf) return false;
+  const status = String(item.status || '').trim();
+  if (status === 'Vencendo' || status === 'Vencido') return true;
+  if (item.daysValid != null && item.daysValid <= 90) return true;
+  return false;
 }
 
 async function listarRevisoesAgendadas(usuarioId) {
@@ -48,13 +75,13 @@ async function listarRevisoesAgendadas(usuarioId) {
 
   await ensureRevisoesTable(db);
 
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
+  const hoje = startOfToday();
+  const hojeSql = hoje.toISOString().slice(0, 10);
 
   const manualRows = await db('revisoes_agendadas as r')
     .join('clientes as c', 'r.cliente_id', 'c.id')
     .where('r.usuario_id', usuarioId)
-    .where('r.data_alvo', '>=', hoje)
+    .where('r.data_alvo', '>=', hojeSql)
     .select(
       'r.id',
       'r.cliente_id',
@@ -85,11 +112,11 @@ async function listarRevisoesAgendadas(usuarioId) {
   if (list.ok) {
     for (const item of list.items || []) {
       const clienteId = Number(item.clienteId || 0);
-      if (!clienteId || !item.hasSicaf || manualClienteIds.has(clienteId)) continue;
+      if (!clienteId || manualClienteIds.has(clienteId)) continue;
+      if (!sicafPrecisaRevisaoEmBreve(item)) continue;
 
-      const validade = parseBrDate(item.expiryDate);
+      const validade = parseDateInput(item.expiryDate);
       if (!validade || validade < hoje) continue;
-      if (item.daysValid != null && item.daysValid <= 0) continue;
 
       agendamentos.push({
         id: `sicaf-${clienteId}`,
@@ -125,9 +152,8 @@ async function criarRevisaoAgendada({ usuarioId, clienteId, meses, jwtTipo }) {
 
   await ensureRevisoesTable(db);
 
-  const dataAlvo = new Date();
+  const dataAlvo = startOfToday();
   dataAlvo.setMonth(dataAlvo.getMonth() + mesesNum);
-  dataAlvo.setHours(0, 0, 0, 0);
 
   const [id] = await db('revisoes_agendadas').insert({
     usuario_id: usuarioId,

@@ -15,6 +15,13 @@ export type RevisaoAgendada = {
 
 export async function fetchRevisoesAgendadas() {
   const res = await apiFetch("/api/revisoes-agendadas");
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    return {
+      ok: false as const,
+      error: data.error || `Erro ${res.status} ao carregar revisões`,
+    };
+  }
   return res.json() as Promise<{
     ok: boolean;
     agendamentos?: RevisaoAgendada[];
