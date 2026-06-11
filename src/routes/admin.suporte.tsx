@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { Plus, Clock, AlertTriangle, Search, Filter } from "lucide-react";
+import { Plus, Clock, AlertTriangle, Search, Filter, Loader2, RefreshCw } from "lucide-react";
 import {
   TicketRespostaModal,
   type TicketItem,
@@ -14,31 +14,23 @@ import {
 } from "@/components/admin/ticket-resposta-modal";
 import { NovoTicketModal, type NovoTicketData } from "@/components/admin/novo-ticket-modal";
 import { toast } from "sonner";
+import {
+  type ColunaKanban,
+  type TicketKanban,
+  colunaParaStatusDb,
+  fetchAdminTicketDetalhe,
+  fetchAdminTickets,
+  criarTicketAdmin,
+  responderTicketAdmin,
+  prioridadeParaApi,
+  ticketsParaBoard,
+} from "@/lib/admin-suporte-api";
 
 export const Route = createFileRoute("/admin/suporte")({
   component: SuportePage,
 });
 
-type Coluna =
-  | "Novo"
-  | "Triagem"
-  | "Em andamento"
-  | "Aguardando Cliente"
-  | "Aguardando Governo"
-  | "Resolvido"
-  | "Fechado";
-
-interface Ticket {
-  id: string;
-  titulo: string;
-  cli: string;
-  resp: string;
-  sla: { restante: string; tom: "ok" | "warn" | "bad" };
-  prio: "Alta" | "Média" | "Baixa";
-  data: string;
-}
-
-const colunas: Coluna[] = [
+const colunas: ColunaKanban[] = [
   "Novo",
   "Triagem",
   "Em andamento",
@@ -48,34 +40,7 @@ const colunas: Coluna[] = [
   "Fechado",
 ];
 
-const initial: Record<Coluna, Ticket[]> = {
-  Novo: [
-    { id: "T-1042", titulo: "Não consigo enviar Nível IV", cli: "Engemax Serviços", resp: "—", sla: { restante: "4h", tom: "ok" }, prio: "Média", data: "Hoje 09:14" },
-    { id: "T-1043", titulo: "Solicitar segunda via de boleto", cli: "MEI José Roberto", resp: "—", sla: { restante: "6h", tom: "ok" }, prio: "Baixa", data: "Hoje 08:02" },
-  ],
-  Triagem: [
-    { id: "T-1039", titulo: "Erro ao atualizar CRC", cli: "JR Construtora EIRELI", resp: "Anderson", sla: { restante: "1h30", tom: "warn" }, prio: "Alta", data: "Ontem 17:40" },
-  ],
-  "Em andamento": [
-    { id: "T-1031", titulo: "Procuração rejeitada — revisar", cli: "Construtora Aurora", resp: "Maria S.", sla: { restante: "2h", tom: "warn" }, prio: "Alta", data: "Ontem 14:10" },
-    { id: "T-1028", titulo: "Migração CNAE secundário", cli: "Solar Brasil Energia", resp: "João P.", sla: { restante: "12h", tom: "ok" }, prio: "Média", data: "Ontem 11:22" },
-  ],
-  "Aguardando Cliente": [
-    { id: "T-1019", titulo: "Falta certidão municipal", cli: "Pavimar Obras", resp: "Carla R.", sla: { restante: "Sem prazo", tom: "ok" }, prio: "Média", data: "2 dias atrás" },
-  ],
-  "Aguardando Governo": [
-    { id: "T-1014", titulo: "Resposta da Receita pendente", cli: "TecnoLimp Servicos", resp: "Anderson", sla: { restante: "—", tom: "ok" }, prio: "Baixa", data: "3 dias atrás" },
-  ],
-  Resolvido: [
-    { id: "T-1010", titulo: "SICAF Nível III ativado", cli: "Nova Filial Brasília", resp: "Maria S.", sla: { restante: "Ok", tom: "ok" }, prio: "Média", data: "5 dias atrás" },
-    { id: "T-1009", titulo: "Reset de senha realizado", cli: "Solar Brasil Energia", resp: "João P.", sla: { restante: "Ok", tom: "ok" }, prio: "Baixa", data: "5 dias atrás" },
-  ],
-  Fechado: [
-    { id: "T-1001", titulo: "Cadastro inicial concluído", cli: "Construtora Aurora", resp: "Anderson", sla: { restante: "Ok", tom: "ok" }, prio: "Baixa", data: "1 semana atrás" },
-  ],
-};
-
-const colCls: Record<Coluna, string> = {
+const colCls: Record<ColunaKanban, string> = {
   Novo: "border-t-4 border-t-blue-500",
   Triagem: "border-t-4 border-t-violet-500",
   "Em andamento": "border-t-4 border-t-amber-500",
@@ -91,83 +56,148 @@ const prioCls: Record<string, string> = {
   Baixa: "bg-slate-500/10 text-slate-700 dark:text-slate-300",
 };
 
+const boardVazio = () => ticketsParaBoard([]);
+
 function SuportePage() {
-  const [board, setBoard] = useState(initial);
+  const [board, setBoard] = useState<Record<ColunaKanban, TicketKanban[]>>(boardVazio);
+  const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
+  const [buscaDebounced, setBuscaDebounced] = useState("");
   const [respOpen, setRespOpen] = useState(false);
   const [novoOpen, setNovoOpen] = useState(false);
-  const [selected, setSelected] = useState<{ ticket: Ticket; coluna: Coluna } | null>(null);
+  const [selected, setSelected] = useState<{ ticket: TicketKanban; coluna: ColunaKanban } | null>(null);
+  const [detalheLoading, setDetalheLoading] = useState(false);
+  const [detalheDescricao, setDetalheDescricao] = useState("");
+  const [detalheMensagens, setDetalheMensagens] = useState<
+    { autor: string; tipo: "cliente" | "agente"; data: string; texto: string }[]
+  >([]);
+  const [enviandoResposta, setEnviandoResposta] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setBuscaDebounced(busca), 350);
+    return () => clearTimeout(t);
+  }, [busca]);
+
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    const res = await fetchAdminTickets(buscaDebounced);
+    setLoading(false);
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao carregar tickets");
+      return;
+    }
+    setBoard(ticketsParaBoard(res.tickets || []));
+  }, [buscaDebounced]);
+
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
 
   const totalAbertos = useMemo(
     () =>
       colunas
         .filter((c) => c !== "Fechado" && c !== "Resolvido")
         .reduce((acc, c) => acc + board[c].length, 0),
-    [board]
+    [board],
   );
 
-  const abrirTicket = (t: Ticket, coluna: Coluna) => {
+  const abrirTicket = async (t: TicketKanban, coluna: ColunaKanban) => {
     setSelected({ ticket: t, coluna });
     setRespOpen(true);
-  };
+    setDetalheLoading(true);
+    setDetalheDescricao("");
+    setDetalheMensagens([]);
 
-  const resolverSituacaoDestino = (
-    colunaAtual: Coluna,
-    opcoes: TicketRespostaOptions,
-  ): Coluna => {
-    if (opcoes.modoSituacao === "manual" && opcoes.situacaoManual) {
-      return opcoes.situacaoManual as Coluna;
+    const res = await fetchAdminTicketDetalhe(t.id);
+    setDetalheLoading(false);
+    if (!res.ok || !res.ticket) {
+      toast.error(res.error || "Erro ao carregar detalhes do ticket");
+      return;
     }
-    return situacaoPadraoAposEnvio(colunaAtual, !!opcoes.marcarResolvido) as Coluna;
+
+    setDetalheDescricao(res.ticket.description || "");
+    setDetalheMensagens(
+      (res.ticket.messages || []).map((m) => ({
+        autor: m.senderName || (m.sender === "support" ? "Suporte" : "Cliente"),
+        tipo: m.sender === "support" ? "agente" : "cliente",
+        data: m.date,
+        texto: m.message,
+      })),
+    );
   };
 
-  const responderTicket = (ticketId: string, _msg: string, opcoes: TicketRespostaOptions) => {
+  const resolverSituacaoDestino = (colunaAtual: ColunaKanban, opcoes: TicketRespostaOptions): ColunaKanban => {
+    if (opcoes.modoSituacao === "manual" && opcoes.situacaoManual) {
+      return opcoes.situacaoManual as ColunaKanban;
+    }
+    return situacaoPadraoAposEnvio(colunaAtual, !!opcoes.marcarResolvido) as ColunaKanban;
+  };
+
+  const responderTicket = async (ticketId: string, msg: string, opcoes: TicketRespostaOptions) => {
     if (!selected) return;
+
     const destino = resolverSituacaoDestino(selected.coluna, opcoes);
-    if (destino === selected.coluna) return;
+    const status =
+      opcoes.modoSituacao === "manual" && opcoes.situacaoManual
+        ? colunaParaStatusDb(opcoes.situacaoManual)
+        : opcoes.marcarResolvido
+          ? "resolvido"
+          : destino !== selected.coluna
+            ? colunaParaStatusDb(destino)
+            : undefined;
 
-    setBoard((prev) => {
-      const next: Record<Coluna, Ticket[]> = { ...prev };
-      const ticket = prev[selected.coluna].find((t) => t.id === ticketId);
-      if (!ticket) return prev;
-
-      next[selected.coluna] = prev[selected.coluna].filter((t) => t.id !== ticketId);
-
-      const slaFechado =
-        destino === "Resolvido" || destino === "Fechado"
-          ? { restante: "Ok", tom: "ok" as const }
-          : ticket.sla;
-
-      next[destino] = [{ ...ticket, sla: slaFechado }, ...prev[destino]];
-      return next;
+    setEnviandoResposta(true);
+    const res = await responderTicketAdmin(ticketId, {
+      mensagem: msg,
+      status,
+      marcarResolvido: opcoes.modoSituacao === "padrao" ? opcoes.marcarResolvido : undefined,
     });
+    setEnviandoResposta(false);
+
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao enviar resposta");
+      throw new Error(res.error || "Erro ao enviar resposta");
+    }
+
+    await carregar();
   };
 
-  const criarTicket = (d: NovoTicketData) => {
-    const novo: Ticket = {
-      id: `T-${Math.floor(1000 + Math.random() * 9000)}`,
+  const criarTicket = async (d: NovoTicketData) => {
+    const res = await criarTicketAdmin({
       titulo: d.titulo,
-      cli: d.cliente,
-      resp: d.responsavel || "—",
-      sla: { restante: "8h", tom: "ok" },
-      prio: d.prioridade,
-      data: "Agora",
-    };
-    setBoard((prev) => ({ ...prev, Novo: [novo, ...prev.Novo] }));
+      descricao: d.descricao || d.titulo,
+      categoria: d.categoria,
+      prioridade: prioridadeParaApi(d.prioridade),
+      clienteId: d.clienteId,
+    });
+
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao criar ticket");
+      throw new Error(res.error || "Erro ao criar ticket");
+    }
+
+    toast.success(res.message || `Ticket ${res.codigo || ""} criado`);
+    await carregar();
   };
 
-  const filtra = (tickets: Ticket[]) =>
+  const filtra = (tickets: TicketKanban[]) =>
     busca.trim()
       ? tickets.filter(
           (t) =>
             t.titulo.toLowerCase().includes(busca.toLowerCase()) ||
             t.cli.toLowerCase().includes(busca.toLowerCase()) ||
-            t.id.toLowerCase().includes(busca.toLowerCase())
+            t.id.toLowerCase().includes(busca.toLowerCase()),
         )
       : tickets;
 
   const ticketSelecionado: TicketItem | null = selected
-    ? { id: selected.ticket.id, titulo: selected.ticket.titulo, status: selected.coluna, prio: selected.ticket.prio.toLowerCase(), data: selected.ticket.data }
+    ? {
+        id: selected.ticket.id,
+        titulo: selected.ticket.titulo,
+        status: selected.coluna,
+        prio: selected.ticket.prio.toLowerCase(),
+        data: selected.ticket.data,
+      }
     : null;
 
   return (
@@ -176,7 +206,8 @@ function SuportePage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Central de Suporte</h1>
           <p className="text-sm text-muted-foreground">
-            Kanban com SLA, responsável e histórico · <span className="font-medium text-foreground">{totalAbertos}</span> tickets em aberto
+            Kanban com SLA, responsável e histórico ·{" "}
+            <span className="font-medium text-foreground">{totalAbertos}</span> tickets em aberto
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -189,6 +220,16 @@ function SuportePage() {
               className="h-9 w-64 pl-8 text-sm"
             />
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => void carregar()}
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Atualizar
+          </Button>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => toast.info("Filtros avançados em breve")}>
             <Filter className="h-3.5 w-3.5" /> Filtros
           </Button>
@@ -198,79 +239,95 @@ function SuportePage() {
         </div>
       </div>
 
-      <div className="overflow-x-auto pb-4">
-        <div className="flex gap-3 min-w-max">
-          {colunas.map((col) => {
-            const tickets = filtra(board[col]);
-            return (
-              <div key={col} className={`w-72 shrink-0 rounded-lg bg-muted/30 ${colCls[col]}`}>
-                <div className="flex items-center justify-between px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">{col}</span>
-                    <Badge variant="secondary" className="h-5 rounded-full px-1.5 text-[10px]">
-                      {tickets.length}
-                    </Badge>
-                  </div>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setNovoOpen(true)}>
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <div className="space-y-2 px-2 pb-3">
-                  {tickets.length === 0 && (
-                    <div className="rounded-md border border-dashed bg-background/50 py-6 text-center text-[11px] text-muted-foreground">
-                      Nenhum ticket
-                    </div>
-                  )}
-                  {tickets.map((t) => (
-                    <Card
-                      key={t.id}
-                      onClick={() => abrirTicket(t, col)}
-                      className="cursor-pointer p-3 transition hover:shadow-md hover:border-primary/50"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono text-muted-foreground">{t.id}</span>
-                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${prioCls[t.prio]}`}>
-                          {t.prio}
-                        </span>
-                      </div>
-                      <p className="mt-1.5 text-sm font-medium leading-snug">{t.titulo}</p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">{t.cli}</p>
-                      <div className="mt-3 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <Avatar className="h-5 w-5 border border-border">
-                            <AvatarFallback className="bg-primary/10 text-[9px] text-primary">
-                              {t.resp === "—" ? "?" : t.resp.split(" ").map((x) => x[0]).join("")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-[10px] text-muted-foreground">{t.resp}</span>
-                        </div>
-                        <span
-                          className={`flex items-center gap-1 text-[10px] font-medium ${
-                            t.sla.tom === "bad"
-                              ? "text-rose-600"
-                              : t.sla.tom === "warn"
-                              ? "text-amber-600"
-                              : "text-muted-foreground"
-                          }`}
-                        >
-                          {t.sla.tom === "warn" ? <AlertTriangle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-                          {t.sla.restante}
-                        </span>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+      {loading && Object.values(board).every((col) => col.length === 0) ? (
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          Carregando tickets...
         </div>
-      </div>
+      ) : (
+        <div className="overflow-x-auto pb-4">
+          <div className="flex gap-3 min-w-max">
+            {colunas.map((col) => {
+              const tickets = filtra(board[col]);
+              return (
+                <div key={col} className={`w-72 shrink-0 rounded-lg bg-muted/30 ${colCls[col]}`}>
+                  <div className="flex items-center justify-between px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">{col}</span>
+                      <Badge variant="secondary" className="h-5 rounded-full px-1.5 text-[10px]">
+                        {tickets.length}
+                      </Badge>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setNovoOpen(true)}>
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <div className="space-y-2 px-2 pb-3">
+                    {tickets.length === 0 && (
+                      <div className="rounded-md border border-dashed bg-background/50 py-6 text-center text-[11px] text-muted-foreground">
+                        Nenhum ticket
+                      </div>
+                    )}
+                    {tickets.map((t) => (
+                      <Card
+                        key={t.id}
+                        onClick={() => void abrirTicket(t, col)}
+                        className="cursor-pointer p-3 transition hover:shadow-md hover:border-primary/50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-muted-foreground">{t.id}</span>
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${prioCls[t.prio]}`}>
+                            {t.prio}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 text-sm font-medium leading-snug">{t.titulo}</p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">{t.cli}</p>
+                        <div className="mt-3 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Avatar className="h-5 w-5 border border-border">
+                              <AvatarFallback className="bg-primary/10 text-[9px] text-primary">
+                                {t.resp === "—" ? "?" : t.resp.split(" ").map((x) => x[0]).join("")}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-[10px] text-muted-foreground">{t.resp}</span>
+                          </div>
+                          <span
+                            className={`flex items-center gap-1 text-[10px] font-medium ${
+                              t.sla.tom === "bad"
+                                ? "text-rose-600"
+                                : t.sla.tom === "warn"
+                                  ? "text-amber-600"
+                                  : "text-muted-foreground"
+                            }`}
+                          >
+                            {t.sla.tom === "warn" || t.sla.tom === "bad" ? (
+                              <AlertTriangle className="h-3 w-3" />
+                            ) : (
+                              <Clock className="h-3 w-3" />
+                            )}
+                            {t.sla.restante}
+                          </span>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <TicketRespostaModal
         open={respOpen}
         onOpenChange={setRespOpen}
         ticket={ticketSelecionado}
         cliente={selected ? { razao: selected.ticket.cli, responsavel: selected.ticket.resp } : undefined}
+        descricao={detalheDescricao}
+        mensagensHistorico={detalheMensagens}
+        slaLabel={selected?.ticket.sla.restante}
+        carregandoDetalhe={detalheLoading}
+        enviando={enviandoResposta}
         onEnviar={responderTicket}
       />
 

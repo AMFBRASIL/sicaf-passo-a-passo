@@ -24,6 +24,7 @@ import {
   Sparkles,
   FileText,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { toast } from "sonner";
@@ -58,12 +59,28 @@ export type TicketRespostaOptions = {
   marcarResolvido?: boolean;
 };
 
+type MensagemHistorico = {
+  autor: string;
+  tipo: "cliente" | "agente";
+  data: string;
+  texto: string;
+};
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   ticket: TicketItem | null;
   cliente?: { razao: string; responsavel: string };
-  onEnviar?: (ticketId: string, mensagem: string, opcoes: TicketRespostaOptions) => void;
+  descricao?: string;
+  mensagensHistorico?: MensagemHistorico[];
+  slaLabel?: string;
+  carregandoDetalhe?: boolean;
+  enviando?: boolean;
+  onEnviar?: (
+    ticketId: string,
+    mensagem: string,
+    opcoes: TicketRespostaOptions,
+  ) => void | Promise<void>;
 }
 
 type StepKey = "contexto" | "mensagens" | "resposta" | "finalizar";
@@ -96,7 +113,18 @@ function descricaoSituacaoPadrao(statusAtual: string, marcarResolvido: boolean):
   return `A situação permanece em «${statusAtual}».`;
 }
 
-export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnviar }: Props) {
+export function TicketRespostaModal({
+  open,
+  onOpenChange,
+  ticket,
+  cliente,
+  descricao,
+  mensagensHistorico,
+  slaLabel,
+  carregandoDetalhe,
+  enviando,
+  onEnviar,
+}: Props) {
   const [step, setStep] = useState<StepKey>("contexto");
   const [mensagem, setMensagem] = useState("");
   const [modoSituacao, setModoSituacao] = useState<ModoSituacaoTicket>("padrao");
@@ -123,7 +151,7 @@ export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnv
 
   if (!ticket) return null;
 
-  const enviar = () => {
+  const enviar = async () => {
     if (!mensagem.trim()) {
       toast.error("Escreva uma mensagem antes de enviar");
       return;
@@ -133,35 +161,38 @@ export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnv
       situacaoManual: modoSituacao === "manual" ? situacaoManual : undefined,
       marcarResolvido: modoSituacao === "padrao" ? marcarResolvido : undefined,
     };
-    onEnviar?.(ticket.id, mensagem, opcoes);
-    const msgSucesso =
-      situacaoPrevista === "Fechado"
-        ? "Resposta enviada e ticket fechado"
-        : situacaoPrevista !== ticket.status
-          ? `Resposta enviada · situação: ${situacaoPrevista}`
-          : "Resposta enviada ao cliente";
-    toast.success(msgSucesso);
-    setMensagem("");
-    setModoSituacao("padrao");
-    setMarcarResolvido(false);
-    setStep("contexto");
-    onOpenChange(false);
+    try {
+      await onEnviar?.(ticket.id, mensagem, opcoes);
+      const msgSucesso =
+        situacaoPrevista === "Fechado"
+          ? "Resposta enviada e ticket fechado"
+          : situacaoPrevista !== ticket.status
+            ? `Resposta enviada · situação: ${situacaoPrevista}`
+            : "Resposta enviada ao cliente";
+      toast.success(msgSucesso);
+      setMensagem("");
+      setModoSituacao("padrao");
+      setMarcarResolvido(false);
+      setStep("contexto");
+      onOpenChange(false);
+    } catch {
+      // Erro tratado pelo chamador
+    }
   };
 
-  const mensagens = [
-    {
-      autor: cliente?.responsavel || "Cliente",
-      tipo: "cliente",
-      data: ticket.data,
-      texto: `Olá, gostaria de tratar sobre: ${ticket.titulo}. Aguardo retorno.`,
-    },
-    {
-      autor: "Suporte SICAF",
-      tipo: "agente",
-      data: "Hoje 10:02",
-      texto: "Olá! Recebemos sua solicitação e estamos verificando com nossa equipe.",
-    },
-  ];
+  const mensagens: MensagemHistorico[] =
+    mensagensHistorico && mensagensHistorico.length > 0
+      ? mensagensHistorico
+      : carregandoDetalhe
+        ? []
+        : [
+            {
+              autor: cliente?.responsavel || "Cliente",
+              tipo: "cliente",
+              data: ticket.data,
+              texto: descricao || `Solicitação: ${ticket.titulo}`,
+            },
+          ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -218,7 +249,7 @@ export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnv
 
             <div className="mt-auto pt-6 text-[11px] text-white/60">
               <div className="flex items-center gap-1.5">
-                <Clock className="h-3 w-3" /> SLA: 4h restantes
+                <Clock className="h-3 w-3" /> SLA: {slaLabel || "—"}
               </div>
               <div className="mt-1 flex items-center gap-1.5">
                 <User className="h-3 w-3" /> Atribuído a você
@@ -256,13 +287,33 @@ export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnv
                     <Separator />
                     <div>
                       <div className="text-xs font-medium text-muted-foreground mb-1.5">Descrição</div>
-                      <p className="text-sm leading-relaxed">{ticket.titulo}. O cliente solicita acompanhamento.</p>
+                      {carregandoDetalhe ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Carregando...
+                        </div>
+                      ) : (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {descricao || ticket.titulo}
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
 
                 {step === "mensagens" && (
                   <div className="space-y-3">
+                    {carregandoDetalhe && (
+                      <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Carregando mensagens...
+                      </div>
+                    )}
+                    {!carregandoDetalhe && mensagens.length === 0 && (
+                      <div className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
+                        Nenhuma mensagem ainda
+                      </div>
+                    )}
                     {mensagens.map((m, i) => (
                       <div
                         key={i}
@@ -447,8 +498,9 @@ export function TicketRespostaModal({ open, onOpenChange, ticket, cliente, onEnv
                   Continuar <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               ) : (
-                <Button size="sm" className="gap-1.5" onClick={enviar}>
-                  <Send className="h-3.5 w-3.5" /> Enviar resposta
+                <Button size="sm" className="gap-1.5" onClick={() => void enviar()} disabled={enviando}>
+                  {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  {enviando ? "Enviando..." : "Enviar resposta"}
                 </Button>
               )}
             </div>

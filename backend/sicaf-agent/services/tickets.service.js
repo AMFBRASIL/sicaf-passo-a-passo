@@ -173,11 +173,49 @@ function _mensagemParaCorpoEmail(stored) {
 function _ticketStatusLabel(status) {
   const map = {
     aberto: 'Aberto',
+    triagem: 'Triagem',
     em_andamento: 'Em andamento',
+    aguardando_cliente: 'Aguardando cliente',
+    aguardando_governo: 'Aguardando governo',
     resolvido: 'Resolvido',
     fechado: 'Fechado',
   };
   return map[status] || status || '—';
+}
+
+const TICKET_STATUS_DB_VALIDOS = new Set([
+  'aberto',
+  'triagem',
+  'em_andamento',
+  'aguardando_cliente',
+  'aguardando_governo',
+  'resolvido',
+  'fechado',
+]);
+
+/** Converte rótulo do kanban admin ou slug para status no banco. */
+function _normalizeStatusDb(raw) {
+  const s = String(raw || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '_');
+
+  const map = {
+    novo: 'aberto',
+    aberto: 'aberto',
+    triagem: 'triagem',
+    em_andamento: 'em_andamento',
+    aguardando_cliente: 'aguardando_cliente',
+    aguardando_governo: 'aguardando_governo',
+    resolvido: 'resolvido',
+    fechado: 'fechado',
+  };
+
+  if (map[s]) return map[s];
+  if (TICKET_STATUS_DB_VALIDOS.has(s)) return s;
+  return 'em_andamento';
 }
 
 /** Mensagem segura para HTML (template Ticket Atualizado — bloco .msg) */
@@ -1013,14 +1051,19 @@ async function responderTicketAdmin(ticketId, usuarioId, dados) {
       mensagem: mensagemSalva,
     });
 
-    const statusAposResposta = ticket.status === 'aberto' ? 'em_andamento' : ticket.status;
-
-    // Se está aberto, mover para em_andamento
-    if (ticket.status === 'aberto') {
-      await db('tickets').where('id', ticket.id).update({ status: 'em_andamento', updated_at: db.fn.now() });
-    } else {
-      await db('tickets').where('id', ticket.id).update({ updated_at: db.fn.now() });
+    let statusAposResposta = ticket.status;
+    if (dados.status) {
+      statusAposResposta = _normalizeStatusDb(dados.status);
+    } else if (dados.marcarResolvido === true || dados.marcarResolvido === 'true') {
+      statusAposResposta = 'resolvido';
+    } else if (ticket.status === 'aberto') {
+      statusAposResposta = 'em_andamento';
     }
+
+    await db('tickets').where('id', ticket.id).update({
+      status: statusAposResposta,
+      updated_at: db.fn.now(),
+    });
 
     const ticketCodigoLog = ticket.codigo || `TK-${String(ticket.id).padStart(3, '0')}`;
     const enviarEmailAgora = dados.enviarEmail !== false && dados.enviarEmail !== 'false';
@@ -1047,9 +1090,10 @@ async function responderTicketAdmin(ticketId, usuarioId, dados) {
       });
     }
 
-    console.log(`[Tickets] Admin resposta: ticket=${ticket.codigo}, msgId=${msgId}`);
+    console.log(`[Tickets] Admin resposta: ticket=${ticket.codigo}, msgId=${msgId}, status=${statusAposResposta}`);
     return {
       ok: true,
+      status: statusAposResposta,
       mensagem: {
         id: msgId,
         sender: 'support',
@@ -1137,7 +1181,7 @@ async function atualizarTicket(ticketId, dados) {
     if (!ticket) return { ok: false, error: 'Ticket não encontrado' };
 
     const updates = {};
-    if (dados.status) updates.status = dados.status;
+    if (dados.status) updates.status = _normalizeStatusDb(dados.status);
     if (dados.atribuido_a !== undefined) updates.atribuido_a = dados.atribuido_a || null;
     if (dados.prioridade) updates.prioridade = dados.prioridade;
     updates.updated_at = db.fn.now();

@@ -5,7 +5,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { fetchAdminClientes } from "@/lib/admin-clientes-api";
 import {
   Ticket,
   User,
@@ -15,6 +16,7 @@ import {
   ChevronRight,
   Send,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { toast } from "sonner";
@@ -22,11 +24,12 @@ import { toast } from "sonner";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCriar?: (ticket: NovoTicketData) => void;
+  onCriar?: (ticket: NovoTicketData) => void | Promise<void>;
 }
 
 export interface NovoTicketData {
   cliente: string;
+  clienteId?: number;
   responsavel: string;
   categoria: string;
   prioridade: "Alta" | "Média" | "Baixa";
@@ -43,16 +46,6 @@ const steps: { key: StepKey; label: string; desc: string; icon: any }[] = [
   { key: "revisar", label: "Revisar", desc: "Confirmar e abrir", icon: CheckCircle2 },
 ];
 
-const clientes = [
-  "Engemax Serviços",
-  "MEI José Roberto",
-  "JR Construtora EIRELI",
-  "Construtora Aurora",
-  "Solar Brasil Energia",
-  "Pavimar Obras",
-  "TecnoLimp Servicos",
-];
-
 const responsaveis = ["Anderson", "Maria S.", "João P.", "Carla R."];
 
 const categorias = [
@@ -67,14 +60,37 @@ const categorias = [
 
 export function NovoTicketModal({ open, onOpenChange, onCriar }: Props) {
   const [step, setStep] = useState<StepKey>("cliente");
+  const [clientes, setClientes] = useState<{ id: number; nome: string }[]>([]);
+  const [loadingClientes, setLoadingClientes] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const [data, setData] = useState<NovoTicketData>({
     cliente: "",
+    clienteId: undefined,
     responsavel: "",
     categoria: "",
     prioridade: "Média",
     titulo: "",
     descricao: "",
   });
+
+  const carregarClientes = useCallback(async () => {
+    setLoadingClientes(true);
+    const res = await fetchAdminClientes({ limit: 200 });
+    setLoadingClientes(false);
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao carregar clientes");
+      return;
+    }
+    const lista = (res.clients || []).map((c) => ({
+      id: c.id,
+      nome: c.name || c.fantasyName || c.documento,
+    }));
+    setClientes(lista);
+  }, []);
+
+  useEffect(() => {
+    if (open) void carregarClientes();
+  }, [open, carregarClientes]);
 
   const canNext: Record<StepKey, boolean> = {
     cliente: !!data.cliente,
@@ -83,16 +99,30 @@ export function NovoTicketModal({ open, onOpenChange, onCriar }: Props) {
     revisar: true,
   };
 
-  const criar = () => {
+  const criar = async () => {
     if (!data.cliente || !data.titulo.trim() || !data.categoria) {
       toast.error("Preencha os campos obrigatórios");
       return;
     }
-    onCriar?.(data);
-    toast.success("Ticket criado com sucesso");
-    setData({ cliente: "", responsavel: "", categoria: "", prioridade: "Média", titulo: "", descricao: "" });
-    setStep("cliente");
-    onOpenChange(false);
+    setSalvando(true);
+    try {
+      await onCriar?.(data);
+      setData({
+        cliente: "",
+        clienteId: undefined,
+        responsavel: "",
+        categoria: "",
+        prioridade: "Média",
+        titulo: "",
+        descricao: "",
+      });
+      setStep("cliente");
+      onOpenChange(false);
+    } catch {
+      // Erro tratado pelo chamador
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
@@ -168,10 +198,31 @@ export function NovoTicketModal({ open, onOpenChange, onCriar }: Props) {
                   <div className="space-y-4">
                     <div className="space-y-1.5">
                       <Label>Cliente *</Label>
-                      <Select value={data.cliente} onValueChange={(v) => setData({ ...data, cliente: v })}>
-                        <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
+                      <Select
+                        value={data.clienteId ? String(data.clienteId) : ""}
+                        onValueChange={(v) => {
+                          const id = parseInt(v, 10);
+                          const cli = clientes.find((c) => c.id === id);
+                          setData({ ...data, clienteId: id, cliente: cli?.nome || "" });
+                        }}
+                        disabled={loadingClientes}
+                      >
+                        <SelectTrigger>
+                          {loadingClientes ? (
+                            <span className="flex items-center gap-2 text-muted-foreground">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Carregando clientes...
+                            </span>
+                          ) : (
+                            <SelectValue placeholder="Selecione o cliente" />
+                          )}
+                        </SelectTrigger>
                         <SelectContent>
-                          {clientes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                          {clientes.map((c) => (
+                            <SelectItem key={c.id} value={String(c.id)}>
+                              {c.nome}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -287,8 +338,9 @@ export function NovoTicketModal({ open, onOpenChange, onCriar }: Props) {
                   Continuar <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               ) : (
-                <Button size="sm" className="gap-1.5" onClick={criar}>
-                  <Send className="h-3.5 w-3.5" /> Abrir ticket
+                <Button size="sm" className="gap-1.5" onClick={() => void criar()} disabled={salvando}>
+                  {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  {salvando ? "Criando..." : "Abrir ticket"}
                 </Button>
               )}
             </div>
