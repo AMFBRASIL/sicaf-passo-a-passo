@@ -1,7 +1,15 @@
 import { z } from "zod";
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  NODE_ENV: z
+    .string()
+    .default("development")
+    .transform((value) => {
+      const v = value.trim().toLowerCase();
+      if (v === "production") return "production" as const;
+      if (v === "test") return "test" as const;
+      return "development" as const;
+    }),
   APP_URL: z.string().url().default("http://localhost:3001"),
   FRONTEND_URL: z.string().url().default("http://localhost:5173"),
   TZ: z.string().default("America/Sao_Paulo"),

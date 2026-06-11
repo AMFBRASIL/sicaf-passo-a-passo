@@ -1,17 +1,22 @@
 import pino from "pino";
-import { getEnv, isProduction } from "@/lib/config/env";
+import { isProduction } from "@/lib/config/env";
 
-const env = getEnv();
+/** pino-pretty usa worker thread — quebra `next build` na Vercel. */
+function usePrettyLogs(): boolean {
+  if (process.env.VERCEL) return false;
+  if (process.env.NEXT_PHASE === "phase-production-build") return false;
+  return process.env.NODE_ENV === "development";
+}
 
 export const logger = pino({
   level: isProduction() ? "info" : "debug",
   base: { service: "cadbrasil-backend" },
-  transport: isProduction()
-    ? undefined
-    : {
+  transport: usePrettyLogs()
+    ? {
         target: "pino-pretty",
         options: { colorize: true, translateTime: "SYS:standard" },
-      },
+      }
+    : undefined,
   timestamp: pino.stdTimeFunctions.isoTime,
 });
 
@@ -20,7 +25,7 @@ export function createModuleLogger(module: string) {
 }
 
 export function logCronStart(jobName: string) {
-  logger.info({ job: jobName, tz: env.TZ }, "Cron job iniciado");
+  logger.info({ job: jobName }, "Cron job iniciado");
 }
 
 export function logCronEnd(jobName: string, durationMs: number, ok: boolean) {
