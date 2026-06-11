@@ -7,6 +7,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies & build
 node_modules
 dist
 dist-ssr
@@ -16,9 +17,35 @@ dist-ssr
 .nitro
 *.local
 
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Database na raiz (scripts SQL locais — não versionar)
+/database/
+
+# Sistema legado (referência local, contém .env e builds)
+SIstema-Antigo/
+
+# Lovable (metadados da plataforma de desenvolvimento)
+.lovable/
+
+# Backend (código versionado; artefatos locais abaixo)
+backend/.env
+backend/node_modules
+backend/.next
+backend/uploads
+
+# Extensão do navegador (artefatos de build)
+extension/dist/
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
+
+# Lock file alternativo (projeto usa bun)
+package-lock.json
 
 # Editor directories and files
 .vscode/*
