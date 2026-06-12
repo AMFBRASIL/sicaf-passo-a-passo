@@ -26,6 +26,7 @@ import {
   testEmailSettings,
   updateEmailTemplateAdmin,
   type EmailSettings,
+  type EmailSettingsStatus,
   type EmailTemplateAdmin,
 } from "@/lib/admin-settings-api";
 
@@ -104,6 +105,7 @@ export function EmailsConfigPanel({ onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [settings, setSettings] = useState<EmailSettings | null>(null);
+  const [emailStatus, setEmailStatus] = useState<EmailSettingsStatus | null>(null);
   const [testTo, setTestTo] = useState("");
   const [templateCount, setTemplateCount] = useState(0);
   const [templates, setTemplates] = useState<EmailTemplateAdmin[]>([]);
@@ -115,8 +117,9 @@ export function EmailsConfigPanel({ onSaved }: Props) {
   const carregar = useCallback(async () => {
     setLoading(true);
     try {
-      const { settings: s, templateCount: tc } = await fetchEmailSettings();
+      const { settings: s, templateCount: tc, status } = await fetchEmailSettings();
       setSettings(s);
+      setEmailStatus(status);
       setTemplateCount(tc);
       const tpl = await fetchEmailTemplatesAdmin();
       setTemplates(tpl);
@@ -222,6 +225,14 @@ export function EmailsConfigPanel({ onSaved }: Props) {
         </div>
       </Section>
 
+      {emailStatus?.apiKeySource === "database_invalid" && metodo === "api" && (
+        <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+          A API Key salva no banco não parece válida para Mailgun (deve começar com{" "}
+          <code className="rounded bg-muted px-1">key-</code>). Informe a chave correta abaixo e salve,
+          ou configure <code className="rounded bg-muted px-1">MAILGUN_API_KEY</code> no .env do servidor.
+        </div>
+      )}
+
       {metodo === "api" ? (
         <Section title="Configuração da API">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -322,7 +333,7 @@ export function EmailsConfigPanel({ onSaved }: Props) {
         </Section>
       )}
 
-      <Section title="Testar envio" desc="Salva as alterações e dispara um e-mail de teste.">
+      <Section title="Testar envio" desc="Usa as configurações do formulário (não precisa salvar antes).">
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[240px] flex-1">
             <Field label="Enviar teste para">

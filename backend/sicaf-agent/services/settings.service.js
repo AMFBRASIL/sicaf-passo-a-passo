@@ -22,11 +22,20 @@ const {
   DEFAULTS: IA_DEFAULTS,
   envFallback: iaEnvFallback,
   loadRawFromDb: loadIaRawFromDb,
-  hasDbApiKey,
-  resolveApiKeySource,
+  hasDbApiKey: hasDbIaApiKey,
+  resolveApiKeySource: resolveIaApiKeySource,
 } = require('./ia-config.service');
 
 const storageService = require('./storage.service');
+
+const {
+  EMAIL_DEFAULTS,
+  envFallback: emailEnvFallback,
+  loadRawFromDb: loadEmailRawFromDb,
+  hasDbApiKey: hasDbEmailApiKey,
+  hasDbSmtpPassword,
+  resolveApiKeySource: resolveEmailApiKeySource,
+} = require('./email-config.service');
 
 const {
   STORAGE_KEYS,
@@ -77,10 +86,27 @@ async function getSettingsByKeys(keys) {
 }
 
 async function getEmailSettings() {
-  const result = await getSettingsByKeys(EMAIL_KEYS);
-  if (!result.ok) return result;
-
   const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const raw = await loadEmailRawFromDb();
+  const env = emailEnvFallback();
+  const merged = { ...EMAIL_DEFAULTS };
+
+  for (const key of EMAIL_KEYS) {
+    const dbVal = raw[key];
+    if (dbVal != null && String(dbVal).trim() !== '' && dbVal !== MASK) {
+      merged[key] = dbVal;
+    } else if (key === 'smtp_api_key') {
+      merged[key] = hasDbEmailApiKey(raw) || env.smtp_api_key ? MASK : '';
+    } else if (key === 'smtp_senha' || key === 'smtp_secret_key') {
+      const hasDb = String(raw[key] || '').trim();
+      merged[key] = hasDb || env[key] ? MASK : '';
+    } else {
+      merged[key] = raw[key] || env[key] || EMAIL_DEFAULTS[key] || '';
+    }
+  }
+
   let templateCount = 0;
   try {
     const [{ count }] = await db('templates_email')
@@ -89,10 +115,23 @@ async function getEmailSettings() {
     templateCount = Number(count) || 0;
   } catch (_) {}
 
+  const apiKeySource = resolveEmailApiKeySource(raw, env, merged);
+  const metodo = merged.smtp_metodo === 'smtp' ? 'smtp' : 'api';
+
   return {
     ok: true,
-    settings: result.settings,
+    settings: maskSecrets(merged),
     templateCount,
+    status: {
+      configured:
+        metodo === 'api'
+          ? apiKeySource === 'database' || apiKeySource === 'env'
+          : Boolean(merged.smtp_host && (hasDbSmtpPassword(raw) || env.smtp_senha)),
+      apiKeySource,
+      metodo,
+      provider: merged.smtp_provider || 'mailgun',
+      fromEmail: merged.smtp_email_remetente || env.smtp_email_remetente || '',
+    },
   };
 }
 
@@ -220,14 +259,14 @@ async function getIaSettings() {
     if (dbVal != null && String(dbVal).trim() !== '' && dbVal !== MASK) {
       merged[key] = dbVal;
     } else if (key === 'ia_api_key') {
-      merged[key] = hasDbApiKey(raw) || env.ia_api_key ? MASK : '';
+      merged[key] = hasDbIaApiKey(raw) || env.ia_api_key ? MASK : '';
     } else {
       merged[key] = raw[key] || env[key] || IA_DEFAULTS[key] || '';
     }
   }
 
-  const apiKeySource = resolveApiKeySource(raw, {
-    ia_api_key: hasDbApiKey(raw) ? raw.ia_api_key : env.ia_api_key,
+  const apiKeySource = resolveIaApiKeySource(raw, {
+    ia_api_key: hasDbIaApiKey(raw) ? raw.ia_api_key : env.ia_api_key,
   });
 
   return {

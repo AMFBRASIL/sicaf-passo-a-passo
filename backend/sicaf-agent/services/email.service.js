@@ -34,6 +34,21 @@ function invalidateConfigCache() {
   _configCacheTime = 0;
 }
 
+function _formatMailgunError(status, data) {
+  const msg = data?.message || data?.error || '';
+  if (status === 401) {
+    return 'API Key Mailgun rejeitada (401). Atualize a chave no painel ou defina MAILGUN_API_KEY no .env do servidor.';
+  }
+  if (status === 403) {
+    return `Mailgun recusou o envio (403)${msg ? `: ${msg}` : ''}. Verifique se o domínio do remetente está verificado.`;
+  }
+  if (status === 404) {
+    return 'Domínio não encontrado no Mailgun (404). Cadastre e verifique o domínio do e-mail remetente no painel Mailgun.';
+  }
+  if (msg) return `Mailgun: ${msg}`;
+  return `Falha ao enviar via Mailgun (HTTP ${status})`;
+}
+
 async function _sendViaMailgunApi(cfg, opts) {
   const domain = (cfg.fromEmail || '').split('@')[1];
   if (!domain) {
@@ -67,7 +82,7 @@ async function _sendViaMailgunApi(cfg, opts) {
       if (response.ok) {
         return { ok: true, messageId: data.id || '', provider: 'Mailgun', region: region.label };
       }
-      lastError = data.message || data.error || JSON.stringify(data);
+      lastError = _formatMailgunError(response.status, data);
       if (response.status === 401 || response.status === 404) continue;
       break;
     } catch (fetchErr) {

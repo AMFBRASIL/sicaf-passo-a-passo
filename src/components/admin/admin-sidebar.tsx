@@ -18,6 +18,7 @@ import {
   Settings2,
   Shield,
   Building2,
+  Cog,
 } from "lucide-react";
 import {
   Sidebar,
@@ -48,6 +49,7 @@ const atendimento = [
 
 const inteligencia = [
   { title: "Google Ads", url: "/admin/google-ads", icon: TrendingUp },
+  { title: "Processos", url: "/admin/processos", icon: Cog },
   { title: "Funil Comercial", url: "/admin/funil", icon: Filter },
   { title: "IA Gerencial", url: "/admin/ia", icon: Brain },
   { title: "Automações", url: "/admin/automacoes", icon: Bot },

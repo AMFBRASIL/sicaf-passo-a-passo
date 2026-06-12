@@ -6,21 +6,35 @@
  *   npx tsx scripts/db/run-migration-node.ts          # ETL completo (INSERT IGNORE)
  *   npx tsx scripts/db/run-migration-node.ts --dados  # sem tabelas de configuração
  */
-import type { RowDataPacket } from "mysql2/promise";
+import type { Connection, RowDataPacket } from "mysql2/promise";
 import {
   adaptSqlForEnvironment,
   createConnection,
   getCredentialsFromEnv,
   readSqlFile,
+  safeEndConnection,
 } from "./sql-runner";
 import { parseEtlSteps } from "./etl-parser";
 import { ETL_TARGETS_SKIP_CONFIG } from "./migration-config";
 
 const BATCH_SIZE = 500;
+const MAX_RETRIES = 5;
 const dadosOnly = process.argv.includes("--dados");
 
+function isConnectionError(err: unknown): boolean {
+  const msg = (err as Error)?.message || "";
+  return (
+    msg.includes("ECONNRESET") ||
+    msg.includes("ECONNREFUSED") ||
+    msg.includes("closed state") ||
+    msg.includes("Connection lost") ||
+    msg.includes("PROTOCOL_CONNECTION_LOST") ||
+    msg.includes("ETIMEDOUT")
+  );
+}
+
 async function batchInsert(
-  writeConn: Awaited<ReturnType<typeof createConnection>>,
+  writeConn: Connection,
   table: string,
   columns: string[],
   rows: RowDataPacket[],
@@ -51,8 +65,51 @@ async function batchInsert(
   return inserted;
 }
 
-async function main() {
+type ConnPair = {
+  legacyConn: Connection;
+  writeConn: Connection;
+};
+
+async function openConnections(): Promise<ConnPair> {
   const { legacy, write, v2SchemaName } = getCredentialsFromEnv();
+  const legacyConn = await createConnection(legacy, { database: legacy.database });
+  const writeConn = await createConnection(write, { database: v2SchemaName });
+  await writeConn.query("SET FOREIGN_KEY_CHECKS = 0");
+  await writeConn.query("SET UNIQUE_CHECKS = 0");
+  return { legacyConn, writeConn };
+}
+
+async function migrateStep(
+  pair: ConnPair,
+  step: { sourceTable: string; targetTable: string; selectSql: string; columns: string[] },
+): Promise<{ read: number; inserted: number }> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const [rows] = await pair.legacyConn.query<RowDataPacket[]>(
+        `SELECT ${step.selectSql} FROM \`${step.sourceTable}\``,
+      );
+      const inserted = await batchInsert(pair.writeConn, step.targetTable, step.columns, rows);
+      return { read: rows.length, inserted };
+    } catch (err) {
+      lastError = err;
+      if (!isConnectionError(err) || attempt === MAX_RETRIES) throw err;
+
+      console.log(`\n   ↻ reconectando (tentativa ${attempt + 1}/${MAX_RETRIES})...`);
+      await safeEndConnection(pair.legacyConn);
+      await safeEndConnection(pair.writeConn);
+      const fresh = await openConnections();
+      pair.legacyConn = fresh.legacyConn;
+      pair.writeConn = fresh.writeConn;
+    }
+  }
+
+  throw lastError;
+}
+
+async function main() {
+  const { legacy, v2SchemaName } = getCredentialsFromEnv();
 
   console.log("═══════════════════════════════════════════════════════");
   console.log(" CADBRASIL — ETL Node.js (dual-connection)");
@@ -70,11 +127,7 @@ async function main() {
     console.log(`\n${steps.length} passos de migração detectados.\n`);
   }
 
-  const legacyConn = await createConnection(legacy, { database: legacy.database });
-  const writeConn = await createConnection(write, { database: v2SchemaName });
-
-  await writeConn.query("SET FOREIGN_KEY_CHECKS = 0");
-  await writeConn.query("SET UNIQUE_CHECKS = 0");
+  let pair = await openConnections();
 
   const summary: { table: string; source: string; read: number; inserted: number }[] = [];
   let errors = 0;
@@ -85,26 +138,31 @@ async function main() {
       process.stdout.write(`▶ ${label} ... `);
 
       try {
-        const [rows] = await legacyConn.query<RowDataPacket[]>(
-          `SELECT ${step.selectSql} FROM \`${step.sourceTable}\``,
-        );
-
-        const inserted = await batchInsert(writeConn, step.targetTable, step.columns, rows);
+        const { read, inserted } = await migrateStep(pair, step);
         summary.push({
           table: step.targetTable,
           source: step.sourceTable,
-          read: rows.length,
+          read,
           inserted,
         });
-        console.log(`✔ ${rows.length} lidos, ${inserted} inseridos`);
+        console.log(`✔ ${read} lidos, ${inserted} inseridos`);
       } catch (err) {
         errors++;
         console.log(`✖ ERRO: ${(err as Error).message}`);
+        if (isConnectionError(err)) {
+          await safeEndConnection(pair.legacyConn);
+          await safeEndConnection(pair.writeConn);
+          pair = await openConnections();
+        }
       }
     }
 
-    await writeConn.query("SET FOREIGN_KEY_CHECKS = 1");
-    await writeConn.query("SET UNIQUE_CHECKS = 1");
+    try {
+      await pair.writeConn.query("SET FOREIGN_KEY_CHECKS = 1");
+      await pair.writeConn.query("SET UNIQUE_CHECKS = 1");
+    } catch {
+      /* connection may be closed */
+    }
 
     console.log("\n── Resumo ──");
     console.table(summary);
@@ -120,8 +178,8 @@ async function main() {
 
     console.log("\n✅ ETL Node.js concluído com sucesso.");
   } finally {
-    await legacyConn.end();
-    await writeConn.end();
+    await safeEndConnection(pair.legacyConn);
+    await safeEndConnection(pair.writeConn);
   }
 }
 

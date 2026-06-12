@@ -26,6 +26,14 @@ export type EmailTemplateAdmin = {
   ativo: boolean;
 };
 
+export type EmailSettingsStatus = {
+  configured: boolean;
+  apiKeySource: "database" | "env" | "database_invalid" | "none" | "n/a";
+  metodo: string;
+  provider: string;
+  fromEmail: string;
+};
+
 const EMPTY_EMAIL: EmailSettings = {
   smtp_metodo: "api",
   smtp_provider: "mailgun",
@@ -40,21 +48,41 @@ const EMPTY_EMAIL: EmailSettings = {
   smtp_nome_remetente: "CadBrasil",
 };
 
+function mergeEmailSettings(partial: Partial<EmailSettings>): EmailSettings {
+  const out = { ...EMPTY_EMAIL };
+  for (const key of Object.keys(EMPTY_EMAIL) as (keyof EmailSettings)[]) {
+    const value = partial[key];
+    if (value != null && String(value).trim() !== "") {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 export async function fetchEmailSettings(): Promise<{
   settings: EmailSettings;
   templateCount: number;
+  status: EmailSettingsStatus;
 }> {
   const res = await apiFetch("/api/admin/settings/email");
   const data = (await res.json()) as {
     ok: boolean;
     settings?: Partial<EmailSettings>;
     templateCount?: number;
+    status?: EmailSettingsStatus;
     error?: string;
   };
   if (!data.ok) throw new Error(data.error || "Erro ao carregar configurações de e-mail");
   return {
-    settings: { ...EMPTY_EMAIL, ...(data.settings || {}) },
+    settings: mergeEmailSettings(data.settings || {}),
     templateCount: data.templateCount ?? 0,
+    status: data.status || {
+      configured: false,
+      apiKeySource: "none",
+      metodo: "api",
+      provider: "mailgun",
+      fromEmail: "",
+    },
   };
 }
 

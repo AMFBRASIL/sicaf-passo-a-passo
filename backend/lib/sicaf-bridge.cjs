@@ -61,6 +61,11 @@ function initSicafAgentModules() {
   } catch (e) {
     console.warn("[sicaf-bridge] Storage dirs:", e.message);
   }
+  try {
+    loadModule("services/google-ads-conversoes-cron.service").start();
+  } catch (e) {
+    console.warn("[sicaf-bridge] Cron Google Ads conversões:", e.message);
+  }
   initialized = true;
 }
 

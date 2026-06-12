@@ -22,7 +22,8 @@
     "db:seed-planos-sicaf": "tsx scripts/db/seed-planos-sicaf.ts",
     "db:seed-config-ia": "tsx scripts/db/seed-configuracoes-ia.ts",
     "db:seed-config-storage": "tsx scripts/db/seed-configuracoes-storage.ts",
-    "sicaf": "node sicaf-agent/modules/sicaf-assistant/index.js"
+    "sicaf": "node sicaf-agent/modules/sicaf-assistant/index.js",
+    "sync:google-ads-conversoes": "node scripts/sync-google-ads-conversoes.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.988.0",

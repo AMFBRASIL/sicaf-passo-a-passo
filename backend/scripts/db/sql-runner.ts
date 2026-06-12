@@ -3,7 +3,7 @@ import path from "node:path";
 import mysql, { type Connection, type RowDataPacket } from "mysql2/promise";
 import { config as loadEnv } from "dotenv";
 
-loadEnv({ path: path.resolve(process.cwd(), ".env") });
+loadEnv({ path: path.resolve(process.cwd(), ".env"), override: true });
 
 export type DbCredentials = {
   host: string;
@@ -65,7 +65,23 @@ export async function createConnection(
     database: options?.database,
     charset: "utf8mb4",
     multipleStatements: options?.multipleStatements ?? false,
+    connectTimeout: 120_000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10_000,
   });
+}
+
+export async function safeEndConnection(connection: Connection | null | undefined): Promise<void> {
+  if (!connection) return;
+  try {
+    await connection.end();
+  } catch {
+    try {
+      connection.destroy();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export async function executeSqlFile(

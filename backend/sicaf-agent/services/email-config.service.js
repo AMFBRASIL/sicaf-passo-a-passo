@@ -22,6 +22,74 @@ const EMAIL_DB_KEYS = [
 const SECRET_KEYS = new Set(['smtp_senha', 'smtp_api_key', 'smtp_secret_key']);
 const MASK = '__UNCHANGED__';
 
+const EMAIL_DEFAULTS = {
+  smtp_metodo: 'api',
+  smtp_provider: 'mailgun',
+  smtp_host: '',
+  smtp_porta: '587',
+  smtp_usuario: '',
+  smtp_senha: '',
+  smtp_tls: 'true',
+  smtp_api_key: '',
+  smtp_secret_key: '',
+  smtp_email_remetente: '',
+  smtp_nome_remetente: 'CadBrasil',
+  empresa_nome: 'CadBrasil',
+};
+
+function isPlausibleMailgunApiKey(value) {
+  const v = String(value || '').trim();
+  return v.startsWith('key-') && v.length >= 20;
+}
+
+function isPlausibleProviderApiKey(provider, value) {
+  const v = String(value || '').trim();
+  if (!v || v === MASK) return false;
+  const p = String(provider || '').toLowerCase();
+  if (p === 'mailgun') return isPlausibleMailgunApiKey(v);
+  if (p === 'sendgrid') return v.startsWith('SG.') && v.length > 20;
+  if (p === 'resend') return v.startsWith('re_') && v.length > 10;
+  return v.length >= 8;
+}
+
+function hasDbApiKey(raw) {
+  const v = String(raw?.smtp_api_key || '').trim();
+  return Boolean(v && v !== MASK);
+}
+
+function hasDbSmtpPassword(raw) {
+  const v = String(raw?.smtp_senha || '').trim();
+  return Boolean(v && v !== MASK);
+}
+
+function resolveApiKey(dbVal, envVal, provider, metodo) {
+  const db = String(dbVal || '').trim();
+  const env = String(envVal || '').trim();
+  if (db === MASK) return env;
+
+  if (String(metodo || '').toLowerCase() === 'api') {
+    const dbOk = isPlausibleProviderApiKey(provider, db);
+    const envOk = isPlausibleProviderApiKey(provider, env);
+    if (dbOk) return db;
+    if (envOk) return env;
+    return db || env;
+  }
+
+  return pickNonEmpty(db, env);
+}
+
+function resolveApiKeySource(raw, env, merged) {
+  const metodo = String(merged.smtp_metodo || 'api').toLowerCase();
+  if (metodo !== 'api') return 'n/a';
+  const provider = merged.smtp_provider || 'mailgun';
+  const dbKey = String(raw.smtp_api_key || '').trim();
+  const envKey = String(env.smtp_api_key || '').trim();
+  if (isPlausibleProviderApiKey(provider, dbKey)) return 'database';
+  if (isPlausibleProviderApiKey(provider, envKey)) return 'env';
+  if (dbKey) return 'database_invalid';
+  return 'none';
+}
+
 function envFallback() {
   const e = config.email || {};
   const metodo = String(e.metodo || '').trim().toLowerCase();
@@ -75,13 +143,22 @@ function mergeEmailRaw(dbRaw, overrides) {
     merged[key] = pickNonEmpty(dbRaw[key], env[key]);
   }
 
+  let overrideApiKey = '';
   if (overrides && typeof overrides === 'object') {
     for (const [key, value] of Object.entries(overrides)) {
       if (!EMAIL_DB_KEYS.includes(key)) continue;
       if (SECRET_KEYS.has(key) && (!value || value === MASK)) continue;
       const v = value != null ? String(value).trim() : '';
-      if (v) merged[key] = v;
+      if (!v) continue;
+      if (key === 'smtp_api_key') overrideApiKey = v;
+      merged[key] = v;
     }
+  }
+
+  if (!overrideApiKey) {
+    const metodo = merged.smtp_metodo || env.smtp_metodo || 'api';
+    const provider = merged.smtp_provider || env.smtp_provider || 'mailgun';
+    merged.smtp_api_key = resolveApiKey(dbRaw.smtp_api_key, env.smtp_api_key, provider, metodo);
   }
 
   return merged;
@@ -120,8 +197,17 @@ function validateRuntimeConfig(cfg) {
           'API Key não configurada. Informe a chave no painel ou defina MAILGUN_API_KEY / SMTP_API_KEY no .env do servidor.',
       };
     }
-    if (cfg.provider === 'mailgun' && !cfg.fromEmail.split('@')[1]) {
-      return { ok: false, error: 'E-mail remetente inválido para Mailgun (domínio ausente).' };
+    if (cfg.provider === 'mailgun') {
+      if (!cfg.fromEmail.split('@')[1]) {
+        return { ok: false, error: 'E-mail remetente inválido para Mailgun (domínio ausente).' };
+      }
+      if (!isPlausibleMailgunApiKey(cfg.apiKey)) {
+        return {
+          ok: false,
+          error:
+            'API Key Mailgun inválida no banco (deve começar com "key-"). Atualize no painel Admin → E-mail ou defina MAILGUN_API_KEY no .env do servidor.',
+        };
+      }
     }
     return { ok: true };
   }
@@ -149,6 +235,7 @@ function validateRuntimeConfig(cfg) {
 
 module.exports = {
   EMAIL_DB_KEYS,
+  EMAIL_DEFAULTS,
   SECRET_KEYS,
   MASK,
   envFallback,
@@ -156,4 +243,9 @@ module.exports = {
   mergeEmailRaw,
   toRuntimeConfig,
   validateRuntimeConfig,
+  hasDbApiKey,
+  hasDbSmtpPassword,
+  isPlausibleMailgunApiKey,
+  isPlausibleProviderApiKey,
+  resolveApiKeySource,
 };
