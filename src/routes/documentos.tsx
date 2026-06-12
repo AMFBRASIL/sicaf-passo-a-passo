@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   FileText, Upload, CheckCircle2, Circle, ArrowLeft, Building2, ShieldCheck, Loader2, Plus,
@@ -19,6 +19,8 @@ import {
   resolveEmpresaPorCnpj,
   type DocChecklistItem,
 } from "@/lib/documentos-api";
+import { fetchEmpresaGerenciar } from "@/lib/empresas-api";
+import { pagamentoSicafConfirmado } from "@/lib/sicaf-page-api";
 import { getDocRequirementLabels, getDocUploadRules } from "@/lib/sicaf-document-rules";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -50,8 +52,10 @@ function mapSicafFromStatus(status?: string): EmpresaData["sicaf"] {
 
 function DocsPage() {
   const { cnpj } = Route.useSearch();
+  const navigate = useNavigate();
   const [empresa, setEmpresa] = useState<EmpresaData | null>(null);
   const [docsPorNivel, setDocsPorNivel] = useState<Record<number, DocItem[]>>({});
+  const [pagamentoConfirmado, setPagamentoConfirmado] = useState(false);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [uploadDoc, setUploadDoc] = useState<DocItem | null>(null);
@@ -69,12 +73,19 @@ function DocsPage() {
       setLoading(false);
       return;
     }
-    const checklist = await fetchDocumentosChecklist(resolved.empresa.clienteId);
+    const clienteId = resolved.empresa.clienteId;
+    const [checklist, gerenciar] = await Promise.all([
+      fetchDocumentosChecklist(clienteId),
+      fetchEmpresaGerenciar(clienteId),
+    ]);
     if (!checklist.ok) {
       toast.error(checklist.error || "Erro ao carregar documentos");
       setLoading(false);
       return;
     }
+    setPagamentoConfirmado(
+      gerenciar.ok && gerenciar.painel ? pagamentoSicafConfirmado(gerenciar.painel) : false,
+    );
     const emp: EmpresaData = {
       ...resolved.empresa,
       nome: checklist.cliente?.razaoSocial || resolved.empresa.nome,
@@ -112,6 +123,14 @@ function DocsPage() {
       labelMonitorado: `${base.total} documento${base.total === 1 ? "" : "s"} do SICAF monitorados`,
     };
   }, [allDocs, ultimaVerificacao]);
+
+  const bloquearAssistente = () => {
+    toast.error("Confirme o pagamento da taxa CADBRASIL (Etapa 1) para acessar o Assistente.");
+    void navigate({
+      to: "/sicaf",
+      search: empresa?.cnpj ? { cnpj: empresa.cnpj.replace(/\D/g, "") } : {},
+    });
+  };
 
   if (loading) {
     return (
@@ -163,7 +182,12 @@ function DocsPage() {
       />
 
       <div className="mt-4">
-        <SaudeDocumentalCard stats={saudeStats} cnpj={empresa.cnpj} />
+        <SaudeDocumentalCard
+          stats={saudeStats}
+          cnpj={empresa.cnpj}
+          assistenteDisponivel={pagamentoConfirmado}
+          onAssistenteBloqueado={bloquearAssistente}
+        />
       </div>
 
       {/* Checklist por nível */}

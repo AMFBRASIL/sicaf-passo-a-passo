@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import {
@@ -61,6 +61,7 @@ import {
   type AssistenteHistoricoItem,
   type AssistentePendencia,
 } from "@/lib/assistente-api";
+import { pagamentoSicafConfirmado } from "@/lib/sicaf-page-api";
 
 const SICAF_BUTTON_CLASS =
   "gap-1.5 font-semibold shadow-sm bg-accent-green text-accent-green-foreground hover:brightness-110";
@@ -157,6 +158,7 @@ const SNAPSHOT_VAZIO: SnapshotSicaf = {
 
 function AssistentePage() {
   const { cnpj } = Route.useSearch();
+  const navigate = useNavigate();
   const { extensionInstalled, extensionChecking } = useCadBrasilExtension();
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [progresso, setProgresso] = useState(0);
@@ -190,6 +192,15 @@ function AssistentePage() {
       ]);
 
       if (painelRes.ok && painelRes.painel) {
+        if (!pagamentoSicafConfirmado(painelRes.painel)) {
+          toast.error("Confirme o pagamento da taxa CADBRASIL (Etapa 1) para usar o Assistente.");
+          void navigate({
+            to: "/sicaf",
+            search: cnpj ? { cnpj } : {},
+          });
+          return;
+        }
+
         setEmpresaNome(painelRes.painel.cliente.razaoSocial || painelRes.painel.cliente.nomeFantasia || undefined);
         setNiveis(mapNiveisFromPainel(painelRes.painel.niveisDetail));
         setSicafValidade(painelRes.painel.sicaf?.validade || undefined);
@@ -206,7 +217,7 @@ function AssistentePage() {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [cnpj, navigate]);
 
   useEffect(() => {
     if (!hasSeenAssistenteOnboarding()) {

@@ -79,6 +79,10 @@ function hasRequiredDocumentos(painel: EmpresaGerenciarPainel): boolean {
   return uploaded.length >= 4;
 }
 
+export function pagamentoSicafConfirmado(painel: EmpresaGerenciarPainel | null | undefined): boolean {
+  return Boolean(painel?.financeiro?.taxaPaga);
+}
+
 export function deriveEtapaAtual(
   painel: EmpresaGerenciarPainel,
   _certificado: CertificadoDigitalInfo | null | undefined,

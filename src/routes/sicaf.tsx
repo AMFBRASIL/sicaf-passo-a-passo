@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/page-header";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
+import { PagamentosPendentesWizard } from "@/components/pagamentos-pendentes-wizard";
+import { detectarFluxoPagamentoSicaf } from "@/lib/cliente-financeiro-api";
 import { CertificadoDigitalCard } from "@/components/certificado-digital-card";
 import {
   calcSaudeDocumentalFromDocs,
@@ -48,6 +50,7 @@ import {
   useCadBrasilExtension,
 } from "@/hooks/use-cadbrasil-extension";
 import {
+  certificadoEstaValido,
   type CertificadoDigitalInfo,
 } from "@/lib/certificado-api";
 import { uploadDocumentoEmpresa } from "@/lib/documentos-api";
@@ -55,6 +58,7 @@ import type { EmpresaGerenciarPainel } from "@/lib/empresas-api";
 import {
   deriveEtapaAtual,
   loadSicafPageData,
+  pagamentoSicafConfirmado,
   reloadSicafPainel,
   type SicafPageCliente,
 } from "@/lib/sicaf-page-api";
@@ -645,6 +649,8 @@ function SicafPage() {
   const [etapaAtual, setEtapaAtual] = useState(1);
   const [modalAberto, setModalAberto] = useState<number | null>(null);
   const [pagamentoModal, setPagamentoModal] = useState(false);
+  const [pagamentosWizardOpen, setPagamentosWizardOpen] = useState(false);
+  const [verificandoPagamento, setVerificandoPagamento] = useState(false);
   const [docsSaude, setDocsSaude] = useState<DocChecklistItem[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [ultimaVerificacao, setUltimaVerificacao] = useState<string | null>(null);
@@ -760,8 +766,28 @@ function SicafPage() {
   };
 
   const tudoConcluido = etapaAtual > total;
+  const pagamentoConfirmado = pagamentoSicafConfirmado(painel);
   const sicafJaAtivo =
     painel?.sicaf?.status === "Ativo" || painel?.sicaf?.status === "Vencendo";
+  const certificadoValido = certificadoEstaValido(certificado);
+
+  const abrirPagamentoEtapa1 = useCallback(async () => {
+    if (!cliente?.clienteId) return;
+    setVerificandoPagamento(true);
+    const res = await detectarFluxoPagamentoSicaf(cliente.clienteId);
+    setVerificandoPagamento(false);
+    if (res.fluxo === "pendentes") {
+      setPagamentosWizardOpen(true);
+    } else {
+      setPagamentoModal(true);
+    }
+  }, [cliente?.clienteId]);
+
+  const bloquearAssistente = useCallback(() => {
+    toast.error("Confirme o pagamento da taxa CADBRASIL (Etapa 1) para acessar o Assistente.");
+    scrollToEtapa(1);
+    void abrirPagamentoEtapa1();
+  }, [abrirPagamentoEtapa1]);
 
   if (loading) {
     return (
@@ -806,7 +832,7 @@ function SicafPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
         {/* Timeline lateral */}
-        <aside className="lg:sticky lg:top-6 lg:self-start">
+        <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
           <Card className="shadow-soft">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center justify-between">
@@ -876,16 +902,42 @@ function SicafPage() {
                   );
                 })}
               </ol>
-
-              <div className="mt-4 pt-4 border-t">
-                <div className="flex items-center justify-between text-[11px] mb-1.5">
-                  <span className="text-muted-foreground">Progresso</span>
-                  <span className="font-semibold text-primary">{percentual}%</span>
-                </div>
-                <Progress value={percentual} className="h-1.5" />
-              </div>
             </CardContent>
           </Card>
+
+          <Card className="shadow-soft">
+            <CardHeader className="pb-2 space-y-1">
+              <CardTitle className="text-sm font-semibold">Progresso da atualização</CardTitle>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                ⏱ Total ~{passosBase.reduce((s, p) => s + p.tempoMin, 0)} min · restante ~{" "}
+                {passosBase
+                  .filter((p) => statusDe(p.n) !== "done")
+                  .reduce((s, p) => s + p.tempoMin, 0)}{" "}
+                min
+              </p>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Etapas concluídas</span>
+                <span className="font-semibold text-primary">
+                  {Math.min(concluidas, total)} de {total}
+                </span>
+              </div>
+              <Progress value={percentual} className="h-2.5" />
+              <p className="text-[11px] font-semibold text-primary text-right">{percentual}%</p>
+            </CardContent>
+          </Card>
+
+          {certificadoValido && (
+            <CertificadoDigitalCard
+              variant="sidebar"
+              clienteId={cliente.clienteId}
+              cnpj={cliente.cnpj}
+              assistenteDisponivel={pagamentoConfirmado}
+              onAssistenteBloqueado={bloquearAssistente}
+              onUpdated={setCertificado}
+            />
+          )}
         </aside>
 
         {/* Conteúdo principal */}
@@ -920,6 +972,8 @@ function SicafPage() {
           <SaudeDocumentalCard
             stats={saudeStats}
             cnpj={cliente.cnpj}
+            assistenteDisponivel={pagamentoConfirmado}
+            onAssistenteBloqueado={bloquearAssistente}
             secondaryLink={{
               to: "/documentos",
               label: "Ver todos os documentos →",
@@ -929,13 +983,17 @@ function SicafPage() {
         </div>
       )}
 
-      <div className="mt-4">
-        <CertificadoDigitalCard
-          clienteId={cliente.clienteId}
-          cnpj={cliente.cnpj}
-          onUpdated={setCertificado}
-        />
-      </div>
+      {!certificadoValido && (
+        <div className="mt-4">
+          <CertificadoDigitalCard
+            clienteId={cliente.clienteId}
+            cnpj={cliente.cnpj}
+            assistenteDisponivel={pagamentoConfirmado}
+            onAssistenteBloqueado={bloquearAssistente}
+            onUpdated={setCertificado}
+          />
+        </div>
+      )}
 
       {cliente.estado === "vencido" && !renovando && tudoConcluido ? (
         <Card className="mt-6 border-danger/40 bg-gradient-to-br from-danger/10 via-danger/5 to-transparent shadow-soft overflow-hidden">
@@ -1016,39 +1074,25 @@ function SicafPage() {
                   Agora abra o Assistente para enviar a Situação do Fornecedor e manter tudo monitorado.
                 </p>
               </div>
-              <Button asChild size="lg" className="gap-2 shadow-lift">
-                <Link to="/assistente" search={{ cnpj: cliente.cnpj }}>
+              {pagamentoConfirmado ? (
+                <Button asChild size="lg" className="gap-2 shadow-lift">
+                  <Link to="/assistente" search={{ cnpj: cliente.cnpj }}>
+                    <Bot className="h-4 w-4" />
+                    Atualizar meu SICAF agora
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button size="lg" className="gap-2 shadow-lift" onClick={bloquearAssistente}>
                   <Bot className="h-4 w-4" />
                   Atualizar meu SICAF agora
                   <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
-
-      <Card className="mt-4 shadow-soft">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base font-semibold">Progresso da atualização</CardTitle>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              ⏱ Tempo total estimado: ~
-              {passosBase.reduce((s, p) => s + p.tempoMin, 0)} min · restante: ~
-              {passosBase
-                .filter((p) => statusDe(p.n) !== "done")
-                .reduce((s, p) => s + p.tempoMin, 0)}{" "}
-              min
-            </p>
-          </div>
-          <span className="text-sm font-semibold text-primary">
-            {Math.min(concluidas, total)} de {total} etapas
-          </span>
-        </CardHeader>
-        <CardContent>
-          <Progress value={percentual} className="h-3" />
-        </CardContent>
-      </Card>
 
       <div className="mt-6 space-y-3">
         {passosBase.map((p) => {
@@ -1093,7 +1137,14 @@ function SicafPage() {
                   <p className="mt-0.5 text-sm text-muted-foreground">{p.descricao}</p>
                   {status === "current" && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => p.n === 1 ? setPagamentoModal(true) : setModalAberto(p.n)}>
+                      <Button
+                        size="sm"
+                        onClick={() => (p.n === 1 ? void abrirPagamentoEtapa1() : setModalAberto(p.n))}
+                        disabled={p.n === 1 && verificandoPagamento}
+                      >
+                        {p.n === 1 && verificandoPagamento ? (
+                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        ) : null}
                         Resolver agora
                         <ArrowRight className="ml-1.5 h-4 w-4" />
                       </Button>
@@ -1244,8 +1295,19 @@ function SicafPage() {
         open={pagamentoModal}
         onOpenChange={setPagamentoModal}
         empresa={{ nome: cliente.nome, cnpj: cliente.cnpj, clienteId: cliente.clienteId }}
+        onGerado={() => void recarregar()}
         onPago={() => {
           setPagamentoModal(false);
+          concluirEtapa();
+        }}
+      />
+      <PagamentosPendentesWizard
+        open={pagamentosWizardOpen}
+        onOpenChange={setPagamentosWizardOpen}
+        empresa={{ nome: cliente.nome, cnpj: cliente.cnpj, clienteId: cliente.clienteId }}
+        onNovoPagamento={() => setPagamentoModal(true)}
+        onPago={() => {
+          setPagamentosWizardOpen(false);
           concluirEtapa();
         }}
       />

@@ -1866,6 +1866,8 @@ function mapFinanceRow(row, tipo) {
   const valor = row.valor != null ? Number(row.valor) : 0;
   const status = row.status || row.statusBoleto || '—';
   const venc = row.data_vencimento || row.dataVencimento || null;
+  const formaRaw = String(row.forma_pagamento || row.tipoPagamento || row.tipo || '').toLowerCase();
+  const formaPagamento = formaRaw.includes('pix') ? 'PIX' : formaRaw.includes('boleto') ? 'Boleto' : row.forma_pagamento || row.tipoPagamento || row.tipo || null;
   return {
     id: row.id,
     tipo,
@@ -1874,7 +1876,7 @@ function mapFinanceRow(row, tipo) {
     status,
     dataVencimento: venc,
     dataPagamento: row.data_pagamento || null,
-    formaPagamento: row.forma_pagamento || row.tipoPagamento || null,
+    formaPagamento,
     anoReferencia: row.ano_referencia || null,
     mesReferencia: row.mes_referencia != null ? row.mes_referencia : null,
     createdAt: row.created_at || null,
@@ -1882,9 +1884,14 @@ function mapFinanceRow(row, tipo) {
     pago: isPaidFinanceStatus(status),
     pendente: isPendingFinanceStatus(status),
     vencido: isOverdueFinance(status, venc),
-    linkPdf: row.gn_pdf || row.linkPdf || null,
-    linkBoleto: row.gn_link || row.linkBoleto || null,
+    linkPdf: row.gn_pdf || row.linkPdf || row.link_pdf || null,
+    linkBoleto: row.gn_link || row.linkBoleto || row.link_boleto || null,
     protocolo: row.protocolo || null,
+    barcode: row.gn_barcode || row.barcode || null,
+    qrcodeText: row.qrcode_text || row.gnQrcodeText || null,
+    qrcodeImage: row.qrcode_image || row.gnQrcodeImage || null,
+    txid: row.provider_txid || row.gn_txid || row.txid || null,
+    chargeId: row.provider_charge_id || row.gn_charge_id || row.chargeId || null,
   };
 }
 
@@ -1932,6 +1939,11 @@ function normalizePagamentoFinanceiroFull(p) {
     created_at: p.created_at,
     gn_pdf: p.gn_pdf || p.link_pdf || null,
     gn_link: p.gn_link || p.link_boleto || null,
+    gn_barcode: p.gn_barcode || p.barcode || null,
+    qrcode_text: p.qrcode_text || p.gn_qrcode_text || null,
+    qrcode_image: p.qrcode_image || p.gn_qrcode_image || null,
+    provider_txid: p.provider_txid || p.gn_txid || null,
+    provider_charge_id: p.provider_charge_id || p.gn_charge_id || null,
   };
 }
 
@@ -2002,6 +2014,11 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos) {
       pagamentoId: p.id,
       gn_pdf: p.gn_pdf,
       gn_link: p.gn_link,
+      gn_barcode: p.gn_barcode,
+      qrcode_text: p.qrcode_text,
+      qrcode_image: p.qrcode_image,
+      provider_txid: p.provider_txid,
+      provider_charge_id: p.provider_charge_id,
       protocolo: p.protocolo,
     }, 'sicaf'));
   }

@@ -235,3 +235,86 @@ export async function fetchMiraIds(): Promise<{ ok: boolean; ids?: number[]; tot
   const res = await apiFetch("/api/licitacoes/mira");
   return res.json();
 }
+
+export type RadarRule = {
+  id: number;
+  nome: string;
+  ativo: boolean;
+  palavras_chave: string[];
+  ufs: string[];
+  modalidades: string[];
+  valor_min: number | null;
+  valor_max: number | null;
+  esfera: string | null;
+  srp_filter: "all" | "sim" | "nao";
+  auto_mira: boolean;
+  ultima_execucao_at: string | null;
+  created_at: string | null;
+};
+
+export type RadarRuleInput = {
+  nome: string;
+  ativo?: boolean;
+  palavras_chave?: string[];
+  ufs?: string[];
+  modalidades?: string[];
+  valor_min?: number | null;
+  valor_max?: number | null;
+  esfera?: string | null;
+  srp_filter?: "all" | "sim" | "nao";
+  auto_mira?: boolean;
+};
+
+export type RadarMatch = {
+  licitacaoId: number;
+  ruleId: number;
+  ruleNome: string;
+  numero_processo: string | null;
+  nome_orgao: string | null;
+  uf: string | null;
+  modalidade: string | null;
+  valor_estimado: number | null;
+};
+
+export async function fetchRadarRules(): Promise<{
+  ok: boolean;
+  rules?: RadarRule[];
+  error?: string;
+}> {
+  const res = await apiFetch("/api/licitacoes/radar");
+  return res.json();
+}
+
+export async function createRadarRule(input: RadarRuleInput) {
+  const res = await apiFetch("/api/licitacoes/radar", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function updateRadarRule(id: number, input: Partial<RadarRuleInput>) {
+  const res = await apiFetch(`/api/licitacoes/radar/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  return res.json();
+}
+
+export async function deleteRadarRule(id: number) {
+  const res = await apiFetch(`/api/licitacoes/radar/${id}`, { method: "DELETE" });
+  return res.json();
+}
+
+export async function runRadar(options?: { autoMiraOnly?: boolean }): Promise<{
+  ok: boolean;
+  matches?: RadarMatch[];
+  addedToMira?: number;
+  error?: string;
+}> {
+  const res = await apiFetch("/api/licitacoes/radar/run", {
+    method: "POST",
+    body: JSON.stringify(options ?? {}),
+  });
+  return res.json();
+}

@@ -56,6 +56,8 @@ import {
 import { fetchEmpresas } from "@/lib/empresas-api";
 import { PendenciasModal } from "@/components/pendencias-modal";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
+import { PagamentosPendentesWizard } from "@/components/pagamentos-pendentes-wizard";
+import { detectarFluxoPagamentoSicaf } from "@/lib/cliente-financeiro-api";
 import { SicafAnalisarProblemaModal } from "@/components/sicaf/SicafAnalisarProblemaModal";
 import {
   Tabs,
@@ -104,6 +106,8 @@ function EmpresasPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detalhesEmpresa, setDetalhesEmpresa] = useState<EmpresaData | null>(null);
   const [taxaModalOpen, setTaxaModalOpen] = useState(false);
+  const [pagamentosWizardOpen, setPagamentosWizardOpen] = useState(false);
+  const [gerenciandoClienteId, setGerenciandoClienteId] = useState<number | null>(null);
   const [taxaEmpresa, setTaxaEmpresa] = useState<{
   nome: string;
   cnpj: string;
@@ -165,19 +169,27 @@ function EmpresasPage() {
     }
   }, [loading, empresasPendentes.length, taxaModalOpen]);
 
-  const handleGerenciar = (empresa: EmpresaData) => {
+  const handleGerenciar = async (empresa: EmpresaData) => {
     const abrirPagamento = empresa.taxaPendente && empresa.sicaf !== "ativo";
     if (abrirPagamento) {
       if (!empresa.clienteId) {
         setLoadError("Empresa sem identificador. Atualize a página e tente novamente.");
         return;
       }
-      setTaxaEmpresa({
+      const empresaCtx = {
         nome: empresa.nome,
         cnpj: empresa.cnpj,
         clienteId: empresa.clienteId,
-      });
-      setTaxaModalOpen(true);
+      };
+      setTaxaEmpresa(empresaCtx);
+      setGerenciandoClienteId(empresa.clienteId);
+      const res = await detectarFluxoPagamentoSicaf(empresa.clienteId);
+      setGerenciandoClienteId(null);
+      if (res.fluxo === "pendentes") {
+        setPagamentosWizardOpen(true);
+      } else {
+        setTaxaModalOpen(true);
+      }
       return;
     }
     setDetalhesEmpresa(empresa);
@@ -364,6 +376,7 @@ function EmpresasPage() {
               empresa={empresa}
               manutencaoDia={manutencaoAtivada[empresa.cnpj]}
               onGerenciar={() => handleGerenciar(empresa)}
+              gerenciando={gerenciandoClienteId === empresa.clienteId}
             />
           ))}
         </div>
@@ -382,6 +395,7 @@ function EmpresasPage() {
               empresa={empresa}
               manutencaoDia={manutencaoAtivada[empresa.cnpj]}
               onGerenciar={() => handleGerenciar(empresa)}
+              gerenciando={gerenciandoClienteId === empresa.clienteId}
             />
           ))}
         </div>
@@ -409,6 +423,13 @@ function EmpresasPage() {
         onOpenChange={setTaxaModalOpen}
         empresa={taxaEmpresa ?? { nome: "", cnpj: "", clienteId: 0 }}
         onGerado={() => loadEmpresas(busca)}
+        onPago={() => loadEmpresas(busca)}
+      />
+      <PagamentosPendentesWizard
+        open={pagamentosWizardOpen}
+        onOpenChange={setPagamentosWizardOpen}
+        empresa={taxaEmpresa ?? { nome: "", cnpj: "", clienteId: 0 }}
+        onNovoPagamento={() => setTaxaModalOpen(true)}
         onPago={() => loadEmpresas(busca)}
       />
       <SicafAnalisarProblemaModal
@@ -461,10 +482,12 @@ function EmpresaCard({
   empresa,
   manutencaoDia,
   onGerenciar,
+  gerenciando,
 }: {
   empresa: EmpresaData;
   manutencaoDia?: number;
   onGerenciar: () => void;
+  gerenciando?: boolean;
 }) {
   const meta = statusLabel[empresa.sicaf];
   const situacao = getAptoSituacao(empresa);
@@ -542,8 +565,13 @@ function EmpresaCard({
             size="sm"
             className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
             onClick={onGerenciar}
+            disabled={gerenciando}
           >
-            <Settings className="h-3.5 w-3.5" />
+            {gerenciando ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Settings className="h-3.5 w-3.5" />
+            )}
             Gerenciar
           </Button>
           <Button asChild size="sm" className={SICAF_BUTTON_CLASS}>
@@ -592,10 +620,12 @@ function EmpresaListRow({
   empresa,
   manutencaoDia,
   onGerenciar,
+  gerenciando,
 }: {
   empresa: EmpresaData;
   manutencaoDia?: number;
   onGerenciar: () => void;
+  gerenciando?: boolean;
 }) {
   const meta = statusLabel[empresa.sicaf];
   const situacao = getAptoSituacao(empresa);
@@ -651,8 +681,12 @@ function EmpresaListRow({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            <Button size="sm" className="gap-1.5" onClick={onGerenciar}>
-              <Settings className="h-3.5 w-3.5" />
+            <Button size="sm" className="gap-1.5" onClick={onGerenciar} disabled={gerenciando}>
+              {gerenciando ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Settings className="h-3.5 w-3.5" />
+              )}
               Gerenciar
             </Button>
             <Button asChild size="sm" className={SICAF_BUTTON_CLASS}>

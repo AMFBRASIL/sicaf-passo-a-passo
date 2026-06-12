@@ -44,6 +44,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LicitacoesIndicators, type LicitacaoStats } from "@/components/licitacoes-indicators";
+import { LicitacoesRadarModal } from "@/components/licitacoes-radar-modal";
 import { toast } from "sonner";
 import {
   fetchLicitacoesFilters,
@@ -128,6 +129,7 @@ function LicitacoesPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [miraCount, setMiraCount] = useState(0);
+  const [radarOpen, setRadarOpen] = useState(false);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(q.trim()), 350);
@@ -204,7 +206,13 @@ function LicitacoesPage() {
   useEffect(() => {
     void loadStats();
     void fetchLicitacoesFilters().then((res) => {
-      if (res.ok && res.filters) setFilterOptions(res.filters);
+      if (res.ok && res.filters) {
+        setFilterOptions(res.filters);
+        return;
+      }
+      if (!res.ok) {
+        toast.error(res.error || "Erro ao carregar filtros de licitações");
+      }
     });
   }, [loadStats]);
 
@@ -257,7 +265,7 @@ function LicitacoesPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => toast.info("Radar em breve")}>
+          <Button variant="outline" size="sm" onClick={() => setRadarOpen(true)}>
             <Radar className="mr-2 h-4 w-4" />
             Radar
           </Button>
@@ -535,6 +543,16 @@ function LicitacoesPage() {
       <DetalheDialog
         licitacao={detalhe}
         onClose={() => setDetalhe(null)}
+      />
+
+      <LicitacoesRadarModal
+        open={radarOpen}
+        onOpenChange={setRadarOpen}
+        filterOptions={filterOptions}
+        onMatches={() => {
+          void loadStats();
+          void loadList();
+        }}
       />
     </div>
   );

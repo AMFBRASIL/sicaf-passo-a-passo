@@ -74,7 +74,36 @@ export type ListFilters = {
   offset: number;
 };
 
-const GROUP_COLUMNS = ["status", "lei", "esfera", "uf", "modalidade", "origem"] as const;
+const GROUP_COLUMNS = [
+  "status",
+  "lei",
+  "esfera",
+  "uf",
+  "modalidade",
+  "origem",
+  "modo_disputa",
+  "criterio_julgamento",
+] as const;
+
+type LicitacoesStats = {
+  total_licitacoes: number;
+  total_orgaos: number;
+  total_contratos: number;
+  total_fornecedores: number;
+  valor_estimado_total: number;
+  por_status: StatsBucket[];
+  por_lei: StatsBucket[];
+  por_esfera: StatsBucket[];
+  por_uf: StatsBucket[];
+  por_modalidade: StatsBucket[];
+  por_origem: StatsBucket[];
+  por_modo_disputa: StatsBucket[];
+  por_criterio_julgamento: StatsBucket[];
+};
+
+const STATS_CACHE_TTL_MS = 60_000;
+let statsCache: { data: LicitacoesStats; expiresAt: number } | null = null;
+let statsInflight: Promise<LicitacoesStats> | null = null;
 
 export class LicitacoesRepository {
   private buildWhere(filters: ListFilters): { whereSql: string; params: Record<string, string | number> } {
@@ -169,22 +198,33 @@ export class LicitacoesRepository {
         LIMIT :limit`,
       { limit },
     );
-    return rows.map((r) => ({ label: r.label, count: Number(r.count) }));
+    return rows.map((r) => ({
+      label: String(r.label ?? ""),
+      count: Number(r.count ?? 0),
+    }));
   }
 
-  async getStats(): Promise<{
-    total_licitacoes: number;
-    total_orgaos: number;
-    total_contratos: number;
-    total_fornecedores: number;
-    valor_estimado_total: number;
-    por_status: StatsBucket[];
-    por_lei: StatsBucket[];
-    por_esfera: StatsBucket[];
-    por_uf: StatsBucket[];
-    por_modalidade: StatsBucket[];
-    por_origem: StatsBucket[];
-  }> {
+  async getStats(): Promise<LicitacoesStats> {
+    const now = Date.now();
+    if (statsCache && statsCache.expiresAt > now) {
+      return statsCache.data;
+    }
+
+    if (!statsInflight) {
+      statsInflight = this.fetchStats()
+        .then((data) => {
+          statsCache = { data, expiresAt: Date.now() + STATS_CACHE_TTL_MS };
+          return data;
+        })
+        .finally(() => {
+          statsInflight = null;
+        });
+    }
+
+    return statsInflight;
+  }
+
+  private async fetchStats(): Promise<LicitacoesStats> {
     const pool = getWritePool();
 
     const [
@@ -199,6 +239,8 @@ export class LicitacoesRepository {
       por_uf,
       por_modalidade,
       por_origem,
+      por_modo_disputa,
+      por_criterio_julgamento,
     ] = await Promise.all([
       queryOne<RowDataPacket & { total: number }>(pool, `SELECT COUNT(*) AS total FROM licitacoes`),
       queryOne<RowDataPacket & { total: number }>(
@@ -214,9 +256,11 @@ export class LicitacoesRepository {
       this.groupTop("status", 12),
       this.groupTop("lei", 6),
       this.groupTop("esfera", 6),
-      this.groupTop("uf", 10),
-      this.groupTop("modalidade", 10),
-      this.groupTop("origem", 6),
+      this.groupTop("uf", 30),
+      this.groupTop("modalidade", 50),
+      this.groupTop("origem", 10),
+      this.groupTop("modo_disputa", 20),
+      this.groupTop("criterio_julgamento", 20),
     ]);
 
     return {
@@ -231,6 +275,8 @@ export class LicitacoesRepository {
       por_uf,
       por_modalidade,
       por_origem,
+      por_modo_disputa,
+      por_criterio_julgamento,
     };
   }
 
@@ -295,7 +341,10 @@ export class LicitacoesRepository {
         LIMIT :limit`,
       { limit },
     );
-    return rows.map((r) => ({ value: r.value, count: Number(r.count) }));
+    return rows.map((r) => ({
+      value: String(r.value ?? ""),
+      count: Number(r.count ?? 0),
+    }));
   }
 
   async countList(filters: ListFilters): Promise<number> {

@@ -32,6 +32,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ClientOnly } from "@/components/client-only";
 import { Toaster } from "@/components/ui/sonner";
+import { WhatsappFloatingButton } from "@/components/whatsapp-floating-button";
+import { buildWhatsAppSuporteUrl, getWhatsAppMensagemPorPath } from "@/lib/whatsapp-suporte";
 import { useNavigate } from "@tanstack/react-router";
 
 function NotFoundComponent() {
@@ -194,6 +196,8 @@ function AuthenticatedShell({
 }) {
   const { user, logout, isLoading, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const whatsappUrl = buildWhatsAppSuporteUrl(getWhatsAppMensagemPorPath(pathname));
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -234,9 +238,11 @@ function AuthenticatedShell({
                 <div className="flex items-center gap-2">
                   <ThemeToggle />
                   <NotificacoesPopover />
-                  <Button variant="outline" size="sm" className="gap-1.5">
-                    <MessageCircle className="h-4 w-4" />
-                    <span className="hidden sm:inline">WhatsApp</span>
+                  <Button asChild variant="outline" size="sm" className="gap-1.5">
+                    <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+                      <MessageCircle className="h-4 w-4" />
+                      <span className="hidden sm:inline">WhatsApp</span>
+                    </a>
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -284,6 +290,7 @@ function AuthenticatedShell({
             </div>
           </div>
           <EditarPerfilModal open={editarOpen} onOpenChange={setEditarOpen} />
+          <WhatsappFloatingButton />
     </SidebarProvider>
   );
 }

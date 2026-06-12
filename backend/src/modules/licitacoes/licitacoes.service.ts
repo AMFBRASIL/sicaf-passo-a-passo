@@ -1,5 +1,9 @@
 import { notFound } from "@/lib/http/errors";
 import {
+  licitacoesRadarRepository,
+  type RadarRuleInput,
+} from "@/modules/licitacoes/licitacoes.radar";
+import {
   licitacoesRepository,
   type LicitacaoRow,
   type ListFilters,
@@ -77,27 +81,22 @@ export class LicitacoesService {
   }
 
   async getFilterOptions() {
-    const [status, modalidades, esferas, ufs, leis, modos_disputa, criterios_julgamento, origens] =
-      await Promise.all([
-        licitacoesRepository.distinctTop("status"),
-        licitacoesRepository.distinctTop("modalidade"),
-        licitacoesRepository.distinctTop("esfera"),
-        licitacoesRepository.distinctTop("uf", 30),
-        licitacoesRepository.distinctTop("lei"),
-        licitacoesRepository.distinctTop("modo_disputa"),
-        licitacoesRepository.distinctTop("criterio_julgamento"),
-        licitacoesRepository.distinctTop("origem", 10),
-      ]);
+    const stats = await licitacoesRepository.getStats();
+
+    const fromBuckets = (rows: { label: string; count: number }[]) =>
+      rows
+        .filter((r) => r.label)
+        .map((r) => ({ value: r.label, count: r.count }));
 
     return {
-      status,
-      modalidades,
-      esferas,
-      ufs,
-      leis,
-      modos_disputa,
-      criterios_julgamento,
-      origens,
+      status: fromBuckets(stats.por_status),
+      modalidades: fromBuckets(stats.por_modalidade),
+      esferas: fromBuckets(stats.por_esfera),
+      ufs: fromBuckets(stats.por_uf),
+      leis: fromBuckets(stats.por_lei),
+      modos_disputa: fromBuckets(stats.por_modo_disputa),
+      criterios_julgamento: fromBuckets(stats.por_criterio_julgamento),
+      origens: fromBuckets(stats.por_origem),
     };
   }
 
@@ -163,6 +162,28 @@ export class LicitacoesService {
   async getMiraIds(usuarioId: number) {
     const ids = await licitacoesRepository.getMiraIds(usuarioId);
     return { ids, total: ids.length };
+  }
+
+  async listRadarRules(usuarioId: number) {
+    const rules = await licitacoesRadarRepository.listRules(usuarioId);
+    return { rules };
+  }
+
+  async createRadarRule(usuarioId: number, input: RadarRuleInput) {
+    const result = await licitacoesRadarRepository.createRule(usuarioId, input);
+    return result;
+  }
+
+  async updateRadarRule(usuarioId: number, ruleId: number, input: Partial<RadarRuleInput>) {
+    return licitacoesRadarRepository.updateRule(usuarioId, ruleId, input);
+  }
+
+  async deleteRadarRule(usuarioId: number, ruleId: number) {
+    return licitacoesRadarRepository.deleteRule(usuarioId, ruleId);
+  }
+
+  async runRadar(usuarioId: number, options?: { autoMiraOnly?: boolean }) {
+    return licitacoesRadarRepository.runRules(usuarioId, options);
   }
 }
 
