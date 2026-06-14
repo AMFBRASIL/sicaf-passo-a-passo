@@ -10,6 +10,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const entry = path.join(__dirname, ".output/server/index.mjs");
+const publicAssetsDir = path.join(__dirname, ".output/public/assets");
+
+function countAssetFiles(dir) {
+  try {
+    return fs.readdirSync(dir).filter((name) => /\.(js|css|mjs)$/i.test(name)).length;
+  } catch {
+    return 0;
+  }
+}
 
 if (!fs.existsSync(entry)) {
   console.error(
@@ -17,6 +26,17 @@ if (!fs.existsSync(entry)) {
       "  npm install\n" +
       "  npm run build\n" +
       "O arquivo esperado é .output/server/index.mjs",
+  );
+  process.exit(1);
+}
+
+const assetCount = countAssetFiles(publicAssetsDir);
+if (assetCount < 5) {
+  console.error(
+    "[cadbrasil-frontend] Build incompleto: .output/public/assets está ausente ou vazio.\n" +
+      "  cd /www/wwwroot/sicaf-passo-a-passo\n" +
+      "  npm install && npm run build\n" +
+      "  sudo -u www pm2 restart frontcadbrasilfornecedor --update-env",
   );
   process.exit(1);
 }

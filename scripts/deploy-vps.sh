@@ -123,12 +123,38 @@ if [[ "$SKIP_BACKEND_BUILD" != "1" ]]; then
   pm2_restart "$PM2_BACKEND"
 fi
 
+verify_frontend_build() {
+  local assets_dir="$REPO_ROOT/.output/public/assets"
+  local server_entry="$REPO_ROOT/.output/server/index.mjs"
+  local js_count=0
+
+  if [[ ! -f "$server_entry" ]]; then
+    log "ERRO: frontend build incompleto — falta .output/server/index.mjs"
+    exit 1
+  fi
+
+  if [[ ! -d "$assets_dir" ]]; then
+    log "ERRO: frontend build incompleto — falta .output/public/assets"
+    exit 1
+  fi
+
+  js_count="$(find "$assets_dir" -maxdepth 1 -type f \( -name '*.js' -o -name '*.css' -o -name '*.mjs' \) | wc -l | tr -d ' ')"
+  if [[ "${js_count:-0}" -lt 10 ]]; then
+    log "ERRO: frontend build incompleto — .output/public/assets tem poucos arquivos (${js_count:-0})"
+    log "Rode manualmente: cd $REPO_ROOT && npm run build"
+    exit 1
+  fi
+
+  log "Frontend OK: ${js_count} assets em .output/public/assets"
+}
+
 # ── Frontend ──────────────────────────────────────────────────────────────────
 if [[ "$SKIP_FRONTEND_BUILD" != "1" ]]; then
   log "── Frontend: npm install + build ──"
   cd "$REPO_ROOT"
   npm install --no-fund --no-audit
   npm run build
+  verify_frontend_build
   pm2_restart "$PM2_FRONTEND"
 fi
 

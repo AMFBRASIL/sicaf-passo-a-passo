@@ -73,19 +73,36 @@ function ensureDbReady() {
   if (!conn.getDb()) {
     conn.initDatabase();
   }
+  if (!conn.getDb()) {
+    const detail = conn.getInitError?.() || "Banco de dados não disponível";
+    const err = new Error(detail);
+    err.code = "DB_NOT_AVAILABLE";
+    throw err;
+  }
 }
 
 function initSicafAgentModules() {
   if (initialized) return;
-  loadModule("database/connection").initDatabase();
-  loadModule("services/ia.service").init();
+
+  const conn = loadModule("database/connection");
+  if (!conn.initDatabase()) {
+    console.error("[sicaf-bridge] MySQL:", conn.getInitError?.() || "falha ao iniciar");
+  }
+
+  try {
+    loadModule("services/ia.service").init();
+  } catch (e) {
+    console.warn("[sicaf-bridge] IA init:", e.message);
+  }
   try {
     loadModule("services/storage.service").init();
   } catch (e) {
     console.warn("[sicaf-bridge] Storage dirs:", e.message);
   }
   try {
-    loadModule("services/google-ads-conversoes-cron.service").start();
+    if (!process.env.VERCEL) {
+      loadModule("services/google-ads-conversoes-cron.service").start();
+    }
   } catch (e) {
     console.warn("[sicaf-bridge] Cron Google Ads conversões:", e.message);
   }
@@ -94,9 +111,8 @@ function initSicafAgentModules() {
 
 function getSicafAgentModule(relativePath) {
   initSicafAgentModules();
-  const mod = loadModule(relativePath);
   ensureDbReady();
-  return mod;
+  return loadModule(relativePath);
 }
 
 function getAgentScriptPath() {
