@@ -160,4 +160,12 @@ fi
 
 sudo -u "$PM2_USER" pm2 save >/dev/null 2>&1 || true
 
+log "── Verificação pós-deploy ──"
+if [[ -x "$SCRIPT_DIR/verify-vps.sh" ]]; then
+  bash "$SCRIPT_DIR/verify-vps.sh" || log "AVISO: verify-vps.sh reportou falhas (veja acima)"
+else
+  log "Dica: bash scripts/verify-vps.sh para certificar o deploy"
+fi
+
 log "========== Deploy concluído com sucesso =========="
+log "Commit em produção: $(git rev-parse --short HEAD) ($(git rev-parse HEAD))"
