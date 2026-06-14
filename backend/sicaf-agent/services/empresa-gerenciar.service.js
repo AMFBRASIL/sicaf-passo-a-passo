@@ -3,7 +3,12 @@
  */
 const { getDb } = require('../database/connection');
 const { assertClienteAcessivel } = require('./client-access.service');
-const { resolveSicafDisplayStatus, calcDaysRemaining } = require('../utils/sicaf-status');
+const {
+  resolveSicafDisplayStatus,
+  calcDaysRemaining,
+  needsSicafTaxaPayment,
+  isSicafAcessoLiberado,
+} = require('../utils/sicaf-status');
 const { getCertidoesStatus } = require('./clients.service');
 const { getChecklistDocumentosAdmin } = require('./certidoes.service');
 
@@ -348,8 +353,18 @@ async function getGerenciarPainel(clienteId, usuarioId) {
     };
   }
 
-  const taxaPendente = taxasSicaf.some((t) => !isPaidStatus(t.status));
-  const taxaPaga = taxasSicaf.some((t) => isPaidStatus(t.status));
+  const hasPaidTaxRecord = taxasSicaf.some((t) => isPaidStatus(t.status));
+  const sicafDisplayStatus = sicaf
+    ? resolveSicafDisplayStatus(sicaf.status, sicaf.data_validade, true)
+    : 'Sem SICAF';
+  const taxaAccessParams = {
+    hasSicaf: !!sicaf,
+    status: sicafDisplayStatus,
+    financialReleased: hasPaidTaxRecord,
+  };
+  const taxaPendente = needsSicafTaxaPayment(taxaAccessParams);
+  const taxaPaga = hasPaidTaxRecord;
+  const acessoLiberado = isSicafAcessoLiberado(taxaAccessParams);
   const ultimaTaxa = taxasSicaf[0] || null;
 
   const pagamentosHistorico = pagamentos.map((p) => ({
@@ -477,10 +492,11 @@ async function getGerenciarPainel(clienteId, usuarioId) {
       descricao: 'Empresa ainda não possui cadastro SICAF. Gere a taxa e inicie o processo.',
       status: 'warn',
     });
-  } else if (!taxaPaga) {
+  } else if (taxaPendente) {
+    const taxaGeradaAguardando = taxasSicaf.some((t) => !isPaidStatus(t.status));
     pushPendenciaUnica(pendencias, {
       titulo: 'Pagamento da taxa SICAF',
-      descricao: taxaPendente
+      descricao: taxaGeradaAguardando
         ? 'Taxa gerada — aguardando confirmação do pagamento'
         : 'Gere e pague a taxa para liberar o cadastro SICAF',
       status: 'warn',
@@ -568,6 +584,7 @@ async function getGerenciarPainel(clienteId, usuarioId) {
       valorManutencaoMensalFmt: fmtMoney(valores.valorManutencaoMensal),
       taxaPendente,
       taxaPaga,
+      acessoLiberado,
       ultimaTaxa: ultimaTaxa
         ? {
             valor: Number(ultimaTaxa.valor),

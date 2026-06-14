@@ -40,6 +40,32 @@ function isSicafDisplayValid(dbStatus, dataValidade, hasSicaf = true) {
   return ['Ativo', 'Vencendo'].includes(status);
 }
 
+/**
+ * Regra 1 — SICAF Ativo e pago: acesso liberado (assistente, etc.).
+ */
+function isSicafAcessoLiberado({ hasSicaf = false, status = '', financialReleased = false } = {}) {
+  const s = String(status || '').trim() || 'Sem SICAF';
+  if (!hasSicaf || s !== 'Ativo') return false;
+  return !!financialReleased;
+}
+
+/**
+ * Regra 2 — Vencido: sempre exige pagamento (renovação).
+ * Regra 3 — Sem SICAF / sem pagamento / Ativo sem pago: exige pagamento.
+ */
+function needsSicafTaxaPayment({ hasSicaf = false, status = '', financialReleased = false } = {}) {
+  const s = String(status || '').trim() || 'Sem SICAF';
+  if (!hasSicaf || s === 'Sem SICAF') return true;
+  if (s === 'Vencido') return true;
+  if (isSicafAcessoLiberado({ hasSicaf, status: s, financialReleased })) return false;
+  return true;
+}
+
+/** @deprecated Use isSicafAcessoLiberado */
+function isSicafTaxaLiberada(params) {
+  return isSicafAcessoLiberado(params);
+}
+
 function enrichSicafRow(sicafRow) {
   if (!sicafRow) return null;
   const daysRaw = calcDaysRemaining(sicafRow.data_validade);
@@ -55,5 +81,8 @@ module.exports = {
   calcDaysRemaining,
   resolveSicafDisplayStatus,
   isSicafDisplayValid,
+  needsSicafTaxaPayment,
+  isSicafAcessoLiberado,
+  isSicafTaxaLiberada,
   enrichSicafRow,
 };

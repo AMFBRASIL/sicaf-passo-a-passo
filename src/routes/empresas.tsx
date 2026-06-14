@@ -170,7 +170,7 @@ function EmpresasPage() {
   }, [loading, empresasPendentes.length, taxaModalOpen]);
 
   const handleGerenciar = async (empresa: EmpresaData) => {
-    const abrirPagamento = empresa.taxaPendente && empresa.sicaf !== "ativo";
+    const abrirPagamento = empresa.taxaPendente;
     if (abrirPagamento) {
       if (!empresa.clienteId) {
         setLoadError("Empresa sem identificador. Atualize a página e tente novamente.");

@@ -1298,8 +1298,8 @@ export function EmpresaDetalhesSheet({
     if (empresa?.clienteId) void carregarPainel(empresa.clienteId);
     onEmpresaUpdated?.();
   };
-  const taxaPaga = painel?.financeiro.taxaPaga || taxaSicafPagaLocal[empresa.cnpj] || false;
   const taxaPendente = painel?.financeiro.taxaPendente ?? empresaExibida.taxaPendente ?? false;
+  const taxaPaga = painel?.financeiro.taxaPaga || taxaSicafPagaLocal[empresa.cnpj] || false;
 
   return (
     <>

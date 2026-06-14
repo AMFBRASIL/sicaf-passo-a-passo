@@ -192,7 +192,7 @@ function HomePage() {
                   </p>
                 </div>
                 <Button asChild size="lg" variant="secondary" className="h-14 px-6 text-base font-semibold shadow-lg">
-                  <Link to="/sicaf" search={{ cnpj: empresaPrioridade.cnpj }}>
+                  <Link to="/empresas">
                     <Rocket className="mr-2 h-5 w-5" />
                     Atualizar SICAF
                   </Link>

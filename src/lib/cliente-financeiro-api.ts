@@ -77,7 +77,10 @@ export async function fetchPagamentosSicafGerados(clienteId: number): Promise<{
 
 export type FluxoPagamentoSicaf = "pendentes" | "novo";
 
-/** Decide se abre wizard de cobranças existentes ou modal de novo pagamento. */
+/**
+ * Regra 3 — sem taxa liberada: abre modal de pagamento.
+ * Se já existem boletos/PIX gerados, retorna fluxo "pendentes" (wizard) em vez de criar outro.
+ */
 export async function detectarFluxoPagamentoSicaf(clienteId: number): Promise<{
   ok: boolean;
   fluxo: FluxoPagamentoSicaf;

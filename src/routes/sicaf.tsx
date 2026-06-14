@@ -784,10 +784,15 @@ function SicafPage() {
   }, [cliente?.clienteId]);
 
   const bloquearAssistente = useCallback(() => {
-    toast.error("Confirme o pagamento da taxa CADBRASIL (Etapa 1) para acessar o Assistente.");
+    const vencido = painel?.sicaf?.status === "Vencido";
+    toast.error(
+      vencido
+        ? "SICAF vencido — regularize o pagamento para acessar o Assistente."
+        : "Confirme o pagamento da taxa CADBRASIL para acessar o Assistente.",
+    );
     scrollToEtapa(1);
     void abrirPagamentoEtapa1();
-  }, [abrirPagamentoEtapa1]);
+  }, [abrirPagamentoEtapa1, painel?.sicaf?.status]);
 
   if (loading) {
     return (

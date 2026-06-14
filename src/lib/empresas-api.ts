@@ -1,6 +1,18 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type { EmpresaData, SicafStatus } from "@/lib/empresas-shared";
+import { needsSicafTaxaPaymentFromInput } from "@/lib/sicaf-access-rules";
 import { Plus, RefreshCw, Rocket } from "lucide-react";
+
+/**
+ * Regras alinhadas ao SIstema-Antigo (SICAF.tsx) — ver sicaf-access-rules.ts.
+ */
+export function needsSicafTaxaPayment(item: SicafListItem): boolean {
+  return needsSicafTaxaPaymentFromInput({
+    hasSicaf: !!item.hasSicaf,
+    status: item.status,
+    financialReleased: !!item.financialReleased,
+  });
+}
 
 export type SicafListItem = {
   id: number;
@@ -62,30 +74,19 @@ function mapSicafStatus(item: SicafListItem): SicafStatus {
   return "sem_cadastro";
 }
 
-/**
- * Regras alinhadas ao SIstema-Antigo (SICAF.tsx):
- * Pagamento só quando não há SICAF, Pendente, Vencido/Vencendo ou taxa não liberada.
- * SICAF Ativo → Gerenciar abre o painel lateral (detalhes).
- */
-export function needsSicafTaxaPayment(item: SicafListItem): boolean {
-  if (!item.hasSicaf || item.status === "Sem SICAF") return true;
-  if (item.status === "Ativo") return false;
-  if (item.status === "Pendente") return true;
-  if (item.status === "Vencido" || item.status === "Vencendo") return true;
-  if (!item.financialReleased) return true;
-  return false;
-}
-
 function proximoPasso(item: SicafListItem, sicaf: SicafStatus): string {
   if (needsSicafTaxaPayment(item)) {
     if (!item.hasSicaf || item.status === "Sem SICAF") {
       return "Esta empresa ainda não possui SICAF. Gere e pague a taxa para cadastrar.";
     }
     if (item.status === "Vencido") {
-      return "Sua empresa está fora de licitações. Gere a taxa de renovação agora.";
+      return "SICAF vencido — regularize o pagamento para voltar a licitar.";
     }
     if (item.status === "Vencendo") {
       return `SICAF vencendo${item.expiryDate ? ` em ${item.expiryDate}` : ""}. Gere a taxa de renovação.`;
+    }
+    if (item.status === "Ativo" && !item.financialReleased) {
+      return "SICAF ativo, mas o pagamento da taxa ainda não foi confirmado.";
     }
     return "Gere e pague a taxa de cadastro para iniciar o SICAF.";
   }
@@ -104,6 +105,12 @@ function proximoPasso(item: SicafListItem, sicaf: SicafStatus): string {
 
 function mapAcao(item: SicafListItem, sicaf: SicafStatus): EmpresaData["acao"] {
   if (needsSicafTaxaPayment(item)) {
+    if (item.status === "Vencido") {
+      return { label: "Renovar SICAF", icon: Rocket };
+    }
+    if (item.status === "Ativo") {
+      return { label: "Confirmar pagamento", icon: Plus };
+    }
     return { label: "Cadastrar SICAF", icon: Plus };
   }
   if (sicaf === "vencido" || sicaf === "atencao") {
@@ -296,7 +303,10 @@ export type EmpresaGerenciarPainel = {
     valorCadastroSicafFmt: string;
     valorManutencaoMensalFmt: string;
     taxaPendente: boolean;
+    /** Pagamento confirmado em taxas_sicaf */
     taxaPaga: boolean;
+    /** Ativo + pago — libera assistente e fluxos completos */
+    acessoLiberado?: boolean;
     proximaCobranca?: { valorFmt: string; data?: string | null } | null;
     renovacaoSicaf?: { data?: string | null; valorFmt: string } | null;
     historico: GerenciarItem[];

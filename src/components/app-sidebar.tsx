@@ -1,4 +1,11 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   LayoutDashboard,
   Headphones,
@@ -9,6 +16,7 @@ import {
   Gavel,
   Sparkles,
   Gauge,
+  LogOut,
 } from "lucide-react";
 import {
   Sidebar,
@@ -36,6 +44,15 @@ const items = [
 
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const nomeUsuario = user?.nome?.trim() || "Usuário";
+  const emailUsuario = user?.email?.trim();
+
+  const handleLogout = () => {
+    logout();
+    void navigate({ to: "/auth" });
+  };
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
@@ -77,8 +94,34 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border">
-        <div className="px-2 py-3 text-[11px] text-sidebar-foreground/60">
-          Empresa Demonstração LTDA<br />CNPJ 00.000.000/0001-00
+        <div className="flex items-center gap-2 px-2 py-3">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                onClick={handleLogout}
+                aria-label="Sair"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Sair</TooltipContent>
+          </Tooltip>
+          <div className="min-w-0 flex-1 text-[11px] text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
+            <p className="font-medium text-sidebar-foreground/90 truncate" title={nomeUsuario}>
+              {nomeUsuario}
+            </p>
+            {emailUsuario ? (
+              <p className="mt-0.5 truncate" title={emailUsuario}>
+                {emailUsuario}
+              </p>
+            ) : (
+              <p className="mt-0.5">Conta do fornecedor</p>
+            )}
+          </div>
         </div>
       </SidebarFooter>
     </Sidebar>

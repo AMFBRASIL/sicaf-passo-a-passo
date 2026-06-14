@@ -9,6 +9,10 @@ import {
   fetchCertificadoDigital,
   type CertificadoDigitalInfo,
 } from "@/lib/certificado-api";
+import {
+  needsSicafTaxaPaymentFromPainel,
+  sicafTaxaLiberada,
+} from "@/lib/sicaf-access-rules";
 
 export type EstadoSicaf = "novo" | "vencido" | "completo";
 
@@ -79,8 +83,12 @@ function hasRequiredDocumentos(painel: EmpresaGerenciarPainel): boolean {
   return uploaded.length >= 4;
 }
 
+/** Regra 1 — SICAF Ativo e taxa paga. */
 export function pagamentoSicafConfirmado(painel: EmpresaGerenciarPainel | null | undefined): boolean {
-  return Boolean(painel?.financeiro?.taxaPaga);
+  if (painel?.financeiro?.acessoLiberado != null) {
+    return painel.financeiro.acessoLiberado;
+  }
+  return sicafTaxaLiberada(painel);
 }
 
 export function deriveEtapaAtual(
@@ -98,7 +106,7 @@ export function deriveEtapaAtual(
   }
 
   // Fluxo passo a passo — certificado digital é opcional (Assistente / configurações)
-  if (!painel.financeiro.taxaPaga) return 1;
+  if (needsSicafTaxaPaymentFromPainel(painel)) return 1;
   if (!hasRequiredDocumentos(painel)) return 2;
   if (!extensionInstalled) return 3;
   if (!nivelValidado(painel.niveisDetail, 3)) return 4;
