@@ -1,30 +1,16 @@
 import path from "node:path";
+import { createRequire } from "node:module";
 import type { NextConfig } from "next";
 
+const require = createRequire(import.meta.url);
+const { SICAF_RUNTIME_PACKAGES, runtimePackageGlobs } = require("./lib/sicaf-runtime-packages.cjs");
+
 /** Pacotes carregados em runtime pelo sicaf-agent (require dinâmico via sicaf-bridge). */
-const SICAF_RUNTIME_PACKAGES = [
-  "dotenv",
-  "knex",
-  "mysql2",
-  "bcryptjs",
-  "nodemailer",
-  "sanitize-html",
-  "pdf-parse",
-  "openai",
-  "multer",
-  "node-forge",
-  "sdk-node-apis-efi",
-  "@aws-sdk/client-s3",
-];
-
-function sicafNodeModuleGlobs(): string[] {
-  return SICAF_RUNTIME_PACKAGES.map((pkg) => `./node_modules/${pkg}/**/*`);
-}
-
 const sicafTraceIncludes = [
   "./sicaf-agent/**/*",
   "./lib/sicaf-bridge.cjs",
-  ...sicafNodeModuleGlobs(),
+  "./lib/sicaf-runtime-packages.cjs",
+  ...runtimePackageGlobs(),
 ];
 
 const nextConfig: NextConfig = {
