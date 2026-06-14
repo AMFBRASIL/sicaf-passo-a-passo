@@ -8,6 +8,7 @@ node_modules
 out
 dist
 build
+lib/sicaf-db.bundle.cjs
 
 # env
 .env

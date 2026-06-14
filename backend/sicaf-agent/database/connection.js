@@ -1,19 +1,12 @@
 /**
  * Conexão com MySQL via Knex.
  */
-const path = require('path');
 const config = require('../config');
-
-const backendRoot = path.resolve(__dirname, '..', '..');
 let db = null;
 let initError = null;
 
 function isServerlessRuntime() {
   return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-}
-
-function requireBackendModule(pkg) {
-  return require(require.resolve(pkg, { paths: [backendRoot] }));
 }
 
 function validateDbConfig() {
@@ -58,7 +51,7 @@ function initDatabase() {
   }
 
   try {
-    const knex = requireBackendModule('knex');
+    const knex = require("knex");
     const serverless = isServerlessRuntime();
 
     db = knex({

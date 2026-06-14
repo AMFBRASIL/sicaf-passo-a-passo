@@ -1,14 +1,11 @@
 /**
- * Pacotes npm carregados em runtime pelo sicaf-agent na Vercel.
- * Manter sincronizado: next.config.ts (tracing) + sicaf-bridge.cjs (preload).
+ * Pacotes npm carregados em runtime pelo sicaf-agent na Vercel (exceto DB — ver sicaf-db.bundle.cjs).
  */
 "use strict";
 
-/** Dependências diretas do sicaf-agent */
+/** Dependências diretas do sicaf-agent (sem knex/mysql2 — empacotados em sicaf-db.bundle.cjs) */
 const SICAF_DIRECT_PACKAGES = [
   "dotenv",
-  "knex",
-  "mysql2",
   "bcryptjs",
   "nodemailer",
   "sanitize-html",
@@ -20,23 +17,7 @@ const SICAF_DIRECT_PACKAGES = [
   "@aws-sdk/client-s3",
 ];
 
-/** Transitive deps do knex — obrigatórias em serverless (file tracing) */
-const KNEX_TRANSITIVE_PACKAGES = [
-  "tarn",
-  "colorette",
-  "get-package-type",
-  "getopts",
-  "interpret",
-  "lodash",
-  "pg-connection-string",
-  "rechoir",
-  "resolve-from",
-  "tildify",
-  "debug",
-  "escalade",
-];
-
-const SICAF_RUNTIME_PACKAGES = [...SICAF_DIRECT_PACKAGES, ...KNEX_TRANSITIVE_PACKAGES];
+const SICAF_RUNTIME_PACKAGES = [...SICAF_DIRECT_PACKAGES];
 
 function preloadRuntimePackages() {
   for (const pkg of SICAF_RUNTIME_PACKAGES) {
@@ -49,12 +30,14 @@ function preloadRuntimePackages() {
 }
 
 function runtimePackageGlobs() {
-  return SICAF_RUNTIME_PACKAGES.map((pkg) => `./node_modules/${pkg}/**/*`);
+  return [
+    "./lib/sicaf-db.bundle.cjs",
+    ...SICAF_RUNTIME_PACKAGES.map((pkg) => `./node_modules/${pkg}/**/*`),
+  ];
 }
 
 module.exports = {
   SICAF_DIRECT_PACKAGES,
-  KNEX_TRANSITIVE_PACKAGES,
   SICAF_RUNTIME_PACKAGES,
   preloadRuntimePackages,
   runtimePackageGlobs,

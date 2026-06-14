@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "next build",
-  "installCommand": "bun install",
+  "buildCommand": "node scripts/bundle-sicaf-db.cjs && next build",
+  "installCommand": "npm install",
   "build": {
     "env": {
       "NODE_ENV": "production"

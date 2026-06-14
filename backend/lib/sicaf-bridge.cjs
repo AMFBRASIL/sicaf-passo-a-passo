@@ -1,13 +1,39 @@
 /**
  * Ponte CJS para módulos em sicaf-agent/ — carregado fora do bundle webpack do Next.
  */
+const fs = require("fs");
 const path = require("path");
 
 // Require estático para o file-tracing da Vercel incluir node_modules do sicaf-agent.
 const { preloadRuntimePackages } = require("./sicaf-runtime-packages.cjs");
-preloadRuntimePackages();
+if (!process.env.VERCEL) {
+  preloadRuntimePackages();
+}
 
 const agentRoot = path.join(__dirname, "..", "sicaf-agent");
+const dbBundlePath = path.join(__dirname, "sicaf-db.bundle.cjs");
+
+let dbBundleModule = null;
+
+function loadDbConnectionModule() {
+  if (process.env.VERCEL) {
+    if (!fs.existsSync(dbBundlePath)) {
+      throw new Error(
+        "lib/sicaf-db.bundle.cjs ausente. O build da Vercel deve executar: node scripts/bundle-sicaf-db.cjs",
+      );
+    }
+    if (!dbBundleModule) {
+      dbBundleModule = require(dbBundlePath);
+    }
+    return dbBundleModule;
+  }
+
+  const resolved = resolveModule("database/connection");
+  if (shouldBustCache("database/connection")) {
+    delete require.cache[resolved];
+  }
+  return require(resolved);
+}
 
 let initialized = false;
 
@@ -42,6 +68,11 @@ function shouldBustCache(relativePath) {
 }
 
 function loadModule(relativePath) {
+  const normalized = String(relativePath || "").replace(/\\/g, "/");
+  if (normalized === "database/connection") {
+    return loadDbConnectionModule();
+  }
+
   const resolved = resolveModule(relativePath);
   if (shouldBustCache(relativePath)) {
     delete require.cache[resolved];
@@ -50,7 +81,7 @@ function loadModule(relativePath) {
 }
 
 function ensureDbReady() {
-  const conn = loadModule("database/connection");
+  const conn = loadDbConnectionModule();
   if (!conn.getDb()) {
     conn.initDatabase();
   }
@@ -65,7 +96,7 @@ function ensureDbReady() {
 function initSicafAgentModules() {
   if (initialized) return;
 
-  const conn = loadModule("database/connection");
+  const conn = loadDbConnectionModule();
   if (!conn.initDatabase()) {
     console.error("[sicaf-bridge] MySQL:", conn.getInitError?.() || "falha ao iniciar");
   }
