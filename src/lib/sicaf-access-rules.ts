@@ -61,3 +61,18 @@ export function sicafTaxaLiberada(painel: PainelTaxaAccess): boolean {
     financialReleased: !!painel.financeiro?.taxaPaga,
   });
 }
+
+export type SicafDisplayStatus = "ativo" | "atencao" | "vencido" | "sem_cadastro";
+
+/**
+ * Botão "Gerenciar" em /empresas.
+ * Ativo, Vencendo e demais situações → painel lateral (EmpresaDetalhesSheet).
+ * Somente SICAF vencido → modal de pagamento / wizard de pendências.
+ */
+export function shouldGerenciarAbrirPagamentoFromInput(input: SicafTaxaAccessInput): boolean {
+  return normalizeSicafStatus(input.status) === "Vencido";
+}
+
+export function shouldGerenciarAbrirPagamentoFromSicaf(sicaf: SicafDisplayStatus): boolean {
+  return sicaf === "vencido";
+}

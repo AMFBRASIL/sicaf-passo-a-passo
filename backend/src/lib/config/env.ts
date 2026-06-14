@@ -1,4 +1,11 @@
+import { config as loadDotenv } from "dotenv";
+import path from "node:path";
 import { z } from "zod";
+
+// Em dev, backend/.env deve prevalecer sobre DB_* herdadas do shell/IDE.
+if (process.env.NODE_ENV !== "production") {
+  loadDotenv({ path: path.resolve(process.cwd(), ".env"), override: true });
+}
 
 const envSchema = z.object({
   NODE_ENV: z

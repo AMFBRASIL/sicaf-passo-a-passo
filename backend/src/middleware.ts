@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getEnv } from "@/lib/config/env";
-import { applyCorsHeaders } from "@/lib/http/cors";
+import { applyCorsHeaders, getCorsEnv } from "@/lib/http/cors";
 
 export function middleware(request: NextRequest) {
-  const env = getEnv();
+  const env = getCorsEnv();
   const origin = request.headers.get("origin");
 
   if (request.method === "OPTIONS" && request.nextUrl.pathname.startsWith("/api/")) {

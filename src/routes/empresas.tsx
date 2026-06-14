@@ -53,6 +53,7 @@ import {
   type EmpresaData,
   type SicafStatus,
 } from "@/lib/empresas-shared";
+import { shouldGerenciarAbrirPagamentoFromSicaf } from "@/lib/sicaf-access-rules";
 import { fetchEmpresas } from "@/lib/empresas-api";
 import { PendenciasModal } from "@/components/pendencias-modal";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
@@ -157,7 +158,7 @@ function EmpresasPage() {
   }, [busca, loadEmpresas]);
 
   const empresasPendentes = useMemo(
-    () => empresas.filter((e) => e.taxaPendente),
+    () => empresas.filter((e) => shouldGerenciarAbrirPagamentoFromSicaf(e.sicaf)),
     [empresas],
   );
 
@@ -170,7 +171,7 @@ function EmpresasPage() {
   }, [loading, empresasPendentes.length, taxaModalOpen]);
 
   const handleGerenciar = async (empresa: EmpresaData) => {
-    const abrirPagamento = empresa.taxaPendente;
+    const abrirPagamento = shouldGerenciarAbrirPagamentoFromSicaf(empresa.sicaf);
     if (abrirPagamento) {
       if (!empresa.clienteId) {
         setLoadError("Empresa sem identificador. Atualize a página e tente novamente.");

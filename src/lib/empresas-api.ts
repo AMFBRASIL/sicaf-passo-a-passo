@@ -1,6 +1,9 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type { EmpresaData, SicafStatus } from "@/lib/empresas-shared";
-import { needsSicafTaxaPaymentFromInput } from "@/lib/sicaf-access-rules";
+import {
+  needsSicafTaxaPaymentFromInput,
+  shouldGerenciarAbrirPagamentoFromInput,
+} from "@/lib/sicaf-access-rules";
 import { Plus, RefreshCw, Rocket } from "lucide-react";
 
 /**
@@ -8,6 +11,15 @@ import { Plus, RefreshCw, Rocket } from "lucide-react";
  */
 export function needsSicafTaxaPayment(item: SicafListItem): boolean {
   return needsSicafTaxaPaymentFromInput({
+    hasSicaf: !!item.hasSicaf,
+    status: item.status,
+    financialReleased: !!item.financialReleased,
+  });
+}
+
+/** Regra do botão Gerenciar — modal de pagamento só com SICAF vencido. */
+export function shouldGerenciarAbrirPagamento(item: SicafListItem): boolean {
+  return shouldGerenciarAbrirPagamentoFromInput({
     hasSicaf: !!item.hasSicaf,
     status: item.status,
     financialReleased: !!item.financialReleased,

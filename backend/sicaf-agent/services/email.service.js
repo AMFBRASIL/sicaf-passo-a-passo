@@ -6,6 +6,8 @@ const {
   mergeEmailRaw,
   toRuntimeConfig,
   validateRuntimeConfig,
+  envFallback,
+  resolveApiKeySource,
 } = require('./email-config.service');
 
 let _configCache = null;
@@ -34,10 +36,13 @@ function invalidateConfigCache() {
   _configCacheTime = 0;
 }
 
-function _formatMailgunError(status, data) {
+function _formatMailgunError(status, data, apiKeySource) {
   const msg = data?.message || data?.error || '';
   if (status === 401) {
-    return 'API Key Mailgun rejeitada (401). Atualize a chave no painel ou defina MAILGUN_API_KEY no .env do servidor.';
+    if (apiKeySource === 'database') {
+      return 'API Key Mailgun rejeitada (401). Atualize smtp_api_key em Admin → E-mail (configuracoes_sistema).';
+    }
+    return 'API Key Mailgun rejeitada (401). Configure a chave em Admin → E-mail ou remova MAILGUN_API_KEY inválida do .env.';
   }
   if (status === 403) {
     return `Mailgun recusou o envio (403)${msg ? `: ${msg}` : ''}. Verifique se o domínio do remetente está verificado.`;
@@ -49,7 +54,7 @@ function _formatMailgunError(status, data) {
   return `Falha ao enviar via Mailgun (HTTP ${status})`;
 }
 
-async function _sendViaMailgunApi(cfg, opts) {
+async function _sendViaMailgunApi(cfg, opts, apiKeySource = 'unknown') {
   const domain = (cfg.fromEmail || '').split('@')[1];
   if (!domain) {
     throw new Error('E-mail remetente inválido. Configure um domínio verificado no Mailgun.');
@@ -82,7 +87,7 @@ async function _sendViaMailgunApi(cfg, opts) {
       if (response.ok) {
         return { ok: true, messageId: data.id || '', provider: 'Mailgun', region: region.label };
       }
-      lastError = _formatMailgunError(response.status, data);
+      lastError = _formatMailgunError(response.status, data, apiKeySource);
       if (response.status === 401 || response.status === 404) continue;
       break;
     } catch (fetchErr) {
@@ -170,12 +175,20 @@ async function send(opts, configOverride = null) {
     const fromName = opts.fromName || cfg.fromName;
 
     if (cfg.provider === 'mailgun' && cfg.metodo === 'api') {
-      const result = await _sendViaMailgunApi(cfg, {
-        to: opts.to,
-        subject: opts.subject,
-        html: opts.html || '',
-        text: opts.text || '',
-      });
+      const dbRaw = await loadRawFromDb();
+      const env = envFallback();
+      const merged = mergeEmailRaw(dbRaw, null);
+      const apiKeySource = resolveApiKeySource(dbRaw, env, merged);
+      const result = await _sendViaMailgunApi(
+        cfg,
+        {
+          to: opts.to,
+          subject: opts.subject,
+          html: opts.html || '',
+          text: opts.text || '',
+        },
+        apiKeySource,
+      );
       return { ok: true, messageId: result.messageId, sent: true };
     }
 

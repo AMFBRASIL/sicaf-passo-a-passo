@@ -225,12 +225,10 @@ export function EmailsConfigPanel({ onSaved }: Props) {
         </div>
       </Section>
 
-      {emailStatus?.apiKeySource === "database_invalid" && metodo === "api" && (
-        <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
-          A API Key salva no banco não parece válida para Mailgun (deve começar com{" "}
-          <code className="rounded bg-muted px-1">key-</code>). Informe a chave correta abaixo e salve,
-          ou configure <code className="rounded bg-muted px-1">MAILGUN_API_KEY</code> no .env do servidor.
-        </div>
+      {emailStatus?.apiKeySource === "database" && metodo === "api" && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          API Key carregada de <code className="rounded bg-muted px-1">configuracoes_sistema</code> (banco de dados).
+        </p>
       )}
 
       {metodo === "api" ? (

@@ -25,6 +25,7 @@ import {
 } from "@/lib/empresas-api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { shouldGerenciarAbrirPagamentoFromSicaf } from "@/lib/sicaf-access-rules";
 import {
   enderecoFromCep,
   fetchCep,
@@ -2392,8 +2393,8 @@ function EmpresasPage() {
     "23.456.789/0001-11": 5,
   });
 
-  const empresasPendentes = empresasMock.filter(
-    (e) => e.sicaf === "vencido" || e.sicaf === "sem_cadastro",
+  const empresasPendentes = empresasMock.filter((e) =>
+    shouldGerenciarAbrirPagamentoFromSicaf(e.sicaf),
   );
 
   useEffect(() => {
@@ -2418,7 +2419,7 @@ function EmpresasPage() {
   };
 
   const handleGerenciar = (empresa: EmpresaData) => {
-    if (empresa.taxaPendente) {
+    if (shouldGerenciarAbrirPagamentoFromSicaf(empresa.sicaf)) {
       setTaxaSicafEmpresa({ nome: empresa.nome, cnpj: empresa.cnpj, clienteId: empresa.clienteId ?? 0 });
       setTaxaSicafModalOpen(true);
     } else {

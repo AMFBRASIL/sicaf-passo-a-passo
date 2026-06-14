@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { PageHeader, StatusBadge } from "@/components/page-header";
 import { ManutencaoModal } from "@/components/manutencao-modal";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
+import { shouldGerenciarAbrirPagamentoFromSicaf } from "@/lib/sicaf-access-rules";
 import { Wrench } from "lucide-react";
 
 export const Route = createFileRoute("/empresas-legacy")({
@@ -1365,8 +1366,8 @@ function EmpresasPage() {
     "23.456.789/0001-11": 5,
   });
 
-  const empresasPendentes = empresasMock.filter(
-    (e) => e.sicaf === "vencido" || e.sicaf === "sem_cadastro",
+  const empresasPendentes = empresasMock.filter((e) =>
+    shouldGerenciarAbrirPagamentoFromSicaf(e.sicaf),
   );
 
   useEffect(() => {
@@ -1391,7 +1392,7 @@ function EmpresasPage() {
   };
 
   const handleGerenciar = (empresa: EmpresaData) => {
-    if (empresa.taxaPendente) {
+    if (shouldGerenciarAbrirPagamentoFromSicaf(empresa.sicaf)) {
       setTaxaSicafEmpresa({ nome: empresa.nome, cnpj: empresa.cnpj });
       setTaxaSicafModalOpen(true);
     } else {

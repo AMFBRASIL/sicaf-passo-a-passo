@@ -67,12 +67,13 @@ function resolveApiKey(dbVal, envVal, provider, metodo) {
   const env = String(envVal || '').trim();
   if (db === MASK) return env;
 
+  // Banco tem prioridade absoluta (igual ia-config.service.js).
+  if (db) return db;
+
   if (String(metodo || '').toLowerCase() === 'api') {
-    const dbOk = isPlausibleProviderApiKey(provider, db);
     const envOk = isPlausibleProviderApiKey(provider, env);
-    if (dbOk) return db;
     if (envOk) return env;
-    return db || env;
+    return env;
   }
 
   return pickNonEmpty(db, env);
@@ -82,11 +83,10 @@ function resolveApiKeySource(raw, env, merged) {
   const metodo = String(merged.smtp_metodo || 'api').toLowerCase();
   if (metodo !== 'api') return 'n/a';
   const provider = merged.smtp_provider || 'mailgun';
-  const dbKey = String(raw.smtp_api_key || '').trim();
   const envKey = String(env.smtp_api_key || '').trim();
-  if (isPlausibleProviderApiKey(provider, dbKey)) return 'database';
+  if (hasDbApiKey(raw)) return 'database';
   if (isPlausibleProviderApiKey(provider, envKey)) return 'env';
-  if (dbKey) return 'database_invalid';
+  if (envKey) return 'env';
   return 'none';
 }
 
@@ -140,6 +140,7 @@ function mergeEmailRaw(dbRaw, overrides) {
   const merged = {};
 
   for (const key of EMAIL_DB_KEYS) {
+    if (key === 'smtp_api_key') continue;
     merged[key] = pickNonEmpty(dbRaw[key], env[key]);
   }
 
@@ -155,7 +156,9 @@ function mergeEmailRaw(dbRaw, overrides) {
     }
   }
 
-  if (!overrideApiKey) {
+  if (overrideApiKey) {
+    merged.smtp_api_key = overrideApiKey;
+  } else {
     const metodo = merged.smtp_metodo || env.smtp_metodo || 'api';
     const provider = merged.smtp_provider || env.smtp_provider || 'mailgun';
     merged.smtp_api_key = resolveApiKey(dbRaw.smtp_api_key, env.smtp_api_key, provider, metodo);
@@ -202,11 +205,9 @@ function validateRuntimeConfig(cfg) {
         return { ok: false, error: 'E-mail remetente inválido para Mailgun (domínio ausente).' };
       }
       if (!isPlausibleMailgunApiKey(cfg.apiKey)) {
-        return {
-          ok: false,
-          error:
-            'API Key Mailgun inválida no banco (deve começar com "key-"). Atualize no painel Admin → E-mail ou defina MAILGUN_API_KEY no .env do servidor.',
-        };
+        console.warn(
+          '[Email] API Key Mailgun no banco não segue o formato key-…; tentando envio mesmo assim.',
+        );
       }
     }
     return { ok: true };
@@ -248,4 +249,5 @@ module.exports = {
   isPlausibleMailgunApiKey,
   isPlausibleProviderApiKey,
   resolveApiKeySource,
+  resolveApiKey,
 };
