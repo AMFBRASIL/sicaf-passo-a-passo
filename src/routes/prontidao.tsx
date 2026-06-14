@@ -37,17 +37,35 @@ export const Route = createFileRoute("/prontidao")({
 
 type Empresa = EmpresaProntidao;
 
+function formatAtualizadoEm(iso?: string) {
+  if (!iso) return "agora";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "agora";
+  const mins = Math.round(diffMs / 60_000);
+  if (mins < 1) return "agora";
+  if (mins < 60) return `há ${mins} minuto${mins === 1 ? "" : "s"}`;
+  const hours = Math.round(mins / 60);
+  return `há ${hours} hora${hours === 1 ? "" : "s"}`;
+}
+
 function ProntidaoPage() {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [ordem, setOrdem] = useState<"score" | "prioridade">("prioridade");
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [resumo, setResumo] = useState({ media: 0, prontas: 0, atencao: 0, criticas: 0 });
+  const [atualizadoEm, setAtualizadoEm] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
   useEffect(() => {
     void (async () => {
       setLoading(true);
-      const res = await fetchProntidao(query);
+      const res = await fetchProntidao(debouncedQuery);
       if (!res.ok) {
         toast.error(res.error || "Erro ao carregar prontidão");
         setLoading(false);
@@ -55,19 +73,20 @@ function ProntidaoPage() {
       }
       setEmpresas(res.empresas || []);
       if (res.resumo) setResumo(res.resumo);
+      setAtualizadoEm(res.atualizadoEm);
       setLoading(false);
     })();
-  }, [query]);
+  }, [debouncedQuery]);
 
   const filtradas = useMemo(() => {
-    let list = [...empresas];
-    list = [...list].sort((a, b) => {
+    const list = [...empresas];
+    list.sort((a, b) => {
       if (ordem === "score") return b.score - a.score;
       const pri = { alta: 0, media: 1, baixa: 2 } as const;
       return pri[a.prioridade] - pri[b.prioridade];
     });
     return list;
-  }, [query, ordem]);
+  }, [empresas, ordem]);
 
   const { media, prontas, atencao, criticas } = resumo;
 
@@ -96,7 +115,7 @@ function ProntidaoPage() {
 
       {/* Hero */}
       <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_1fr]">
-        <HeroScore media={media} total={empresas.length} />
+        <HeroScore media={media} total={empresas.length} atualizadoEm={atualizadoEm} />
         <KpiCard tone="ok" icon={<CheckCircle2 className="h-4 w-4" />} label="Prontas para licitar" value={prontas} hint="Score ≥ 80" />
         <KpiCard tone="warn" icon={<TrendingUp className="h-4 w-4" />} label="Em ajuste" value={atencao} hint="Score 50–79" />
         <KpiCard tone="danger" icon={<AlertTriangle className="h-4 w-4" />} label="Críticas" value={criticas} hint="Score abaixo de 50" />
@@ -137,9 +156,24 @@ function ProntidaoPage() {
 
       {/* Ranking */}
       <div className="mt-4 space-y-3">
-        {filtradas.map((e, i) => (
-          <EmpresaCard key={e.id} empresa={e} posicao={i + 1} />
-        ))}
+        {filtradas.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-3 py-14 text-center text-muted-foreground">
+              <CircleDashed className="h-10 w-10 opacity-40" />
+              <p className="text-sm font-medium text-foreground">Nenhuma empresa encontrada</p>
+              <p className="max-w-md text-sm">
+                {debouncedQuery.trim()
+                  ? "Não há empresas no seu cadastro que correspondam à busca."
+                  : "Cadastre empresas em Empresas para calcular a prontidão a partir do SICAF, certidões e documentos."}
+              </p>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/empresas">Ir para Empresas</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          filtradas.map((e, i) => <EmpresaCard key={e.id} empresa={e} posicao={i + 1} />)
+        )}
       </div>
 
       {/* Footer info */}
@@ -162,7 +196,15 @@ function ProntidaoPage() {
   );
 }
 
-function HeroScore({ media, total }: { media: number; total: number }) {
+function HeroScore({
+  media,
+  total,
+  atualizadoEm,
+}: {
+  media: number;
+  total: number;
+  atualizadoEm?: string;
+}) {
   const tone = media >= 80 ? "ok" : media >= 50 ? "warn" : "danger";
   const ring =
     tone === "ok"
@@ -194,7 +236,9 @@ function HeroScore({ media, total }: { media: number; total: number }) {
         <div>
           <p className="text-xs uppercase tracking-wider text-muted-foreground">Score médio do portfólio</p>
           <p className="mt-0.5 text-lg font-bold">{total} empresas monitoradas</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">Atualizado há 12 minutos</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Atualizado {formatAtualizadoEm(atualizadoEm)}
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -238,6 +282,15 @@ function EmpresaCard({ empresa: e, posicao }: { empresa: Empresa; posicao: numbe
     media: "bg-warning/15 text-warning-foreground border-warning/30",
     baixa: "bg-success/10 text-success border-success/20",
   } as const;
+
+  const certTotal = e.certidoes.ok + e.certidoes.warn + e.certidoes.danger;
+  const docsTotal = e.docs.total || 0;
+  const certTone =
+    e.certidoes.danger > 0 ? "danger" : e.certidoes.warn > 0 ? "warn" : certTotal > 0 ? "ok" : "warn";
+  const docsTone =
+    docsTotal === 0 ? "warn" : e.docs.ok === docsTotal ? "ok" : e.docs.ok / docsTotal < 0.7 ? "danger" : "warn";
+  const certPct = certTotal ? ((e.certidoes.ok + e.certidoes.warn * 0.5) / certTotal) * 100 : 0;
+  const docsPct = docsTotal ? (e.docs.ok / docsTotal) * 100 : 0;
 
   return (
     <Card
@@ -296,15 +349,15 @@ function EmpresaCard({ empresa: e, posicao }: { empresa: Empresa; posicao: numbe
             />
             <BreakdownRow
               icon={<ClipboardCheck className="h-3.5 w-3.5" />}
-              label={`Certidões ${e.certidoes.ok}/${e.certidoes.ok + e.certidoes.warn + e.certidoes.danger}`}
-              value={(e.certidoes.ok / (e.certidoes.ok + e.certidoes.warn + e.certidoes.danger)) * 100}
-              tone={e.certidoes.danger > 0 ? "danger" : e.certidoes.warn > 0 ? "warn" : "ok"}
+              label={`Certidões ${e.certidoes.ok}/${certTotal || "—"}`}
+              value={certPct}
+              tone={certTone}
             />
             <BreakdownRow
               icon={<FileText className="h-3.5 w-3.5" />}
-              label={`Documentos ${e.docs.ok}/${e.docs.total}`}
-              value={(e.docs.ok / e.docs.total) * 100}
-              tone={e.docs.ok === e.docs.total ? "ok" : e.docs.ok / e.docs.total < 0.7 ? "danger" : "warn"}
+              label={`Documentos ${e.docs.ok}/${docsTotal || "—"}`}
+              value={docsPct}
+              tone={docsTone}
             />
           </div>
         </div>

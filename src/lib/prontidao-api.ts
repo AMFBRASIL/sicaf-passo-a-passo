@@ -9,6 +9,7 @@ export type EmpresaProntidao = {
   sicaf: { nivel: number; status: "ok" | "warn" | "danger" };
   certidoes: { ok: number; warn: number; danger: number };
   docs: { ok: number; total: number };
+  propostas?: number;
   prioridade: "alta" | "media" | "baixa";
   acao: string;
   clienteId?: number;
@@ -23,6 +24,7 @@ export async function fetchProntidao(search = "") {
     ok: boolean;
     empresas?: EmpresaProntidao[];
     resumo?: { media: number; prontas: number; atencao: number; criticas: number };
+    atualizadoEm?: string;
     error?: string;
   }>;
 }
