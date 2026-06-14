@@ -83,6 +83,15 @@ function diaLabel(offsetFromToday) {
 }
 
 async function getAdminDashboard() {
+  try {
+    return await loadAdminDashboardData();
+  } catch (e) {
+    console.error('[AdminDashboard] Erro fatal:', e);
+    return { ok: false, error: e.message || 'Erro ao carregar dashboard' };
+  }
+}
+
+async function loadAdminDashboardData() {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
@@ -123,368 +132,338 @@ async function getAdminDashboard() {
 
   const receitaManutPagoWhere = (q) => q.whereRaw(RECEITA_MANUT_PAGO_WHERE);
   const receitaSicafPagoWhere = (q) => q.whereRaw(RECEITA_SICAF_PAGO_WHERE);
-
-  const manutAtivas = hasManutencoes
-    ? await scalar(0, () => db('manutencoes').where('status', 'Ativo').count({ total: '*' }).first())
-    : 0;
-  const manutAtivasMes = hasManutencoes
-    ? await scalar(0, () =>
-        db('manutencoes')
-          .where('status', 'Ativo')
-          .whereRaw("created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const manutAtivasMesAnterior = hasManutencoes
-    ? await scalar(0, () =>
-        db('manutencoes')
-          .where('status', 'Ativo')
-          .whereRaw("created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')")
-          .whereRaw("created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')")
-          .count({ total: '*' })
-          .first())
-    : 0;
-
-  const sicafHoje = hasSicaf
-    ? await scalar(0, () => db('sicaf_cadastros').whereRaw('DATE(created_at) = CURDATE()').count({ total: '*' }).first())
-    : 0;
-  const sicafOntem = hasSicaf
-    ? await scalar(0, () =>
-        db('sicaf_cadastros').whereRaw('DATE(created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)').count({ total: '*' }).first())
-    : 0;
-  const sicafTotal = hasSicaf ? await scalar(0, () => db('sicaf_cadastros').count({ total: '*' }).first()) : 0;
-  const sicafMes = hasSicaf
-    ? await scalar(0, () =>
-        db('sicaf_cadastros').whereRaw("created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')").count({ total: '*' }).first())
-    : 0;
-  const sicafMesAnterior = hasSicaf
-    ? await scalar(0, () =>
-        db('sicaf_cadastros')
-          .whereRaw("created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')")
-          .whereRaw("created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')")
-          .count({ total: '*' })
-          .first())
-    : 0;
-
+  const scalarWhen = (cond, queryFn, key = 'total') => (cond ? scalar(0, queryFn, key) : Promise.resolve(0));
   const usuariosSemSicafQuery = () =>
     db('clientes as c').leftJoin('taxas_sicaf as t', 't.cliente_id', 'c.id').whereNull('t.id');
-  const usuariosSemSicaf =
-    hasClientes && hasTaxas
-      ? await scalar(0, () => usuariosSemSicafQuery().countDistinct({ total: 'c.id' }).first())
-      : 0;
-  const usuariosSemSicafSemana =
-    hasClientes && hasTaxas
-      ? await scalar(0, () =>
-          usuariosSemSicafQuery()
-            .whereRaw('c.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
-            .countDistinct({ total: 'c.id' })
-            .first())
-      : 0;
-  const usuariosSemSicafSemanaAnterior =
-    hasClientes && hasTaxas
-      ? await scalar(0, () =>
-          usuariosSemSicafQuery()
-            .whereRaw('c.created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)')
-            .whereRaw('c.created_at < DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
-            .countDistinct({ total: 'c.id' })
-            .first())
-      : 0;
+  const taxaPagaAliasWhere =
+    "(LOWER(TRIM(CAST(t.status AS CHAR))) IN ('pago','paga','aprovado','aprovada') OR t.status IN ('Pago','Paga','pago','paga','Aprovado','Aprovada','aprovado','aprovada'))";
 
-  const certidoesVencidas = hasCertidoes
-    ? await scalar(0, () =>
-        db('certidoes')
-          .where(function () {
-            this.where('status', 'Vencida').orWhereRaw('DATE(data_validade) < CURDATE()');
-          })
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const certidoesVencidasMes = hasCertidoes
-    ? await scalar(0, () =>
-        db('certidoes')
-          .whereRaw("data_validade >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")
-          .whereRaw('DATE(data_validade) < CURDATE()')
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const certidoesVencidasMesAnterior = hasCertidoes
-    ? await scalar(0, () =>
-        db('certidoes')
-          .whereRaw("data_validade >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')")
-          .whereRaw("data_validade < DATE_FORMAT(CURDATE(), '%Y-%m-01')")
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const certidoesVencidasSemana = hasCertidoes
-    ? await scalar(0, () =>
-        db('certidoes')
-          .whereRaw('DATE(data_validade) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
-          .whereRaw('DATE(data_validade) < CURDATE()')
-          .count({ total: '*' })
-          .first())
-    : 0;
+  const [
+    manutAtivas,
+    manutAtivasMes,
+    manutAtivasMesAnterior,
+    sicafHoje,
+    sicafOntem,
+    sicafTotal,
+    sicafMes,
+    sicafMesAnterior,
+    usuariosSemSicaf,
+    usuariosSemSicafSemana,
+    usuariosSemSicafSemanaAnterior,
+    certidoesVencidas,
+    certidoesVencidasMes,
+    certidoesVencidasMesAnterior,
+    certidoesVencidasSemana,
+    receitaManutTotal,
+    receitaManutMes,
+    receitaManutMesAnterior,
+    receitaManutHoje,
+    receitaManutOntem,
+    receitaSicafPagoMes,
+    receitaSicafPagoMesAnterior,
+    receitaSicafPagoTotal,
+    receitaSicafHoje,
+    receitaSicafOntem,
+    sicafPagosHoje,
+    sicafPagosOntem,
+    sicafPagosMes,
+    licitacoesAtivas,
+    licitacoesSemana,
+    licitacoesSemanaAnterior,
+    ticketsAbertos,
+    ticketsForaSla,
+    ticketsSemana,
+    ticketsSemanaAnterior,
+    chamadasPendentes,
+    chamadasPendentesOntem,
+    manutVencendo,
+    manutVencidas,
+    manutCanceladas,
+    taxasGeradas,
+    boletosPendentesManut,
+    boletosPendentesSicaf,
+    inadimplenciaManut,
+    inadimplenciaSicaf,
+    clientesInadimplentes,
+    sicafAtivos,
+    sicafPendentes,
+    sicafVencendo7d,
+    sicafNiveisAmarelo,
+    sicafNiveisVermelho,
+    novosClientesHoje,
+    novosClientesMes,
+    novosClientesPagos,
+    visitasSite,
+    cadastrosTotal,
+    pagaramTotal,
+    docsEnviados,
+    renovaram,
+    sessionsGads,
+    convertedGads,
+    receitaGads,
+  ] = await Promise.all([
+    scalarWhen(hasManutencoes, () => db('manutencoes').where('status', 'Ativo').count({ total: '*' }).first()),
+    scalarWhen(hasManutencoes, () =>
+      db('manutencoes')
+        .where('status', 'Ativo')
+        .whereRaw("created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasManutencoes, () =>
+      db('manutencoes')
+        .where('status', 'Ativo')
+        .whereRaw("created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')")
+        .whereRaw("created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')")
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasSicaf, () => db('sicaf_cadastros').whereRaw('DATE(created_at) = CURDATE()').count({ total: '*' }).first()),
+    scalarWhen(hasSicaf, () =>
+      db('sicaf_cadastros').whereRaw('DATE(created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)').count({ total: '*' }).first()),
+    scalarWhen(hasSicaf, () => db('sicaf_cadastros').count({ total: '*' }).first()),
+    scalarWhen(hasSicaf, () =>
+      db('sicaf_cadastros').whereRaw("created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')").count({ total: '*' }).first()),
+    scalarWhen(hasSicaf, () =>
+      db('sicaf_cadastros')
+        .whereRaw("created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')")
+        .whereRaw("created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')")
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasClientes && hasTaxas, () => usuariosSemSicafQuery().countDistinct({ total: 'c.id' }).first()),
+    scalarWhen(hasClientes && hasTaxas, () =>
+      usuariosSemSicafQuery()
+        .whereRaw('c.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
+        .countDistinct({ total: 'c.id' })
+        .first()),
+    scalarWhen(hasClientes && hasTaxas, () =>
+      usuariosSemSicafQuery()
+        .whereRaw('c.created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)')
+        .whereRaw('c.created_at < DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
+        .countDistinct({ total: 'c.id' })
+        .first()),
+    scalarWhen(hasCertidoes, () =>
+      db('certidoes')
+        .where(function () {
+          this.where('status', 'Vencida').orWhereRaw('DATE(data_validade) < CURDATE()');
+        })
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasCertidoes, () =>
+      db('certidoes')
+        .whereRaw("data_validade >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")
+        .whereRaw('DATE(data_validade) < CURDATE()')
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasCertidoes, () =>
+      db('certidoes')
+        .whereRaw("data_validade >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')")
+        .whereRaw("data_validade < DATE_FORMAT(CURDATE(), '%Y-%m-01')")
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasCertidoes, () =>
+      db('certidoes')
+        .whereRaw('DATE(data_validade) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
+        .whereRaw('DATE(data_validade) < CURDATE()')
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasManutBoletos, () => receitaManutPagoWhere(db('manutencao_boletos')).sum({ total: 'valor' }).first()),
+    scalarWhen(hasManutBoletos, () =>
+      receitaManutPagoWhere(db('manutencao_boletos'))
+        .whereRaw(`${RECEITA_MANUT_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
+        .whereRaw(`${RECEITA_MANUT_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
+        .sum({ total: 'valor' })
+        .first()),
+    scalarWhen(hasManutBoletos, () =>
+      receitaManutPagoWhere(db('manutencao_boletos'))
+        .whereRaw(`${RECEITA_MANUT_REF_DIA} >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')`)
+        .whereRaw(`${RECEITA_MANUT_REF_DIA} < DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
+        .sum({ total: 'valor' })
+        .first()),
+    scalarWhen(hasManutBoletos, () =>
+      receitaManutPagoWhere(db('manutencao_boletos')).whereRaw(`${RECEITA_MANUT_REF_DIA} = CURDATE()`).sum({ total: 'valor' }).first()),
+    scalarWhen(hasManutBoletos, () =>
+      receitaManutPagoWhere(db('manutencao_boletos'))
+        .whereRaw(`${RECEITA_MANUT_REF_DIA} = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`)
+        .sum({ total: 'valor' })
+        .first()),
+    scalarWhen(hasTaxas, () =>
+      receitaSicafPagoWhere(db('taxas_sicaf'))
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
+        .sum({ total: 'valor' })
+        .first()),
+    scalarWhen(hasTaxas, () =>
+      receitaSicafPagoWhere(db('taxas_sicaf'))
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')`)
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} < DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
+        .sum({ total: 'valor' })
+        .first()),
+    scalarWhen(hasTaxas, () => receitaSicafPagoWhere(db('taxas_sicaf')).sum({ total: 'valor' }).first()),
+    scalarWhen(hasTaxas, () =>
+      receitaSicafPagoWhere(db('taxas_sicaf')).whereRaw(`${RECEITA_SICAF_REF_DIA} = CURDATE()`).sum({ total: 'valor' }).first()),
+    scalarWhen(hasTaxas, () =>
+      receitaSicafPagoWhere(db('taxas_sicaf'))
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`)
+        .sum({ total: 'valor' })
+        .first()),
+    scalarWhen(hasTaxas, () =>
+      receitaSicafPagoWhere(db('taxas_sicaf'))
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} = CURDATE()`)
+        .countDistinct({ total: 'cliente_id' })
+        .first()),
+    scalarWhen(hasTaxas, () =>
+      receitaSicafPagoWhere(db('taxas_sicaf'))
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`)
+        .countDistinct({ total: 'cliente_id' })
+        .first()),
+    scalarWhen(hasTaxas, () =>
+      receitaSicafPagoWhere(db('taxas_sicaf'))
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
+        .countDistinct({ total: 'cliente_id' })
+        .first()),
+    scalarWhen(hasLicitacoes, () =>
+      db('licitacoes').whereIn('status', ['Ativa', 'Aberta', 'Em Andamento']).count({ total: '*' }).first()),
+    scalarWhen(hasLicitacoes, () =>
+      db('licitacoes').whereRaw('created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)').count({ total: '*' }).first()),
+    scalarWhen(hasLicitacoes, () =>
+      db('licitacoes')
+        .whereRaw('created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)')
+        .whereRaw('created_at < DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasTickets, () => db('tickets').whereIn('status', ['aberto', 'em_andamento']).count({ total: '*' }).first()),
+    scalarWhen(hasTickets, () =>
+      db('tickets')
+        .whereIn('status', ['aberto', 'em_andamento'])
+        .where(function () {
+          this.where('sla_minutos_restantes', '<=', 0).orWhereRaw('sla_prazo IS NOT NULL AND sla_prazo < NOW()');
+        })
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasTickets, () =>
+      db('tickets')
+        .whereIn('status', ['aberto', 'em_andamento'])
+        .whereRaw('created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasTickets, () =>
+      db('tickets')
+        .whereIn('status', ['aberto', 'em_andamento'])
+        .whereRaw('created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)')
+        .whereRaw('created_at < DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasTickets, () => db('tickets').where('status', 'aguardando_cliente').count({ total: '*' }).first()),
+    scalarWhen(hasTickets, () =>
+      db('tickets')
+        .where('status', 'aguardando_cliente')
+        .whereRaw('DATE(updated_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)')
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasManutencoes, () =>
+      db('manutencoes')
+        .where(function () {
+          this.whereIn('status', ['A Vencer', 'Vencendo']).orWhereRaw(
+            "(status = 'Ativo' AND data_fim BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY))"
+          );
+        })
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasManutencoes, () =>
+      db('manutencoes')
+        .where(function () {
+          this.whereIn('status', ['Vencido', 'Vencida']).orWhereRaw("(status = 'Ativo' AND data_fim < CURDATE())");
+        })
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasManutencoes, () =>
+      db('manutencoes').whereIn('status', ['Cancelado', 'Cancelada']).count({ total: '*' }).first()),
+    scalarWhen(hasTaxas, () =>
+      db('taxas_sicaf').whereRaw("created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')").sum({ total: 'valor' }).first()),
+    scalarWhen(hasManutBoletos, () =>
+      db('manutencao_boletos').whereIn('status', ['Pendente', 'Aguardando']).sum({ total: 'valor' }).first()),
+    scalarWhen(hasTaxas, () =>
+      db('taxas_sicaf').whereIn('status', ['Pendente', 'Aguardando']).sum({ total: 'valor' }).first()),
+    scalarWhen(hasManutBoletos, () =>
+      db('manutencao_boletos').whereIn('status', ['Atrasado', 'Vencido']).sum({ total: 'valor' }).first()),
+    scalarWhen(hasTaxas, () =>
+      db('taxas_sicaf').whereIn('status', ['Atrasado', 'Vencido']).sum({ total: 'valor' }).first()),
+    scalarWhen(hasManutBoletos || hasTaxas, async () => {
+      const ids = new Set();
+      if (hasManutBoletos) {
+        const rows = await db('manutencao_boletos')
+          .whereIn('status', ['Atrasado', 'Vencido'])
+          .distinct('cliente_id');
+        rows.forEach((r) => ids.add(r.cliente_id));
+      }
+      if (hasTaxas) {
+        const rows = await db('taxas_sicaf').whereIn('status', ['Atrasado', 'Vencido']).distinct('cliente_id');
+        rows.forEach((r) => ids.add(r.cliente_id));
+      }
+      return { total: ids.size };
+    }),
+    scalarWhen(hasSicaf, () => db('sicaf_cadastros').where('status', 'Ativo').count({ total: '*' }).first()),
+    scalarWhen(hasSicaf, () => db('sicaf_cadastros').where('status', 'Pendente').count({ total: '*' }).first()),
+    scalarWhen(hasSicaf, () =>
+      db('sicaf_cadastros')
+        .whereRaw('data_validade IS NOT NULL')
+        .whereRaw('DATE(data_validade) BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)')
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasNiveis, () =>
+      db('sicaf_niveis')
+        .where(function () {
+          this.whereRaw("LOWER(COALESCE(status,'')) LIKE '%pendente%'")
+            .orWhereRaw("LOWER(COALESCE(status,'')) LIKE '%vencendo%'")
+            .orWhereRaw("LOWER(COALESCE(status,'')) LIKE '%a vencer%'");
+        })
+        .count({ total: '*' })
+        .first()),
+    scalarWhen(hasNiveis, () =>
+      db('sicaf_niveis').whereRaw("LOWER(COALESCE(status,'')) LIKE '%vencido%'").count({ total: '*' }).first()),
+    scalarWhen(hasClientes, () => db('clientes').whereRaw('DATE(created_at) = CURDATE()').count({ total: '*' }).first()),
+    scalarWhen(hasClientes, () =>
+      db('clientes').whereRaw("created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')").count({ total: '*' }).first()),
+    scalarWhen(hasClientes && hasTaxas, () =>
+      db('clientes as c')
+        .innerJoin('taxas_sicaf as t', 't.cliente_id', 'c.id')
+        .whereRaw("c.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")
+        .whereRaw(taxaPagaAliasWhere)
+        .countDistinct({ total: 'c.id' })
+        .first()),
+    scalarWhen(hasTracking, () => db('tracking_sessoes').count({ total: '*' }).first()),
+    scalarWhen(hasUsuarios, () => db('usuarios').count({ total: '*' }).first()),
+    scalarWhen(hasTaxas, () =>
+      receitaSicafPagoWhere(db('taxas_sicaf')).countDistinct({ total: 'cliente_id' }).first()),
+    scalarWhen(hasClientes && hasDocumentos, () =>
+      db('clientes as c')
+        .innerJoin('documentos as d', 'd.cliente_id', 'c.id')
+        .countDistinct({ total: 'c.id' })
+        .first()),
+    scalarWhen(hasSicaf, () => db('sicaf_cadastros').where('credenciamento_anual', 1).count({ total: '*' }).first()),
+    scalarWhen(hasTracking, () => db('tracking_sessoes').whereNotNull('gclid').count({ total: '*' }).first()),
+    scalarWhen(hasTracking, () =>
+      db('tracking_sessoes').whereNotNull('gclid').where('converted', 1).count({ total: '*' }).first()),
+    scalarWhen(hasTracking, () =>
+      db('tracking_sessoes').whereNotNull('gclid').sum({ total: 'conversion_value' }).first()),
+  ]);
 
-  const receitaManutTotal = hasManutBoletos
-    ? await scalar(0, () => receitaManutPagoWhere(db('manutencao_boletos')).sum({ total: 'valor' }).first())
-    : 0;
-  const receitaManutMes = hasManutBoletos
-    ? await scalar(0, () =>
-        receitaManutPagoWhere(db('manutencao_boletos'))
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
-          .sum({ total: 'valor' })
-          .first())
-    : 0;
-  const receitaManutMesAnterior = hasManutBoletos
-    ? await scalar(0, () =>
-        receitaManutPagoWhere(db('manutencao_boletos'))
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')`)
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} < DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-          .sum({ total: 'valor' })
-          .first())
-    : 0;
-  const receitaManutHoje = hasManutBoletos
-    ? await scalar(0, () =>
-        receitaManutPagoWhere(db('manutencao_boletos')).whereRaw(`${RECEITA_MANUT_REF_DIA} = CURDATE()`).sum({ total: 'valor' }).first())
-    : 0;
-  const receitaManutOntem = hasManutBoletos
-    ? await scalar(0, () =>
-        receitaManutPagoWhere(db('manutencao_boletos'))
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`)
-          .sum({ total: 'valor' })
-          .first())
-    : 0;
-
-  const receitaSicafPagoMes = hasTaxas
-    ? await scalar(0, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
-          .sum({ total: 'valor' })
-          .first())
-    : 0;
-  const receitaSicafPagoMesAnterior = hasTaxas
-    ? await scalar(0, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')`)
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} < DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-          .sum({ total: 'valor' })
-          .first())
-    : 0;
-  const receitaSicafPagoTotal = hasTaxas
-    ? await scalar(0, () => receitaSicafPagoWhere(db('taxas_sicaf')).sum({ total: 'valor' }).first())
-    : 0;
-  const receitaSicafHoje = hasTaxas
-    ? await scalar(0, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf')).whereRaw(`${RECEITA_SICAF_REF_DIA} = CURDATE()`).sum({ total: 'valor' }).first())
-    : 0;
-  const receitaSicafOntem = hasTaxas
-    ? await scalar(0, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`)
-          .sum({ total: 'valor' })
-          .first())
-    : 0;
-
-  const sicafPagosHoje = hasTaxas
-    ? await scalar(0, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} = CURDATE()`)
-          .countDistinct({ total: 'cliente_id' })
-          .first())
-    : 0;
-  const sicafPagosOntem = hasTaxas
-    ? await scalar(0, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`)
-          .countDistinct({ total: 'cliente_id' })
-          .first())
-    : 0;
-  const sicafPagosMes = hasTaxas
-    ? await scalar(0, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
-          .countDistinct({ total: 'cliente_id' })
-          .first())
-    : 0;
 
   const refMesAtual = new Date();
   const refMesAnterior = new Date(refMesAtual.getFullYear(), refMesAtual.getMonth() - 1, 15);
   const legendaMesAtual = formatMesAnoLegendaBR(refMesAtual);
   const legendaMesAnterior = formatMesAnoLegendaBR(refMesAnterior);
 
-  const licitacoesAtivas = hasLicitacoes
-    ? await scalar(0, () =>
-        db('licitacoes').whereIn('status', ['Ativa', 'Aberta', 'Em Andamento']).count({ total: '*' }).first())
-    : 0;
-  const licitacoesSemana = hasLicitacoes
-    ? await scalar(0, () =>
-        db('licitacoes').whereRaw('created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)').count({ total: '*' }).first())
-    : 0;
-  const licitacoesSemanaAnterior = hasLicitacoes
-    ? await scalar(0, () =>
-        db('licitacoes')
-          .whereRaw('created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)')
-          .whereRaw('created_at < DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
-          .count({ total: '*' })
-          .first())
-    : 0;
 
-  const ticketsAbertos = hasTickets
-    ? await scalar(0, () => db('tickets').whereIn('status', ['aberto', 'em_andamento']).count({ total: '*' }).first())
-    : 0;
-  const ticketsForaSla = hasTickets
-    ? await scalar(0, () =>
-        db('tickets')
-          .whereIn('status', ['aberto', 'em_andamento'])
-          .where(function () {
-            this.where('sla_minutos_restantes', '<=', 0).orWhereRaw('sla_prazo IS NOT NULL AND sla_prazo < NOW()');
-          })
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const ticketsSemana = hasTickets
-    ? await scalar(0, () =>
-        db('tickets')
-          .whereIn('status', ['aberto', 'em_andamento'])
-          .whereRaw('created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const ticketsSemanaAnterior = hasTickets
-    ? await scalar(0, () =>
-        db('tickets')
-          .whereIn('status', ['aberto', 'em_andamento'])
-          .whereRaw('created_at >= DATE_SUB(CURDATE(), INTERVAL 14 DAY)')
-          .whereRaw('created_at < DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const chamadasPendentes = hasTickets
-    ? await scalar(0, () => db('tickets').where('status', 'aguardando_cliente').count({ total: '*' }).first())
-    : 0;
-  const chamadasPendentesOntem = hasTickets
-    ? await scalar(0, () =>
-        db('tickets')
-          .where('status', 'aguardando_cliente')
-          .whereRaw('DATE(updated_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)')
-          .count({ total: '*' })
-          .first())
-    : 0;
-
-  const manutVencendo = hasManutencoes
-    ? await scalar(0, () =>
-        db('manutencoes')
-          .where(function () {
-            this.whereIn('status', ['A Vencer', 'Vencendo']).orWhereRaw(
-              "(status = 'Ativo' AND data_fim BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY))"
-            );
-          })
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const manutVencidas = hasManutencoes
-    ? await scalar(0, () =>
-        db('manutencoes')
-          .where(function () {
-            this.whereIn('status', ['Vencido', 'Vencida']).orWhereRaw("(status = 'Ativo' AND data_fim < CURDATE())");
-          })
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const manutCanceladas = hasManutencoes
-    ? await scalar(0, () => db('manutencoes').whereIn('status', ['Cancelado', 'Cancelada']).count({ total: '*' }).first())
-    : 0;
-
-  const taxasGeradas = hasTaxas
-    ? await scalar(0, () =>
-        db('taxas_sicaf').whereRaw("created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')").sum({ total: 'valor' }).first())
-    : 0;
-  const boletosPendentesManut = hasManutBoletos
-    ? await scalar(0, () =>
-        db('manutencao_boletos').whereIn('status', ['Pendente', 'Aguardando']).sum({ total: 'valor' }).first())
-    : 0;
-  const boletosPendentesSicaf = hasTaxas
-    ? await scalar(0, () => db('taxas_sicaf').whereIn('status', ['Pendente', 'Aguardando']).sum({ total: 'valor' }).first())
-    : 0;
-  const inadimplenciaManut = hasManutBoletos
-    ? await scalar(0, () =>
-        db('manutencao_boletos').whereIn('status', ['Atrasado', 'Vencido']).sum({ total: 'valor' }).first())
-    : 0;
-  const inadimplenciaSicaf = hasTaxas
-    ? await scalar(0, () => db('taxas_sicaf').whereIn('status', ['Atrasado', 'Vencido']).sum({ total: 'valor' }).first())
-    : 0;
-  const clientesInadimplentes = hasManutBoletos || hasTaxas
-    ? await scalar(0, async () => {
-        const ids = new Set();
-        if (hasManutBoletos) {
-          const rows = await db('manutencao_boletos')
-            .whereIn('status', ['Atrasado', 'Vencido'])
-            .distinct('cliente_id');
-          rows.forEach((r) => ids.add(r.cliente_id));
-        }
-        if (hasTaxas) {
-          const rows = await db('taxas_sicaf').whereIn('status', ['Atrasado', 'Vencido']).distinct('cliente_id');
-          rows.forEach((r) => ids.add(r.cliente_id));
-        }
-        return { total: ids.size };
-      })
-    : 0;
-
-  const sicafAtivos = hasSicaf
-    ? await scalar(0, () => db('sicaf_cadastros').where('status', 'Ativo').count({ total: '*' }).first())
-    : 0;
-  const sicafPendentes = hasSicaf
-    ? await scalar(0, () => db('sicaf_cadastros').where('status', 'Pendente').count({ total: '*' }).first())
-    : 0;
-  const sicafVencendo7d = hasSicaf
-    ? await scalar(0, () =>
-        db('sicaf_cadastros')
-          .whereRaw('data_validade IS NOT NULL')
-          .whereRaw('DATE(data_validade) BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)')
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const sicafNiveisAmarelo = hasNiveis
-    ? await scalar(0, () =>
-        db('sicaf_niveis')
-          .where(function () {
-            this.whereRaw("LOWER(COALESCE(status,'')) LIKE '%pendente%'")
-              .orWhereRaw("LOWER(COALESCE(status,'')) LIKE '%vencendo%'")
-              .orWhereRaw("LOWER(COALESCE(status,'')) LIKE '%a vencer%'");
-          })
-          .count({ total: '*' })
-          .first())
-    : 0;
-  const sicafNiveisVermelho = hasNiveis
-    ? await scalar(0, () =>
-        db('sicaf_niveis').whereRaw("LOWER(COALESCE(status,'')) LIKE '%vencido%'").count({ total: '*' }).first())
-    : 0;
-
-  const novosClientesHoje = hasClientes
-    ? await scalar(0, () => db('clientes').whereRaw('DATE(created_at) = CURDATE()').count({ total: '*' }).first())
-    : 0;
-  const novosClientesMes = hasClientes
-    ? await scalar(0, () =>
-        db('clientes').whereRaw("created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')").count({ total: '*' }).first())
-    : 0;
-  const taxaPagaAliasWhere =
-    "(LOWER(TRIM(CAST(t.status AS CHAR))) IN ('pago','paga','aprovado','aprovada') OR t.status IN ('Pago','Paga','pago','paga','Aprovado','Aprovada','aprovado','aprovada'))";
-  const novosClientesPagos =
-    hasClientes && hasTaxas
-      ? await scalar(0, () =>
-          db('clientes as c')
-            .innerJoin('taxas_sicaf as t', 't.cliente_id', 'c.id')
-            .whereRaw("c.created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")
-            .whereRaw(taxaPagaAliasWhere)
-            .countDistinct({ total: 'c.id' })
-            .first())
-      : 0;
-
-  const recentSicafRows =
+  const [
+    recentSicafRows,
+    usersWithoutRows,
+    activityRows,
+    manutFatRows,
+    sicafFatRows,
+  ] = await Promise.all([
     hasSicaf && hasClientes
-      ? await safeDashboardQuery([], () =>
+      ? safeDashboardQuery([], () =>
           db('sicaf_cadastros as s')
             .leftJoin('clientes as c', 'c.id', 's.cliente_id')
             .leftJoin('sicaf_niveis as sn', 'sn.sicaf_id', 's.id')
@@ -502,11 +481,9 @@ async function getAdminDashboard() {
             .orderBy('s.created_at', 'desc')
             .limit(5)
         )
-      : [];
-
-  const usersWithoutRows =
+      : Promise.resolve([]),
     hasUsuarios && hasClientes && hasTaxas
-      ? await safeDashboardQuery([], () =>
+      ? safeDashboardQuery([], () =>
           db('clientes as c')
             .leftJoin('usuarios as u', 'u.id', 'c.usuario_id')
             .leftJoin('taxas_sicaf as t', 't.cliente_id', 'c.id')
@@ -516,51 +493,51 @@ async function getAdminDashboard() {
             .orderBy('c.created_at', 'desc')
             .limit(3)
         )
-      : [];
-
-  const activityRows = hasAuditoria
-    ? await safeDashboardQuery([], () =>
-        db('auditoria_log as h')
-          .leftJoin('usuarios as u', 'u.id', 'h.usuario_id')
-          .select('h.id', 'h.acao', 'h.entidade', 'h.descricao', 'h.created_at', 'u.nome as usuario_nome')
-          .orderBy('h.created_at', 'desc')
-          .limit(6)
-      )
-    : [];
+      : Promise.resolve([]),
+    hasAuditoria
+      ? safeDashboardQuery([], () =>
+          db('auditoria_log as h')
+            .leftJoin('usuarios as u', 'u.id', 'h.usuario_id')
+            .select('h.id', 'h.acao', 'h.entidade', 'h.descricao', 'h.created_at', 'u.nome as usuario_nome')
+            .orderBy('h.created_at', 'desc')
+            .limit(6)
+        )
+      : Promise.resolve([]),
+    hasManutBoletos
+      ? safeDashboardQuery([], () =>
+          receitaManutPagoWhere(db('manutencao_boletos'))
+            .whereRaw(`${RECEITA_MANUT_REF_DIA} >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)`)
+            .select(
+              db.raw(`DATEDIFF(CURDATE(), ${RECEITA_MANUT_REF_DIA}) as offset_dia`),
+              db.raw('SUM(valor) as total')
+            )
+            .groupByRaw(`DATEDIFF(CURDATE(), ${RECEITA_MANUT_REF_DIA})`)
+        )
+      : Promise.resolve([]),
+    hasTaxas
+      ? safeDashboardQuery([], () =>
+          receitaSicafPagoWhere(db('taxas_sicaf'))
+            .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)`)
+            .select(
+              db.raw(`DATEDIFF(CURDATE(), ${RECEITA_SICAF_REF_DIA}) as offset_dia`),
+              db.raw('SUM(valor) as total')
+            )
+            .groupByRaw(`DATEDIFF(CURDATE(), ${RECEITA_SICAF_REF_DIA})`)
+        )
+      : Promise.resolve([]),
+  ]);
 
   const faturamento7Dias = [];
   const fatByOffset = new Map();
   for (let i = 0; i <= 6; i += 1) fatByOffset.set(i, 0);
 
-  if (hasManutBoletos) {
-    const manutRows = await safeDashboardQuery([], () =>
-      receitaManutPagoWhere(db('manutencao_boletos'))
-        .whereRaw(`${RECEITA_MANUT_REF_DIA} >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)`)
-        .select(
-          db.raw(`DATEDIFF(CURDATE(), ${RECEITA_MANUT_REF_DIA}) as offset_dia`),
-          db.raw('SUM(valor) as total')
-        )
-        .groupByRaw(`DATEDIFF(CURDATE(), ${RECEITA_MANUT_REF_DIA})`)
-    );
-    for (const row of manutRows) {
-      const off = toNumber(row.offset_dia);
-      if (off >= 0 && off <= 6) fatByOffset.set(off, (fatByOffset.get(off) || 0) + toNumber(row.total));
-    }
+  for (const row of manutFatRows) {
+    const off = toNumber(row.offset_dia);
+    if (off >= 0 && off <= 6) fatByOffset.set(off, (fatByOffset.get(off) || 0) + toNumber(row.total));
   }
-  if (hasTaxas) {
-    const sicafRows = await safeDashboardQuery([], () =>
-      receitaSicafPagoWhere(db('taxas_sicaf'))
-        .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)`)
-        .select(
-          db.raw(`DATEDIFF(CURDATE(), ${RECEITA_SICAF_REF_DIA}) as offset_dia`),
-          db.raw('SUM(valor) as total')
-        )
-        .groupByRaw(`DATEDIFF(CURDATE(), ${RECEITA_SICAF_REF_DIA})`)
-    );
-    for (const row of sicafRows) {
-      const off = toNumber(row.offset_dia);
-      if (off >= 0 && off <= 6) fatByOffset.set(off, (fatByOffset.get(off) || 0) + toNumber(row.total));
-    }
+  for (const row of sicafFatRows) {
+    const off = toNumber(row.offset_dia);
+    if (off >= 0 && off <= 6) fatByOffset.set(off, (fatByOffset.get(off) || 0) + toNumber(row.total));
   }
   for (let i = 6; i >= 0; i -= 1) {
     const v = Math.round((fatByOffset.get(i) || 0) * 100) / 100;
@@ -573,25 +550,7 @@ async function getAdminDashboard() {
   const faturamentoMes = receitaManutMes + receitaSicafPagoMes;
   const faturamentoMesAnterior = receitaManutMesAnterior + receitaSicafPagoMesAnterior;
 
-  const visitasSite = hasTracking
-    ? await scalar(0, () => db('tracking_sessoes').count({ total: '*' }).first())
-    : 0;
-  const cadastrosTotal = hasUsuarios ? await scalar(0, () => db('usuarios').count({ total: '*' }).first()) : 0;
-  const pagaramTotal = hasTaxas
-    ? await scalar(0, () => receitaSicafPagoWhere(db('taxas_sicaf')).countDistinct({ total: 'cliente_id' }).first())
-    : 0;
-  const docsEnviados =
-    hasClientes && hasDocumentos
-      ? await scalar(0, () =>
-          db('clientes as c')
-            .innerJoin('documentos as d', 'd.cliente_id', 'c.id')
-            .countDistinct({ total: 'c.id' })
-            .first())
-      : 0;
   const manutencaoTotal = manutAtivas;
-  const renovaram = hasSicaf
-    ? await scalar(0, () => db('sicaf_cadastros').where('credenciamento_anual', 1).count({ total: '*' }).first())
-    : 0;
 
   const funilData = [
     { etapa: 'Visitou site', v: visitasSite },
@@ -729,16 +688,6 @@ async function getAdminDashboard() {
         )
       : [];
 
-  const sessionsGads = hasTracking
-    ? await scalar(0, () => db('tracking_sessoes').whereNotNull('gclid').count({ total: '*' }).first())
-    : 0;
-  const convertedGads = hasTracking
-    ? await scalar(0, () => db('tracking_sessoes').whereNotNull('gclid').where('converted', 1).count({ total: '*' }).first())
-    : 0;
-  const receitaGads = hasTracking
-    ? await scalar(0, () =>
-        db('tracking_sessoes').whereNotNull('gclid').sum({ total: 'conversion_value' }).first())
-    : 0;
   const conversaoGoogleAds =
     sessionsGads > 0 ? Math.round((convertedGads / sessionsGads) * 1000) / 10 : 0;
   const roasGoogleAds = sessionsGads > 0 && receitaGads > 0 ? Math.round((receitaGads / sessionsGads) * 10) / 10 : null;

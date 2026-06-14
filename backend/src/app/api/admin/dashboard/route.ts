@@ -4,6 +4,8 @@ import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Dashboard executa dezenas de consultas ao MySQL remoto — precisa de mais tempo na Vercel. */
+export const maxDuration = 60;
 
 type AdminDashboardService = {
   getAdminDashboard: () => Promise<Record<string, unknown>>;
