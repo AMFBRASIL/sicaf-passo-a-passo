@@ -12,6 +12,8 @@ const envSchema = z.object({
     }),
   APP_URL: z.string().url().default("http://localhost:3001"),
   FRONTEND_URL: z.string().url().default("http://localhost:5173"),
+  /** Origens extras para CORS (separadas por vírgula). Ex.: previews Vercel, homolog. */
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
   TZ: z.string().default("America/Sao_Paulo"),
 
   JWT_SECRET: z.string().min(32, "JWT_SECRET deve ter no mínimo 32 caracteres"),
