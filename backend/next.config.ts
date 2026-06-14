@@ -1,22 +1,43 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 
+/** Pacotes carregados em runtime pelo sicaf-agent (require dinâmico via sicaf-bridge). */
+const SICAF_RUNTIME_PACKAGES = [
+  "dotenv",
+  "knex",
+  "mysql2",
+  "bcryptjs",
+  "nodemailer",
+  "sanitize-html",
+  "pdf-parse",
+  "openai",
+  "multer",
+  "node-forge",
+  "sdk-node-apis-efi",
+  "@aws-sdk/client-s3",
+];
+
+function sicafNodeModuleGlobs(): string[] {
+  return SICAF_RUNTIME_PACKAGES.map((pkg) => `./node_modules/${pkg}/**/*`);
+}
+
+const sicafTraceIncludes = [
+  "./sicaf-agent/**/*",
+  "./lib/sicaf-bridge.cjs",
+  ...sicafNodeModuleGlobs(),
+];
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   outputFileTracingRoot: path.join(__dirname),
-  // sicaf-agent é carregado em runtime via sicaf-bridge.cjs (require dinâmico).
-  // Na Vercel o file-tracing do Next não o inclui automaticamente — só o bridge.
+  // sicaf-agent + deps npm — carregados em runtime via sicaf-bridge.cjs (require dinâmico).
   outputFileTracingIncludes: {
-    "/**": ["./sicaf-agent/**/*", "./lib/sicaf-bridge.cjs"],
-    "/api/**": ["./sicaf-agent/**/*", "./lib/sicaf-bridge.cjs"],
+    "/**": sicafTraceIncludes,
+    "/api/**": sicafTraceIncludes,
   },
   serverExternalPackages: [
-    "knex",
-    "mysql2",
-    "nodemailer",
-    "openai",
-    "pdf-parse",
+    ...SICAF_RUNTIME_PACKAGES,
     "pino",
     "pino-pretty",
     "thread-stream",

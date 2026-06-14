@@ -3,6 +3,29 @@
  */
 const path = require("path");
 
+// Require estático para o file-tracing da Vercel incluir node_modules do sicaf-agent.
+const SICAF_NPM_DEPS = [
+  "dotenv",
+  "knex",
+  "mysql2",
+  "bcryptjs",
+  "nodemailer",
+  "sanitize-html",
+  "pdf-parse",
+  "openai",
+  "multer",
+  "node-forge",
+  "sdk-node-apis-efi",
+  "@aws-sdk/client-s3",
+];
+for (const pkg of SICAF_NPM_DEPS) {
+  try {
+    require(pkg);
+  } catch (_) {
+    /* pacote opcional para algumas rotas */
+  }
+}
+
 const agentRoot = path.join(__dirname, "..", "sicaf-agent");
 
 let initialized = false;

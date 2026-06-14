@@ -3,7 +3,20 @@
  */
 const path = require("path");
 
-require("dotenv").config({ path: path.resolve(__dirname, "..", "..", ".env"), override: true });
+function loadEnvFile() {
+  // Na Vercel as variáveis vêm do painel — não há backend/.env no bundle.
+  if (process.env.VERCEL) return;
+  try {
+    require("dotenv").config({
+      path: path.resolve(__dirname, "..", "..", ".env"),
+      override: true,
+    });
+  } catch (_) {
+    /* serverless sem dotenv no trace — usa process.env */
+  }
+}
+
+loadEnvFile();
 
 const backendRoot = path.resolve(__dirname, "..", "..");
 const projectRoot = path.resolve(backendRoot, "..");
