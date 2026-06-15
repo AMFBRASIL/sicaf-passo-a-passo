@@ -5,6 +5,7 @@ import {
   shouldGerenciarAbrirPagamentoFromInput,
 } from "@/lib/sicaf-access-rules";
 import { Plus, RefreshCw, Rocket } from "lucide-react";
+import { mapNivelStatusFromRaw } from "@/lib/nivel-status";
 
 /**
  * Regras alinhadas ao SIstema-Antigo (SICAF.tsx) — ver sicaf-access-rules.ts.
@@ -17,7 +18,7 @@ export function needsSicafTaxaPayment(item: SicafListItem): boolean {
   });
 }
 
-/** Regra do botão Gerenciar — modal de pagamento só com SICAF vencido. */
+/** Regra do botão Gerenciar — pagamento quando há taxa pendente. */
 export function shouldGerenciarAbrirPagamento(item: SicafListItem): boolean {
   return shouldGerenciarAbrirPagamentoFromInput({
     hasSicaf: !!item.hasSicaf,
@@ -66,15 +67,6 @@ export type SicafPlano = {
 };
 
 const ROMAN_TO_NUM: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
-
-function mapNivelStatus(raw: string): "validado" | "vencendo" | "vencido" | "pendente" | "nao_cadastrado" {
-  const s = raw.toLowerCase();
-  if (s.includes("válido") || s.includes("valido") || s.includes("habilitado")) return "validado";
-  if (s.includes("vencendo")) return "vencendo";
-  if (s.includes("vencido")) return "vencido";
-  if (s.includes("pendente")) return "pendente";
-  return "nao_cadastrado";
-}
 
 function mapSicafStatus(item: SicafListItem): SicafStatus {
   if (!item.hasSicaf || item.status === "Sem SICAF") return "sem_cadastro";
@@ -146,7 +138,7 @@ export function mapSicafItemToEmpresa(item: SicafListItem): EmpresaData {
       const num = ROMAN_TO_NUM[roman];
       if (!num) continue;
       detalhesNiveis[num] = {
-        status: mapNivelStatus(detail.status),
+        status: mapNivelStatusFromRaw(detail.status),
         observacao: detail.observacao || undefined,
       };
     }

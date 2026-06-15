@@ -25,7 +25,7 @@ import {
 } from "@/lib/empresas-api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { shouldGerenciarAbrirPagamentoFromSicaf } from "@/lib/sicaf-access-rules";
+import { shouldGerenciarAbrirPagamentoFromEmpresa } from "@/lib/sicaf-access-rules";
 import {
   enderecoFromCep,
   fetchCep,
@@ -2417,7 +2417,7 @@ function EmpresasPage() {
   };
 
   const handleGerenciar = (empresa: EmpresaData) => {
-    if (shouldGerenciarAbrirPagamentoFromSicaf(empresa.sicaf)) {
+    if (shouldGerenciarAbrirPagamentoFromEmpresa(empresa)) {
       setTaxaSicafEmpresa({ nome: empresa.nome, cnpj: empresa.cnpj, clienteId: empresa.clienteId ?? 0 });
       setTaxaSicafModalOpen(true);
     } else {

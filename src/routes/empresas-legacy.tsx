@@ -15,7 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { PageHeader, StatusBadge } from "@/components/page-header";
 import { ManutencaoModal } from "@/components/manutencao-modal";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
-import { shouldGerenciarAbrirPagamentoFromSicaf } from "@/lib/sicaf-access-rules";
+import { shouldGerenciarAbrirPagamentoFromEmpresa } from "@/lib/sicaf-access-rules";
 import { Wrench } from "lucide-react";
 
 export const Route = createFileRoute("/empresas-legacy")({
@@ -1390,7 +1390,7 @@ function EmpresasPage() {
   };
 
   const handleGerenciar = (empresa: EmpresaData) => {
-    if (shouldGerenciarAbrirPagamentoFromSicaf(empresa.sicaf)) {
+    if (shouldGerenciarAbrirPagamentoFromEmpresa(empresa)) {
       setTaxaSicafEmpresa({ nome: empresa.nome, cnpj: empresa.cnpj });
       setTaxaSicafModalOpen(true);
     } else {

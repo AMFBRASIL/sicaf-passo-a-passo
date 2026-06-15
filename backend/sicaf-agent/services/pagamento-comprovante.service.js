@@ -43,7 +43,10 @@ async function autorizarComComprovante({
     return { ok: false, error: 'Comprovante de pagamento é obrigatório' };
   }
 
-  const confirm = await sicafTaxaService.confirmarPagamento(taxaId, autorizadoPor);
+  const confirm = await sicafTaxaService.confirmarPagamento(taxaId, autorizadoPor, {
+    formaPagamento,
+    observacoes,
+  });
   if (!confirm.ok) return confirm;
 
   let comprovanteId = null;
@@ -91,6 +94,7 @@ async function autorizarComComprovante({
     comprovanteId,
     novaValidade: confirm.novaValidade,
     diasValidade: confirm.diasValidade,
+    emailNotificacao: confirm.emailNotificacao || null,
   };
 }
 

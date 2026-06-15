@@ -40,6 +40,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/page-header";
+import { CopyButton } from "@/components/copy-button";
 import {
   statusLabel,
   isEmpresaApto,
@@ -53,7 +54,7 @@ import {
   type EmpresaData,
   type SicafStatus,
 } from "@/lib/empresas-shared";
-import { shouldGerenciarAbrirPagamentoFromSicaf } from "@/lib/sicaf-access-rules";
+import { shouldGerenciarAbrirPagamentoFromEmpresa } from "@/lib/sicaf-access-rules";
 import { fetchEmpresas } from "@/lib/empresas-api";
 import { PendenciasModal } from "@/components/pendencias-modal";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
@@ -173,7 +174,7 @@ function EmpresasPage() {
   }, [loading, empresasPendentes.length, taxaModalOpen]);
 
   const handleGerenciar = async (empresa: EmpresaData) => {
-    const abrirPagamento = shouldGerenciarAbrirPagamentoFromSicaf(empresa.sicaf);
+    const abrirPagamento = shouldGerenciarAbrirPagamentoFromEmpresa(empresa);
     if (abrirPagamento) {
       if (!empresa.clienteId) {
         setLoadError("Empresa sem identificador. Atualize a página e tente novamente.");
@@ -509,7 +510,10 @@ function EmpresaCard({
             </div>
             <div className="min-w-0">
               <h3 className="truncate text-sm font-semibold leading-tight">{empresa.nome}</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">CNPJ {empresa.cnpj}</p>
+              <div className="mt-0.5 flex items-center gap-0.5 min-w-0">
+                <p className="truncate text-xs text-muted-foreground font-mono">CNPJ {empresa.cnpj}</p>
+                <CopyButton value={empresa.cnpj} label="CNPJ" className="shrink-0" />
+              </div>
             </div>
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">

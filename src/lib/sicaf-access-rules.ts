@@ -66,13 +66,22 @@ export type SicafDisplayStatus = "ativo" | "atencao" | "vencido" | "sem_cadastro
 
 /**
  * Botão "Gerenciar" em /empresas.
- * Ativo, Vencendo e demais situações → painel lateral (EmpresaDetalhesSheet).
- * Somente SICAF vencido → modal de pagamento / wizard de pendências.
+ * Taxa pendente (Sem SICAF, vencido, sem pagamento, inativo, vencendo…) → wizard/modal de pagamento.
+ * Ativo + pago → painel lateral (EmpresaDetalhesSheet).
  */
 export function shouldGerenciarAbrirPagamentoFromInput(input: SicafTaxaAccessInput): boolean {
-  return normalizeSicafStatus(input.status) === "Vencido";
+  return needsSicafTaxaPaymentFromInput(input);
 }
 
 export function shouldGerenciarAbrirPagamentoFromSicaf(sicaf: SicafDisplayStatus): boolean {
-  return sicaf === "vencido";
+  return sicaf === "vencido" || sicaf === "sem_cadastro" || sicaf === "atencao";
+}
+
+/** Preferir no front quando `taxaPendente` vem da API. */
+export function shouldGerenciarAbrirPagamentoFromEmpresa(empresa: {
+  taxaPendente?: boolean;
+  sicaf?: SicafDisplayStatus;
+}): boolean {
+  if (typeof empresa.taxaPendente === "boolean") return empresa.taxaPendente;
+  return shouldGerenciarAbrirPagamentoFromSicaf(empresa.sicaf ?? "sem_cadastro");
 }

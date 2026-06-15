@@ -2,9 +2,9 @@
  * Pipeline de upload PDF — Situação do Fornecedor / certidões SICAF.
  */
 const pdfParse = require("pdf-parse");
-const { getDb } = require("../database/connection");
+const { getDb } = require("./database/connection");
 const iaService = require("./services/ia.service");
-const { saveCertidoesToDB } = require("../modules/sicaf-assistant/services/certidoes.service");
+const { saveCertidoesToDB } = require("./modules/sicaf-assistant/services/certidoes.service");
 
 function buildAnalysisPrompt(fileName, truncatedText, isSituacaoFornecedor) {
   if (isSituacaoFornecedor) {

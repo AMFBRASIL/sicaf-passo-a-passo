@@ -1087,6 +1087,22 @@ function FinanceiroTab({
     }
 
     toast.success(res.message || "Pagamento autorizado e comprovante registrado");
+    if (res.emailNotificacao?.enviado) {
+      toast.success(
+        res.emailNotificacao.simulado
+          ? "E-mail registrado (SMTP não configurado — modo simulação)"
+          : `E-mail enviado para ${res.emailNotificacao.para || cliente.email || "o cliente"}`,
+        {
+          description: "Cliente informado que o processo foi iniciado e pode enviar a documentação.",
+        },
+      );
+    } else if (res.emailNotificacao && !res.emailNotificacao.enviado) {
+      const motivo =
+        res.emailNotificacao.motivo === "sem_email_destino"
+          ? "Cliente sem e-mail cadastrado — aviso não enviado."
+          : res.emailNotificacao.erro || "Não foi possível enviar o e-mail ao cliente.";
+      toast.warning(motivo);
+    }
     setFaturas((prev) =>
       prev.map((f) =>
         f.id === faturaAtiva.id

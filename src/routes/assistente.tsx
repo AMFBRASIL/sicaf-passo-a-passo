@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
   Dialog,
   DialogContent,
@@ -33,7 +34,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader, StatusBadge } from "@/components/page-header";
 import { CopyButton } from "@/components/copy-button";
 import { NIVEIS_SICAF, type NivelStatus } from "@/components/admin/nivel-dots";
 import { ComparadorSicaf, type SnapshotSicaf } from "@/components/comparador-sicaf";
@@ -53,14 +54,19 @@ import {
 import {
   analisarSituacaoPdf,
   buildComparadorSnapshots,
+  certidoesPorNivel,
   fetchAnaliseDetalhe,
   fetchAssistentePainel,
   fetchHistoricoAnalises,
   mapNiveisFromPainel,
   mapPendenciasFromAnalise,
+  pendenciasPorNivel,
   type AssistenteHistoricoItem,
   type AssistentePendencia,
+  type PendenciaNivelResumo,
 } from "@/lib/assistente-api";
+import type { GerenciarItem, EmpresaGerenciarPainel } from "@/lib/empresas-api";
+import { countNiveisValidadosUi, mapNiveisFromEvidencias, mapSicafPainelStatus, nivelBolinhaVisual, todosNiveisValidadosUi } from "@/lib/nivel-status";
 import { pagamentoSicafConfirmado } from "@/lib/sicaf-page-api";
 
 const SICAF_BUTTON_CLASS =
@@ -112,38 +118,114 @@ const severidadeMeta = {
   },
 } as const;
 
-/** Bolinha colorida só com dados reais do Assistente; caso contrário, cinza. */
-function nivelBolinhaVisual(status: NivelStatus, nivelColor: string) {
-  if (status === "validado") {
-    return {
-      circleClass: "text-white",
-      circleStyle: { backgroundColor: nivelColor } as const,
-      ring: "ring-success/30",
-      badgeDot: "bg-success",
-    };
-  }
-  if (status === "vencendo") {
-    return {
-      circleClass: "bg-warning text-warning-foreground",
-      circleStyle: undefined,
-      ring: "ring-warning/40",
-      badgeDot: "bg-warning",
-    };
-  }
-  if (status === "vencido") {
-    return {
-      circleClass: "bg-danger text-danger-foreground",
-      circleStyle: undefined,
-      ring: "ring-danger/40",
-      badgeDot: "bg-danger",
-    };
-  }
-  return {
-    circleClass: "bg-muted-foreground/20 text-muted-foreground",
-    circleStyle: undefined,
-    ring: "ring-border/60",
-    badgeDot: "bg-muted-foreground/40",
-  };
+const nivelStatusLabel: Record<NivelStatus, string> = {
+  validado: "Validado",
+  vencendo: "Vencendo em breve",
+  vencido: "Vencido",
+  pendente: "Pendente",
+  nao_cadastrado: "Não cadastrado",
+};
+
+function nivelStatusTone(status: NivelStatus): "ok" | "warn" | "danger" | "idle" {
+  if (status === "validado") return "ok";
+  if (status === "vencendo" || status === "pendente") return "warn";
+  if (status === "vencido") return "danger";
+  return "idle";
+}
+
+function AssistenteNivelHoverContent({
+  nivel,
+  status,
+  certidoes,
+  pendenciasNivel,
+  observacao,
+}: {
+  nivel: (typeof NIVEIS_SICAF)[number];
+  status: NivelStatus;
+  certidoes: GerenciarItem[];
+  pendenciasNivel: PendenciaNivelResumo[];
+  observacao?: string;
+}) {
+  const tone = nivelStatusTone(status);
+
+  return (
+    <>
+      <div
+        className="flex items-center gap-2 rounded-t-md px-3 py-2 text-white"
+        style={{ backgroundColor: nivel.color }}
+      >
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
+          {nivel.roman}
+        </span>
+        <div className="text-xs">
+          <p className="font-semibold leading-tight">Nível {nivel.roman}</p>
+          <p className="text-[11px] opacity-90 leading-tight">{nivel.nome}</p>
+        </div>
+      </div>
+      <div className="max-h-72 space-y-3 overflow-y-auto p-3 text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-muted-foreground">Situação</span>
+          <StatusBadge status={tone}>{nivelStatusLabel[status]}</StatusBadge>
+        </div>
+
+        {observacao ? (
+          <p className="rounded-md bg-muted/60 p-2 text-[11px] text-muted-foreground">{observacao}</p>
+        ) : null}
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Certidões e documentos
+          </p>
+          {certidoes.length === 0 ? (
+            <p className="rounded-md bg-muted/50 p-2 text-[11px] text-muted-foreground">
+              Nenhuma certidão vinculada a este nível no cadastro.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {certidoes.map((c) => (
+                <li key={`${c.titulo}-${c.descricao}`} className="rounded-md border bg-card/80 p-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-medium leading-tight">{c.titulo}</span>
+                    <StatusBadge status={c.status}>{c.status === "ok" ? "OK" : c.status === "warn" ? "Atenção" : c.status === "danger" ? "Crítico" : "—"}</StatusBadge>
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{c.descricao}</p>
+                  {c.dataValidade ? (
+                    <p className="mt-1 text-[10px] text-muted-foreground">Validade: {c.dataValidade}</p>
+                  ) : null}
+                  {c.emissor ? (
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">Emissor: {c.emissor}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pendências</p>
+          {pendenciasNivel.length === 0 ? (
+            <p className="rounded-md bg-success/10 p-2 text-[11px] text-success">
+              Nenhuma pendência identificada para este nível.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {pendenciasNivel.map((p) => (
+                <li key={p.id} className="rounded-md border border-warning/20 bg-warning/5 p-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-medium leading-tight">{p.titulo}</span>
+                    <StatusBadge status={p.tone}>
+                      {p.tone === "danger" ? "Crítica" : p.tone === "warn" ? "Atenção" : "Info"}
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{p.descricao}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </>
+  );
 }
 
 const SNAPSHOT_VAZIO: SnapshotSicaf = {
@@ -173,7 +255,12 @@ function AssistentePage() {
   const [niveis, setNiveis] = useState<Record<number, NivelStatus>>(NIVEIS_VAZIOS);
   const [historico, setHistorico] = useState<AssistenteHistoricoItem[]>([]);
   const [pendencias, setPendencias] = useState<AssistentePendencia[]>([]);
+  const [certidoes, setCertidoes] = useState<GerenciarItem[]>([]);
+  const [documentos, setDocumentos] = useState<GerenciarItem[]>([]);
+  const [pendenciasPainel, setPendenciasPainel] = useState<GerenciarItem[]>([]);
+  const [niveisDetail, setNiveisDetail] = useState<EmpresaGerenciarPainel["niveisDetail"]>();
   const [sicafValidade, setSicafValidade] = useState<string | undefined>();
+  const [sicafStatus, setSicafStatus] = useState<string | undefined>();
   const [carregando, setCarregando] = useState(false);
   const [ultimaMensagem, setUltimaMensagem] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -202,7 +289,13 @@ function AssistentePage() {
         }
 
         setEmpresaNome(painelRes.painel.cliente.razaoSocial || painelRes.painel.cliente.nomeFantasia || undefined);
-        setNiveis(mapNiveisFromPainel(painelRes.painel.niveisDetail));
+        const painelSicafStatus = painelRes.painel.sicaf?.status;
+        setSicafStatus(painelSicafStatus);
+        setNiveis(mapNiveisFromPainel(painelRes.painel.niveisDetail, painelSicafStatus));
+        setNiveisDetail(painelRes.painel.niveisDetail);
+        setCertidoes(painelRes.painel.certidoes || []);
+        setDocumentos(painelRes.painel.documentos || []);
+        setPendenciasPainel(painelRes.painel.pendencias || []);
         setSicafValidade(painelRes.painel.sicaf?.validade || undefined);
       }
 
@@ -232,6 +325,10 @@ function AssistentePage() {
       setNiveis(NIVEIS_VAZIOS);
       setHistorico([]);
       setPendencias([]);
+      setCertidoes([]);
+      setDocumentos([]);
+      setPendenciasPainel([]);
+      setNiveisDetail(undefined);
       return;
     }
     void resolveEmpresaPorCnpj(cnpj).then((res) => {
@@ -270,6 +367,10 @@ function AssistentePage() {
     setAnalisado(true);
     setPendencias(mapPendenciasFromAnalise(res.analise));
     setUltimaMensagem(res.message || "Análise concluída com sucesso.");
+
+    if (res.niveisEvidencias?.length) {
+      setNiveis(mapNiveisFromEvidencias(res.niveisEvidencias, { sicaf: mapSicafPainelStatus(sicafStatus) }));
+    }
 
     if (res.saveWarning) {
       toast.warning(res.saveWarning);
@@ -311,7 +412,8 @@ function AssistentePage() {
   };
 
   const temPendencias = pendencias.length > 0;
-  const niveisAtivos = Object.values(niveis).filter((s) => s === "validado").length;
+  const niveisAtivos = countNiveisValidadosUi(niveis);
+  const todosNiveisValidados = todosNiveisValidadosUi(niveis);
 
   return (
     <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 sm:py-10">
@@ -401,18 +503,32 @@ function AssistentePage() {
                     Status dos níveis SICAF
                   </p>
                   <h2 className="mt-1 text-2xl font-bold leading-tight">
-                    Seu mapa de regularização
+                    {todosNiveisValidados && !carregando
+                      ? "Cadastro SICAF completo"
+                      : "Seu mapa de regularização"}
                   </h2>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {carregando
                       ? "Carregando níveis do cadastro…"
-                      : `${niveisAtivos} de 6 níveis validados · dados do banco CADBRASIL`}
+                      : todosNiveisValidados
+                        ? "6 de 6 níveis validados · 100% atingido · nível máximo"
+                        : `${niveisAtivos} de 6 níveis validados · dados do banco CADBRASIL`}
                   </p>
                 </div>
-                <Badge variant="outline" className="gap-1.5 border-success/40 bg-success/10 text-success">
-                  <Activity className="h-3 w-3" />
-                  {extensionInstalled ? "Extensão ativa" : "Dados reais"}
-                </Badge>
+                {todosNiveisValidados && !carregando ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 border-success/50 bg-success/15 font-bold text-success"
+                  >
+                    <CheckCircle2 className="h-3 w-3" />
+                    100% · Nível máximo
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1.5 border-success/40 bg-success/10 text-success">
+                    <Activity className="h-3 w-3" />
+                    {extensionInstalled ? "Extensão ativa" : "Dados reais"}
+                  </Badge>
+                )}
               </div>
 
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -422,39 +538,56 @@ function AssistentePage() {
                     validado: { dot: "bg-success", label: "Validado" },
                     vencendo: { dot: "bg-warning", label: "Vencendo" },
                     vencido: { dot: "bg-danger", label: "Vencido" },
-                    pendente: { dot: "bg-muted-foreground/40", label: "Pendente" },
+                    pendente: { dot: "bg-warning", label: "Pendente" },
                     nao_cadastrado: {
                       dot: "bg-muted-foreground/40",
                       label: "Sem cadastro",
                     },
                   }[status];
                   const visual = nivelBolinhaVisual(status, n.color);
-                  const comDados =
-                    status === "validado" || status === "vencendo" || status === "vencido";
+                  const comDados = status !== "nao_cadastrado";
+                  const certidoesNivel = certidoesPorNivel(certidoes, documentos, n.roman);
+                  const pendenciasNivel = pendenciasPorNivel(pendencias, pendenciasPainel, n.roman);
+                  const observacao = niveisDetail?.[n.roman]?.observacao;
                   return (
                     <div
                       key={n.num}
                       className="group relative flex flex-col items-center gap-2 rounded-2xl border bg-card/70 p-4 shadow-soft backdrop-blur transition hover:-translate-y-0.5 hover:shadow-lift"
                     >
-                      <div
-                        className={cn(
-                          "relative flex h-14 w-14 items-center justify-center rounded-full text-base font-black ring-4 transition group-hover:scale-110",
-                          visual.ring,
-                          visual.circleClass,
-                          !comDados && "grayscale",
-                        )}
-                        style={visual.circleStyle}
-                      >
-                        {n.roman}
-                        {comDados && (
-                          <span
+                      <HoverCard openDelay={120} closeDelay={80}>
+                        <HoverCardTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label={`Nível ${n.roman} - ${n.nome}. Passe o mouse para ver certidões e pendências.`}
                             className={cn(
-                              "absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-card",
-                              visual.badgeDot,
+                              "relative flex h-14 w-14 items-center justify-center rounded-full text-base font-black ring-4 transition outline-none hover:scale-110 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                              visual.ring,
+                              visual.circleClass,
+                              !comDados && "grayscale opacity-60",
                             )}
+                            style={visual.circleStyle}
+                          >
+                            {n.roman}
+                            {comDados && (
+                              <span
+                                className={cn(
+                                  "absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-card",
+                                  visual.badgeDot,
+                                )}
+                              />
+                            )}
+                          </button>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80 p-0" side="top" align="center">
+                          <AssistenteNivelHoverContent
+                            nivel={n}
+                            status={status}
+                            certidoes={certidoesNivel}
+                            pendenciasNivel={pendenciasNivel}
+                            observacao={observacao}
                           />
-                        )}
-                      </div>
+                        </HoverCardContent>
+                      </HoverCard>
                       <div className="text-center">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                           Nível {n.roman}
@@ -466,8 +599,8 @@ function AssistentePage() {
                             status === "validado" && "bg-success/15 text-success",
                             status === "vencendo" && "bg-warning/20 text-warning-foreground",
                             status === "vencido" && "bg-danger/15 text-danger",
-                            (status === "pendente" || status === "nao_cadastrado") &&
-                              "bg-muted text-muted-foreground",
+                            status === "pendente" && "bg-warning/20 text-warning-foreground",
+                            status === "nao_cadastrado" && "bg-muted text-muted-foreground",
                           )}
                         >
                           <span className={cn("h-1.5 w-1.5 rounded-full", meta.dot)} />
@@ -478,6 +611,38 @@ function AssistentePage() {
                   );
                 })}
               </div>
+
+              {todosNiveisValidados && !carregando && (
+                <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-success/40 bg-success/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-success/20 text-success">
+                      <CheckCircle2 className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-success px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success-foreground">
+                          100% atingido
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-success">
+                          Nível máximo
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm font-semibold">Todos os 6 níveis SICAF validados</p>
+                      <p className="text-xs text-muted-foreground">
+                        Sua empresa está com cadastro completo. Envie novas Situações do Fornecedor para
+                        manter tudo monitorado.
+                      </p>
+                    </div>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 gap-1 border-success/40 bg-success/15 text-success"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    Pronto para licitar
+                  </Badge>
+                </div>
+              )}
             </CardContent>
           </Card>
 

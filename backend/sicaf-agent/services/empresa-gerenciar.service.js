@@ -44,14 +44,9 @@ function certStatusToUi(status, diasRestantes) {
   return 'idle';
 }
 
-function nivelStatusToUi(status) {
-  const s = String(status || '').toLowerCase();
-  if (s.includes('válid') || s.includes('valid') || s.includes('habilit')) return 'validado';
-  if (s.includes('vencendo') || s.includes('a vencer')) return 'vencendo';
-  if (s.includes('vencid')) return 'vencido';
-  if (s.includes('pend')) return 'pendente';
-  return 'nao_cadastrado';
-}
+const {
+  buildNivelDetailFromRow,
+} = require('../utils/nivel-status');
 
 function isPaidStatus(status) {
   const s = String(status || '').toLowerCase();
@@ -347,10 +342,7 @@ async function getGerenciarPainel(clienteId, usuarioId) {
 
   const niveisDetail = {};
   for (const n of sicafNiveis) {
-    niveisDetail[n.nivel] = {
-      status: nivelStatusToUi(n.status || (n.habilitado ? 'validado' : 'nao_cadastrado')),
-      observacao: n.observacao || undefined,
-    };
+    niveisDetail[n.nivel] = buildNivelDetailFromRow(n);
   }
 
   const hasPaidTaxRecord = taxasSicaf.some((t) => isPaidStatus(t.status));

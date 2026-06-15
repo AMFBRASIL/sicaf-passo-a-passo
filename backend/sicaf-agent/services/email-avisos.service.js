@@ -162,6 +162,7 @@ function buildVars(ctx, mensagemAdicional) {
     data_validade: formatDateBr(sicaf?.data_validade),
     validade_sicaf: formatDateBr(sicaf?.data_validade),
     link_renovar: `${portalBase}/documentos`,
+    link_documentos: `${portalBase}/documentos`,
     link_acesso: `${portalBase}/empresas`,
     link_painel: `${portalBase}/empresas`,
     link_boleto: `${portalBase}/empresas`,

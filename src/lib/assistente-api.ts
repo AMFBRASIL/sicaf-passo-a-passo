@@ -1,7 +1,12 @@
 import { apiFetch } from "@/lib/api-fetch";
 import type { NivelStatus } from "@/components/admin/nivel-dots";
 import type { SnapshotSicaf } from "@/components/comparador-sicaf";
-import { fetchEmpresaGerenciar, type EmpresaGerenciarPainel } from "@/lib/empresas-api";
+import { fetchEmpresaGerenciar, type EmpresaGerenciarPainel, type GerenciarItem } from "@/lib/empresas-api";
+import {
+  mapNiveisFromDetail,
+  mapNiveisFromEvidencias,
+  mapSicafPainelStatus,
+} from "@/lib/nivel-status";
 
 const ROMAN_TO_NUM: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
 
@@ -118,18 +123,11 @@ export function mapPendenciasFromAnalise(analise?: SicafAnaliseJson | null): Ass
 
 export function mapNiveisFromPainel(
   niveisDetail?: EmpresaGerenciarPainel["niveisDetail"],
+  sicafStatus?: string | null,
 ): Record<number, NivelStatus> {
-  const out: Record<number, NivelStatus> = {};
-  for (let i = 1; i <= 6; i++) out[i] = "nao_cadastrado";
-  if (!niveisDetail) return out;
-
-  for (const [key, info] of Object.entries(niveisDetail)) {
-    const num = ROMAN_TO_NUM[key] ?? (Number.isFinite(Number(key)) ? Number(key) : null);
-    if (num && num >= 1 && num <= 6) {
-      out[num] = (info.status as NivelStatus) || "nao_cadastrado";
-    }
-  }
-  return out;
+  return mapNiveisFromDetail(niveisDetail, {
+    sicaf: mapSicafPainelStatus(sicafStatus),
+  });
 }
 
 function mapHistoricoStatus(totalPendencias: number, statusGeral?: string | null): AssistenteHistoricoItem["status"] {
@@ -241,6 +239,7 @@ export type AnalisarSituacaoResult = {
   analiseId?: number | null;
   saveWarning?: string | null;
   niveisResumo?: { nivel?: string; status?: string }[];
+  niveisEvidencias?: { nivel: string; habilitado?: boolean; status?: string; observacao?: string | null }[];
   certidoesInserted?: number;
   certidoesUpdated?: number;
 };
@@ -275,7 +274,82 @@ export async function analisarSituacaoPdf(
     analiseId: data.analiseId ?? null,
     saveWarning: data.saveWarning ?? null,
     niveisResumo: data.niveisResumo as { nivel?: string; status?: string }[] | undefined,
+    niveisEvidencias: data.niveisEvidencias as
+      | { nivel: string; habilitado?: boolean; status?: string; observacao?: string | null }[]
+      | undefined,
     certidoesInserted: Number(data.certidoesInserted) || 0,
     certidoesUpdated: Number(data.certidoesUpdated) || 0,
   };
+}
+
+export function nivelRomanMatch(nivel: string | null | undefined, roman: string): boolean {
+  const r = roman.toUpperCase().trim();
+  const n = String(nivel || "").toUpperCase().trim();
+  if (!n || !r) return false;
+  return n === r || n.startsWith(`${r} `) || n.endsWith(` ${r}`) || n.includes(` ${r} `);
+}
+
+export function pertenceAoNivelRoman(
+  item: { nivel?: string | null; titulo?: string },
+  roman: string,
+): boolean {
+  if (nivelRomanMatch(item.nivel, roman)) return true;
+  const titulo = String(item.titulo || "").toUpperCase();
+  const r = roman.toUpperCase();
+  return titulo.includes(`NÍVEL ${r}`) || titulo.includes(`NIVEL ${r}`) || titulo.startsWith(`${r} —`);
+}
+
+export function certidoesPorNivel(
+  certidoes: GerenciarItem[],
+  documentos: GerenciarItem[],
+  roman: string,
+): GerenciarItem[] {
+  const seen = new Set<string>();
+  const out: GerenciarItem[] = [];
+  for (const item of [...certidoes, ...documentos]) {
+    if (!pertenceAoNivelRoman(item, roman)) continue;
+    const key = `${item.titulo}::${item.descricao}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+export type PendenciaNivelResumo = {
+  id: string;
+  titulo: string;
+  descricao: string;
+  tone: "ok" | "warn" | "danger" | "idle";
+};
+
+export function pendenciasPorNivel(
+  analise: AssistentePendencia[],
+  painel: GerenciarItem[],
+  roman: string,
+): PendenciaNivelResumo[] {
+  const out: PendenciaNivelResumo[] = [];
+  const seen = new Set<string>();
+
+  const push = (id: string, titulo: string, descricao: string, tone: PendenciaNivelResumo["tone"]) => {
+    const key = `${titulo}::${descricao}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ id, titulo, descricao, tone });
+  };
+
+  for (const p of analise) {
+    const raw = p.nivel.replace(/^nível\s*/i, "").trim().toUpperCase();
+    if (raw !== roman.toUpperCase() && !p.nivel.toUpperCase().includes(roman.toUpperCase())) continue;
+    const tone: PendenciaNivelResumo["tone"] =
+      p.severidade === "alta" ? "danger" : p.severidade === "media" ? "warn" : "idle";
+    push(p.id, p.titulo, p.detalhe, tone);
+  }
+
+  for (const p of painel) {
+    if (!pertenceAoNivelRoman(p, roman)) continue;
+    push(`painel-${p.titulo}`, p.titulo, p.descricao, p.status);
+  }
+
+  return out;
 }

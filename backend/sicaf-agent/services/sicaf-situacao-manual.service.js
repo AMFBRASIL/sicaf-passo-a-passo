@@ -41,6 +41,7 @@ function buildResultPayload(result, jsonData) {
     certidoesUpdated: result.certidoesUpdated,
     certidoesCount: result.certidoesCount,
     niveisAfetados: result.niveisAfetados || [],
+    niveisEvidencias: result.niveisEvidencias || [],
     sicafStatus: result.sicafStatus,
     niveisResumo,
     tipoDocumento: jsonData.tipo_documento || null,

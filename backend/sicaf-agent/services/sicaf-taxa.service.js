@@ -209,7 +209,7 @@ async function gerarTaxa(opts) {
  * @param {number} taxaId
  * @returns {Promise<Object>}
  */
-async function confirmarPagamento(taxaId, usuarioId) {
+async function confirmarPagamento(taxaId, usuarioId, extra = {}) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
@@ -289,12 +289,36 @@ async function confirmarPagamento(taxaId, usuarioId) {
 
     console.log(`[Taxa SICAF] Pagamento confirmado: taxa=${taxaId}, SICAF=${taxa.sicaf_id} → Ativo até ${validadeStr} (por usuário ${usuarioId || 'sistema'})`);
 
+    let emailNotificacao = { enviado: false, motivo: 'skip_email' };
+    if (!extra.skipEmail) {
+      try {
+        const pagamentoEmail = require('./pagamento-confirmado-email.service');
+        emailNotificacao = await pagamentoEmail.enviarAposConfirmacao({
+          clienteId: taxa.cliente_id,
+          taxa,
+          novaValidade: validadeStr,
+          formaPagamento: extra.formaPagamento || taxa.forma_pagamento,
+          observacoes: extra.observacoes,
+          usuarioId,
+        });
+        if (emailNotificacao.enviado) {
+          console.log(`[Taxa SICAF] E-mail processo iniciado enviado para cliente ${taxa.cliente_id}`);
+        } else if (emailNotificacao.motivo !== 'sem_email_destino') {
+          console.warn('[Taxa SICAF] E-mail processo iniciado não enviado:', emailNotificacao.motivo, emailNotificacao.erro || '');
+        }
+      } catch (emailErr) {
+        emailNotificacao = { enviado: false, motivo: 'erro_envio', erro: emailErr.message };
+        console.error('[Taxa SICAF] Erro ao enviar e-mail pós-pagamento:', emailErr.message);
+      }
+    }
+
     return {
       ok: true,
       message: 'Pagamento confirmado! SICAF ativado com sucesso.',
       sicafId: taxa.sicaf_id,
       novaValidade: validadeStr,
       diasValidade,
+      emailNotificacao,
     };
   } catch (e) {
     console.error('[Taxa SICAF] Erro confirmarPagamento:', e.message);

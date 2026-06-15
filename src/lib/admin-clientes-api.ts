@@ -408,6 +408,14 @@ export async function autorizarPagamentoComComprovante(payload: {
     comprovanteId?: number;
     novaValidade?: string;
     diasValidade?: number;
+    emailNotificacao?: {
+      enviado: boolean;
+      simulado?: boolean;
+      motivo?: string;
+      erro?: string;
+      para?: string;
+      templateNome?: string;
+    };
   }>;
 }
 
