@@ -257,6 +257,180 @@ async function fetchClientesPorPalavra(db, sinceStr, palavra) {
   }));
 }
 
+async function fetchPagosDetalhePorPalavra(db, sinceStr, palavra) {
+  if (!palavra?.trim()) {
+    return {
+      clientes: [],
+      resumo: { totalClientes: 0, totalPagamentos: 0, totalValor: 0, totalValorFormatado: formatCurrencyBR(0) },
+    };
+  }
+
+  const term = palavra.trim().toLowerCase();
+  const sessoes = await safeQuery([], () =>
+    db('tracking_sessoes as ts')
+      .where('ts.created_at', '>=', sinceStr)
+      .whereRaw('LOWER(TRIM(ts.utm_term)) = ?', [term])
+      .modify((qb) => googleAdsFilter(qb))
+      .whereNotNull('ts.cliente_id')
+      .groupBy('ts.cliente_id')
+      .select(
+        'ts.cliente_id',
+        db.raw('COUNT(*) as sessoes'),
+        db.raw('MIN(ts.created_at) as primeira_sessao'),
+        db.raw('MAX(ts.created_at) as ultima_sessao'),
+      ),
+  );
+
+  const clienteIds = sessoes.map((s) => s.cliente_id).filter(Boolean);
+  if (!clienteIds.length) {
+    return {
+      clientes: [],
+      resumo: { totalClientes: 0, totalPagamentos: 0, totalValor: 0, totalValorFormatado: formatCurrencyBR(0) },
+    };
+  }
+
+  const sessoesMap = Object.fromEntries(sessoes.map((s) => [s.cliente_id, s]));
+  const clientesRows = await safeQuery([], () =>
+    db('clientes')
+      .whereIn('id', clienteIds)
+      .select('id', 'razao_social', 'nome_fantasia', 'documento', 'email', 'telefone', 'created_at'),
+  );
+
+  const pagamentos = [];
+  const hasPg = await hasTable(db, 'pagamentos_gerencianet');
+  const hasTaxa = await hasTable(db, 'taxas_sicaf');
+
+  if (hasPg) {
+    const pgRows = await safeQuery([], () =>
+      db('pagamentos_gerencianet as p')
+        .whereIn('p.cliente_id', clienteIds)
+        .whereRaw(PG_PAGO_WHERE)
+        .whereRaw('COALESCE(p.data_pagamento, p.updated_at, p.created_at) >= ?', [sinceStr])
+        .select(
+          'p.id',
+          'p.cliente_id',
+          'p.valor',
+          'p.status',
+          'p.data_pagamento',
+          'p.created_at',
+          'p.updated_at',
+          'p.tipo',
+          'p.descricao',
+        ),
+    );
+    for (const r of pgRows) {
+      pagamentos.push({
+        id: `pg-${r.id}`,
+        clienteId: r.cliente_id,
+        origem: 'gerencianet',
+        origemLabel: 'Gerencianet',
+        valor: toNumber(r.valor),
+        dataPagamento: r.data_pagamento || r.updated_at || r.created_at,
+        status: r.status,
+        descricao: r.descricao || r.tipo || 'Pagamento',
+        forma: r.tipo || null,
+      });
+    }
+  }
+
+  if (hasTaxa) {
+    const txRows = await safeQuery([], () =>
+      db('taxas_sicaf as t')
+        .whereIn('t.cliente_id', clienteIds)
+        .whereRaw(TAXA_SICAF_PAGA_WHERE)
+        .whereRaw('COALESCE(t.data_pagamento, t.created_at) >= ?', [sinceStr])
+        .select(
+          't.id',
+          't.cliente_id',
+          't.valor',
+          't.status',
+          't.data_pagamento',
+          't.created_at',
+          't.descricao',
+          't.ano_referencia',
+          't.forma_pagamento',
+        ),
+    );
+    for (const r of txRows) {
+      pagamentos.push({
+        id: `tx-${r.id}`,
+        clienteId: r.cliente_id,
+        origem: 'sicaf',
+        origemLabel: 'Taxa SICAF',
+        valor: toNumber(r.valor),
+        dataPagamento: r.data_pagamento || r.created_at,
+        status: r.status,
+        descricao: r.descricao || (r.ano_referencia ? `Taxa SICAF ${r.ano_referencia}` : 'Taxa SICAF'),
+        forma: r.forma_pagamento || null,
+      });
+    }
+  }
+
+  const byCliente = new Map();
+  for (const p of pagamentos) {
+    if (!byCliente.has(p.clienteId)) byCliente.set(p.clienteId, []);
+    byCliente.get(p.clienteId).push(p);
+  }
+
+  const clientes = [];
+  for (const c of clientesRows) {
+    const pays = byCliente.get(c.id);
+    if (!pays?.length) continue;
+
+    const sess = sessoesMap[c.id];
+    const valorTotal = pays.reduce((s, p) => s + p.valor, 0);
+    const datas = pays
+      .map((p) => new Date(p.dataPagamento))
+      .filter((d) => !Number.isNaN(d.getTime()));
+    const primeiroPagamento = datas.length
+      ? new Date(Math.min(...datas.map((d) => d.getTime()))).toISOString()
+      : null;
+    const ultimoPagamento = datas.length
+      ? new Date(Math.max(...datas.map((d) => d.getTime()))).toISOString()
+      : null;
+
+    let diasAtePagar = null;
+    if (sess?.primeira_sessao && primeiroPagamento) {
+      const diff = new Date(primeiroPagamento).getTime() - new Date(sess.primeira_sessao).getTime();
+      diasAtePagar = Math.max(0, Math.ceil(diff / 86400000));
+    }
+
+    clientes.push({
+      clienteId: c.id,
+      nome: fixMojibake(c.razao_social || c.nome_fantasia || 'Cliente'),
+      documento: c.documento,
+      email: c.email || null,
+      telefone: c.telefone || null,
+      cadastroEm: c.created_at,
+      sessoes: toNumber(sess?.sessoes),
+      primeiraSessao: sess?.primeira_sessao || null,
+      ultimaSessao: sess?.ultima_sessao || null,
+      pagamentos: pays.sort(
+        (a, b) => new Date(b.dataPagamento).getTime() - new Date(a.dataPagamento).getTime(),
+      ),
+      valorTotal,
+      valorTotalFormatado: formatCurrencyBR(valorTotal),
+      qtdPagamentos: pays.length,
+      primeiroPagamento,
+      ultimoPagamento,
+      diasAtePagar,
+    });
+  }
+
+  clientes.sort((a, b) => b.valorTotal - a.valorTotal);
+  const totalValor = clientes.reduce((s, c) => s + c.valorTotal, 0);
+
+  return {
+    clientes,
+    resumo: {
+      totalClientes: clientes.length,
+      totalPagamentos: pagamentos.length,
+      totalValor,
+      totalValorFormatado: formatCurrencyBR(totalValor),
+    },
+  };
+}
+
 function enrichPalavrasMetrics(palavras, investimento) {
   const totalReceita = palavras.reduce((s, p) => s + p.receita, 0);
   const totalPagos = palavras.reduce((s, p) => s + p.pagos, 0);
@@ -289,6 +463,18 @@ async function getAdminGoogleAds(opts = {}) {
 
   const { days, sinceStr } = sinceDate(opts.days);
   const palavraDetalhe = String(opts.palavra || '').trim();
+  const somentePagos =
+    opts.pagos === true || opts.pagos === 1 || opts.pagos === '1' || opts.pagos === 'true';
+
+  if (palavraDetalhe && somentePagos) {
+    const pagosDetalhe = await fetchPagosDetalhePorPalavra(db, sinceStr, palavraDetalhe);
+    return {
+      ok: true,
+      periodo: { days, since: sinceStr },
+      palavra: palavraDetalhe,
+      pagosDetalhe,
+    };
+  }
 
   const [totalsRow, investimento, palavrasBase, clientesPorPalavra] = await Promise.all([
     safeQuery({}, () => {

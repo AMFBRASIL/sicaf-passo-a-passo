@@ -22,8 +22,9 @@ export async function GET(request: Request) {
       status: url.searchParams.get("status") || "all",
       sicaf: url.searchParams.get("sicaf") || "all",
       city: url.searchParams.get("city") || "all",
-      page: parseInt(url.searchParams.get("page") || "1", 10),
-      limit: parseInt(url.searchParams.get("limit") || "200", 10),
+      filtro: url.searchParams.get("filtro") || "todos",
+      page: Math.max(1, parseInt(url.searchParams.get("page") || "1", 10)),
+      limit: Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "25", 10))),
     });
     const err = typeof result.error === "string" ? result.error : "";
     return NextResponse.json(result, {

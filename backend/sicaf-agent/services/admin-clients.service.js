@@ -10,6 +10,47 @@ const MANUTENCAO_ATIVA = ['Ativo', 'ativo', 'A Vencer', 'a vencer', 'Vencendo', 
 const TAXA_SICAF_PAGA_WHERE =
   "(LOWER(TRIM(CAST(status AS CHAR))) IN ('pago','paga','aprovado','aprovada') OR status IN ('Pago','Paga','pago','paga','Aprovado','Aprovada','aprovado','aprovada'))";
 
+const TAXA_SICAF_PAGA_TS_WHERE =
+  "(LOWER(TRIM(CAST(ts.status AS CHAR))) IN ('pago','paga','aprovado','aprovada') OR ts.status IN ('Pago','Paga','pago','paga','Aprovado','Aprovada','aprovado','aprovada'))";
+
+const NIVEL_APTO_SQL = `sn.habilitado = 1 AND (
+  LOWER(CAST(sn.status AS CHAR)) LIKE '%valid%'
+  OR LOWER(CAST(sn.status AS CHAR)) LIKE '%habilit%'
+  OR LOWER(CAST(sn.status AS CHAR)) LIKE '%vencend%'
+  OR LOWER(CAST(sn.status AS CHAR)) LIKE '%vencid%'
+)`;
+
+async function fetchGlobalAdminStats() {
+  const db = getDb();
+  if (!db) return { totalClientes: 0, totalCnpjs: 0, emRisco: 0, mrr: 0 };
+  try {
+    const [cnpjRow, userRow, riscoRow, mrrRow] = await Promise.all([
+      db('clientes').count({ total: 'id' }).first(),
+      db('clientes').whereNotNull('usuario_id').countDistinct({ total: 'usuario_id' }).first().catch(() => ({ total: 0 })),
+      db('clientes as c')
+        .leftJoin('sicaf_cadastros as s', 'c.id', 's.cliente_id')
+        .where(function () {
+          this.where('s.status', 'Vencido').orWhereNull('s.id');
+        })
+        .countDistinct({ total: 'c.id' })
+        .first(),
+      db('manutencoes')
+        .whereIn('status', MANUTENCAO_ATIVA)
+        .sum({ total: 'valor' })
+        .first()
+        .catch(() => ({ total: 0 })),
+    ]);
+    return {
+      totalClientes: parseInt(userRow?.total, 10) || 0,
+      totalCnpjs: parseInt(cnpjRow?.total, 10) || 0,
+      emRisco: parseInt(riscoRow?.total, 10) || 0,
+      mrr: parseFloat(mrrRow?.total) || 0,
+    };
+  } catch (_) {
+    return { totalClientes: 0, totalCnpjs: 0, emRisco: 0, mrr: 0 };
+  }
+}
+
 async function enrichClients(clients) {
   const db = getDb();
   const userIds = [...new Set(clients.map((c) => c.userId).filter(Boolean))];
@@ -134,7 +175,7 @@ function buildStats(enriched, groups) {
 }
 
 /**
- * Após a busca inicial, traz todos os CNPJs do mesmo login (usuario_id).
+ * Após busca por CNPJ/e-mail, expande portfólio do login — apenas para modal de grupo, não na listagem paginada.
  */
 async function expandToRelatedPortfolio(matchedClients, search) {
   const db = getDb();
@@ -172,43 +213,44 @@ async function expandToRelatedPortfolio(matchedClients, search) {
 async function listClientsForAdmin(params = {}) {
   const search = params.search || '';
   const hasUsuarioFilter = Array.isArray(params.usuarioIds) && params.usuarioIds.length > 0;
+  const page = Math.max(1, parseInt(params.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(params.limit, 10) || 25));
+  const adminFiltro = params.filtro || params.adminFiltro || 'todos';
 
-  const result = await clientsService.listClients({
-    search: hasUsuarioFilter ? '' : search,
-    status: params.status || 'all',
-    sicaf: params.sicaf || 'all',
-    city: params.city || 'all',
-    page: params.page || 1,
-    limit: params.limit || 200,
-    usuarioIds: hasUsuarioFilter ? params.usuarioIds : undefined,
-  });
+  const [result, globalStats] = await Promise.all([
+    clientsService.listClients({
+      search: hasUsuarioFilter ? '' : search,
+      status: params.status || 'all',
+      sicaf: params.sicaf || 'all',
+      city: params.city || 'all',
+      page,
+      limit,
+      usuarioIds: hasUsuarioFilter ? params.usuarioIds : undefined,
+      adminFiltro: hasUsuarioFilter ? 'todos' : adminFiltro,
+    }),
+    hasUsuarioFilter ? Promise.resolve(null) : fetchGlobalAdminStats(),
+  ]);
   if (!result.ok) return result;
 
-  let clients = result.clients || [];
-
-  // CNPJ / e-mail / nome: incluir todo o portfólio vinculado ao mesmo login
-  if (search.trim() && !hasUsuarioFilter) {
-    clients = await expandToRelatedPortfolio(clients, search);
-  }
-
+  const clients = result.clients || [];
   const enriched = await enrichClients(clients);
-  const groups = buildGroups(enriched);
-  const stats = buildStats(enriched, groups);
+  const total = parseInt(result.total, 10) || 0;
 
-  const total = parseInt(result.total, 10) || enriched.length;
-  const limit = params.limit || 200;
-  const page = params.page || 1;
-
-  return {
+  const response = {
     ok: true,
     clients: enriched,
-    groups,
     total,
     page,
     limit,
     totalPages: limit > 0 ? Math.ceil(total / limit) : 1,
-    stats: { ...stats, ...(result.stats || {}) },
+    stats: globalStats || buildStats(enriched, buildGroups(enriched)),
   };
+
+  if (params.includeGroups) {
+    response.groups = buildGroups(enriched);
+  }
+
+  return response;
 }
 
 /**
@@ -235,7 +277,7 @@ async function getGrupoForAdmin({ grupoId, clienteId } = {}) {
   }
 
   if (usuarioId && Number.isFinite(usuarioId)) {
-    const result = await listClientsForAdmin({ usuarioIds: [usuarioId], limit: 500 });
+    const result = await listClientsForAdmin({ usuarioIds: [usuarioId], limit: 500, includeGroups: true });
     if (!result.ok) return result;
     const grupo = result.groups.find((g) => g.id === `u-${usuarioId}`) || result.groups[0];
     return { ok: true, grupo, groups: result.groups };

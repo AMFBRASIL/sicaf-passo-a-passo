@@ -15,6 +15,7 @@ const {
   isSicafDisplayValid,
   enrichSicafRow,
 } = require('../utils/sicaf-status');
+const { buildNiveisDetailFromRows } = require('../utils/nivel-status');
 const { fixMojibake } = require('../utils/text-encoding');
 const bcrypt = require('bcryptjs');
 
@@ -85,10 +86,78 @@ function formatCpfFromDigits(d) {
   return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
 }
 
+const MANUTENCAO_ATIVA_LIST = ['Ativo', 'ativo', 'A Vencer', 'a vencer', 'Vencendo', 'vencendo'];
+const TAXA_SICAF_PAGA_TS_WHERE =
+  "(LOWER(TRIM(CAST(ts.status AS CHAR))) IN ('pago','paga','aprovado','aprovada') OR ts.status IN ('Pago','Paga','pago','paga','Aprovado','Aprovada','aprovado','aprovada'))";
+const NIVEL_APTO_SQL = `sn.habilitado = 1 AND (
+  LOWER(CAST(sn.status AS CHAR)) LIKE '%valid%'
+  OR LOWER(CAST(sn.status AS CHAR)) LIKE '%habilit%'
+  OR LOWER(CAST(sn.status AS CHAR)) LIKE '%vencend%'
+  OR LOWER(CAST(sn.status AS CHAR)) LIKE '%vencid%'
+)`;
+
+function applyAdminFiltro(query, db, filtro) {
+  const f = String(filtro || 'todos');
+  if (!f || f === 'todos' || f === 'sicaf_ok' || f === 'sicaf_pendente') return query;
+
+  if (f === 'manutencao') {
+    return query.whereExists(function () {
+      this.select(db.raw('1'))
+        .from('manutencoes as m')
+        .whereRaw('m.cliente_id = c.id')
+        .whereIn('m.status', MANUTENCAO_ATIVA_LIST);
+    });
+  }
+
+  if (f === 'novo') {
+    return query.where('c.created_at', '>=', db.raw('DATE_SUB(UTC_TIMESTAMP(), INTERVAL 30 DAY)'));
+  }
+
+  if (f === 'pagou') {
+    return query.whereExists(function () {
+      this.select(db.raw('1'))
+        .from('taxas_sicaf as ts')
+        .whereRaw('ts.cliente_id = c.id')
+        .whereRaw(TAXA_SICAF_PAGA_TS_WHERE);
+    });
+  }
+
+  if (f === 'nao_pagou') {
+    return query.whereNotExists(function () {
+      this.select(db.raw('1'))
+        .from('taxas_sicaf as ts')
+        .whereRaw('ts.cliente_id = c.id')
+        .whereRaw(TAXA_SICAF_PAGA_TS_WHERE);
+    });
+  }
+
+  if (f === 'apto') {
+    return query.whereExists(function () {
+      this.select(db.raw('1'))
+        .from('sicaf_niveis as sn')
+        .join('sicaf_cadastros as sc', 'sc.id', 'sn.sicaf_id')
+        .whereRaw('sc.cliente_id = c.id')
+        .whereRaw(NIVEL_APTO_SQL);
+    });
+  }
+
+  if (f === 'inapto') {
+    return query.whereNotExists(function () {
+      this.select(db.raw('1'))
+        .from('sicaf_niveis as sn')
+        .join('sicaf_cadastros as sc', 'sc.id', 'sn.sicaf_id')
+        .whereRaw('sc.cliente_id = c.id')
+        .whereRaw(NIVEL_APTO_SQL);
+    });
+  }
+
+  return query;
+}
+
 /**
  * Lista todos os clientes com dados agregados (SICAF, certidões, licitações).
  */
-async function listClients({ search, status, sicaf, city, page = 1, limit = 50, usuarioIds } = {}) {
+async function listClients({ search, status, sicaf, city, page = 1, limit = 50, usuarioIds, adminFiltro } = {}) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
@@ -212,6 +281,8 @@ async function listClients({ search, status, sicaf, city, page = 1, limit = 50, 
         query = query.where('c.cidade', 'like', `%${city}%`);
       }
     }
+
+    query = applyAdminFiltro(query, db, adminFiltro);
 
     // Ordenar e paginar (mais recentes primeiro)
     let mainQuery = query.clone().orderBy('c.created_at', 'desc');
@@ -581,6 +652,7 @@ async function getClientById(id) {
         documentos,
         historico,
         niveisSicaf,
+        niveisDetail: buildNiveisDetailFromRows(sicafNiveisDb),
         renovacoes,
         taxas,
         loginLogs,

@@ -45,6 +45,7 @@ import {
   type GoogleAdsPalavra,
   type GoogleAdsClientePalavra,
 } from "@/lib/admin-google-ads-api";
+import { GoogleAdsPagosModal } from "@/components/admin/google-ads-pagos-modal";
 
 export const Route = createFileRoute("/admin/google-ads")({
   component: GoogleAdsPage,
@@ -64,7 +65,9 @@ function GoogleAdsPage() {
   const [palavras, setPalavras] = useState<GoogleAdsPalavra[]>([]);
   const [notas, setNotas] = useState<string[]>([]);
   const [detalheOpen, setDetalheOpen] = useState(false);
+  const [pagosOpen, setPagosOpen] = useState(false);
   const [palavraSel, setPalavraSel] = useState<GoogleAdsPalavra | null>(null);
+  const [palavraPagosSel, setPalavraPagosSel] = useState<GoogleAdsPalavra | null>(null);
   const [clientes, setClientes] = useState<GoogleAdsClientePalavra[]>([]);
   const [loadingDetalhe, setLoadingDetalhe] = useState(false);
 
@@ -90,6 +93,12 @@ function GoogleAdsPage() {
     [palavras],
   );
   const maxFat = Math.max(...chartData.map((p) => p.fat), 1);
+
+  const abrirPagos = (p: GoogleAdsPalavra) => {
+    if (p.pagos <= 0) return;
+    setPalavraPagosSel(p);
+    setPagosOpen(true);
+  };
 
   const abrirDetalhe = async (p: GoogleAdsPalavra) => {
     setPalavraSel(p);
@@ -253,15 +262,28 @@ function GoogleAdsPage() {
                         <td className="px-3 py-3 text-right">{p.clicks}</td>
                         <td className="px-3 py-3 text-right">{p.cadastros}</td>
                         <td className="px-3 py-3 text-right">
-                          <Badge
-                            variant={p.pagos > 0 ? "default" : "secondary"}
-                            className="text-[10px]"
-                          >
-                            {p.pagos}
-                            {p.pagosValidados && (
-                              <CheckCircle2 className="ml-1 inline h-3 w-3" />
-                            )}
-                          </Badge>
+                          {p.pagos > 0 ? (
+                            <button
+                              type="button"
+                              title={`Ver ${p.pagos} cliente(s) que pagaram`}
+                              className="inline-flex rounded-full outline-none transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirPagos(p);
+                              }}
+                            >
+                              <Badge variant="default" className="cursor-pointer text-[10px]">
+                                {p.pagos}
+                                {p.pagosValidados && (
+                                  <CheckCircle2 className="ml-1 inline h-3 w-3" />
+                                )}
+                              </Badge>
+                            </button>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px]">
+                              0
+                            </Badge>
+                          )}
                         </td>
                         <td className="px-3 py-3 text-right font-semibold text-emerald-600">
                           {p.receitaFormatada}
@@ -314,6 +336,13 @@ function GoogleAdsPage() {
           )}
         </>
       )}
+
+      <GoogleAdsPagosModal
+        open={pagosOpen}
+        onOpenChange={setPagosOpen}
+        palavra={palavraPagosSel}
+        days={parseInt(days, 10)}
+      />
 
       <Sheet open={detalheOpen} onOpenChange={setDetalheOpen}>
         <SheetContent className="w-full sm:max-w-lg">

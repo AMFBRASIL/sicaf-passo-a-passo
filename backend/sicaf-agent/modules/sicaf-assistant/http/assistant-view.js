@@ -212,31 +212,10 @@ var chatEnabled = false;
 var aiResponding = false;
 var currentStep = '';
 var checklistIdx = -1;
-var LOCAL_CHAT_DEBUG = /localhost|127\.0\.0\.1/i.test(window.location.hostname) ||
-  /localhost|127\.0\.0\.1/i.test(API);
-function _debugString(v) {
-  if (typeof v === 'string') return v;
-  try { return JSON.stringify(v); } catch (_) { return String(v); }
-}
-function _escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+var LOCAL_CHAT_DEBUG = false;
 function dbg() {
-  if (!LOCAL_CHAT_DEBUG) return;
-  var args = [].slice.call(arguments);
-  try { console.log.apply(console, ['[SICAF Chat][DEBUG]'].concat(args)); } catch (_) {}
-  try {
-    var stamp = new Date().toLocaleTimeString('pt-BR');
-    var line = args.map(_debugString).join(' | ');
-    addMsg('debug', _escapeHtml('[' + stamp + '] ' + line));
-  } catch (_) {}
+  /* debug desativado — use apenas para desenvolvimento local se necessário */
 }
-dbg('Debug local ativo.', { api: API, host: window.location.hostname });
 
 var LOGIN_STEPS = ['Acessar o portal SICAF','Entrar com Gov.br','Certificado Digital','Autenticação','Painel do fornecedor'];
 var STEP_MAP = {

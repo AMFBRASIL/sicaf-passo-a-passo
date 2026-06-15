@@ -61,6 +61,7 @@ import {
   mapHistoricoFromApi,
   mapTicketsToUi,
   mergeDetalheFromApi,
+  calcCompletudeSicafUi,
   type DocumentoUi,
   type DocumentosPainelUi,
   type FaturaUi,
@@ -206,9 +207,7 @@ export function ClienteDetalheModal({
     .map((p) => p[0])
     .join("");
 
-  const validados = Object.values(exibicao.niveis).filter((s) => s === "validado").length;
-  const totalNiveis = NIVEIS_SICAF.length;
-  const completude = Math.round((validados / totalNiveis) * 100);
+  const completude = calcCompletudeSicafUi(exibicao.niveis);
 
   const stepIndex = STEPS.findIndex((s) => s.key === step);
   const progress = Math.round(((stepIndex + 1) / STEPS.length) * 100);

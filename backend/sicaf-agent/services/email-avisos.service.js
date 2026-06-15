@@ -272,6 +272,7 @@ async function enviarAvisoCliente({
   mensagemAdicional,
   assuntoCustom,
   usuarioId,
+  extraVars,
 }) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
@@ -285,7 +286,7 @@ async function enviarAvisoCliente({
   const ctx = await loadClienteContext(db, clienteId);
   if (!ctx) return { ok: false, error: 'Cliente não encontrado' };
 
-  const vars = buildVars(ctx, mensagemAdicional);
+  const vars = { ...buildVars(ctx, mensagemAdicional), ...(extraVars || {}) };
   const { assunto, html } = renderTemplate(template, vars, mensagemAdicional, assuntoCustom);
 
   let envio = { sent: false, skipped: true };

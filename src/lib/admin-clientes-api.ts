@@ -4,8 +4,14 @@ import type { ClienteGrupo } from "@/components/admin/cliente-empresas-modal";
 import type { NivelStatus } from "@/components/admin/nivel-dots";
 import type { NovoClienteData } from "@/components/admin/novo-cliente-modal";
 import type { TicketItem } from "@/components/admin/ticket-resposta-modal";
+import {
+  mapNiveisFromDetail,
+  mapNiveisFromEvidencias,
+  mapSicafPainelStatus,
+  countNiveisValidadosUi,
+  todosNiveisValidadosUi,
+} from "@/lib/nivel-status";
 
-const ROMAN_TO_NUM: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
 
 export type ApiAdminClient = {
   id: number;
@@ -48,40 +54,59 @@ export type ApiAdminGroup = {
   empresas: ApiAdminClient[];
 };
 
-function mapNivelStatus(raw?: string | null, habilitado?: boolean): NivelStatus {
-  const s = String(raw || "").toLowerCase();
-  if (s.includes("vencido")) return "vencido";
-  if (s.includes("vencendo") || s.includes("a vencer")) return "vencendo";
-  if (s.includes("pendente")) return "pendente";
-  if (s.includes("válido") || s.includes("valido") || s.includes("habilitado") || s.includes("ativo")) {
-    return "validado";
+function mapNiveisFromSicafNiveisRecord(
+  sicafNiveis?: ApiAdminClient["sicafNiveis"],
+  sicafStatus?: string | null,
+): Record<number, NivelStatus> {
+  if (!sicafNiveis || typeof sicafNiveis !== "object") {
+    return mapNiveisFromDetail(undefined, { sicaf: mapSicafPainelStatus(sicafStatus) });
   }
-  if (habilitado) return "validado";
-  return "nao_cadastrado";
+
+  const evidencias = Object.entries(sicafNiveis).map(([nivel, detail]) => ({
+    nivel,
+    habilitado: Boolean(detail?.habilitado),
+    status: detail?.status || undefined,
+  }));
+
+  return mapNiveisFromEvidencias(evidencias, { sicaf: mapSicafPainelStatus(sicafStatus) });
 }
 
 export function mapNiveisFromApi(
   sicafNiveis?: ApiAdminClient["sicafNiveis"],
   niveisSicaf?: { level: string; status?: string }[],
+  opts?: {
+    sicafStatus?: string | null;
+    niveisDetail?: Record<string, { status: string; observacao?: string }>;
+  },
 ): Record<number, NivelStatus> {
-  const out: Record<number, NivelStatus> = {};
+  if (opts?.niveisDetail && Object.keys(opts.niveisDetail).length > 0) {
+    return mapNiveisFromDetail(opts.niveisDetail, { sicaf: mapSicafPainelStatus(opts.sicafStatus) });
+  }
+
+  if (sicafNiveis && Object.keys(sicafNiveis).length > 0) {
+    return mapNiveisFromSicafNiveisRecord(sicafNiveis, opts?.sicafStatus);
+  }
+
   if (niveisSicaf?.length) {
-    for (const n of niveisSicaf) {
-      const num = ROMAN_TO_NUM[n.level];
-      if (num) out[num] = mapNivelStatus(n.status);
-    }
+    const evidencias = niveisSicaf.map((n) => {
+      const raw = String(n.status || "");
+      const s = raw.toLowerCase();
+      const habilitado =
+        Boolean(raw) &&
+        !s.includes("não informado") &&
+        !s.includes("nao informado") &&
+        !(s.includes("pendente") && !["I", "II", "V", "VI"].includes(n.level));
+      return { nivel: n.level, habilitado, status: n.status };
+    });
+    return mapNiveisFromEvidencias(evidencias, { sicaf: mapSicafPainelStatus(opts?.sicafStatus) });
   }
-  if (sicafNiveis) {
-    for (const [roman, detail] of Object.entries(sicafNiveis)) {
-      const num = ROMAN_TO_NUM[roman];
-      if (!num) continue;
-      out[num] = mapNivelStatus(detail.status, detail.habilitado);
-    }
-  }
-  for (let i = 1; i <= 6; i++) {
-    if (!out[i]) out[i] = "nao_cadastrado";
-  }
-  return out;
+
+  return mapNiveisFromDetail(undefined, { sicaf: mapSicafPainelStatus(opts?.sicafStatus) });
+}
+
+export function calcCompletudeSicafUi(niveis: Record<number, NivelStatus>): number {
+  if (todosNiveisValidadosUi(niveis)) return 100;
+  return Math.round((countNiveisValidadosUi(niveis) / 6) * 100);
 }
 
 /** APTO = ao menos 1 nível com status real (validado/vencendo/vencido). */
@@ -130,7 +155,7 @@ export function mapApiClientToDetalhe(c: ApiAdminClient, extra?: Partial<Cliente
     novo: c.novo ?? false,
     mrr: c.mrr ?? 0,
     ultimoContato: extra?.ultimoContato ?? "—",
-    niveis: extra?.niveis ?? mapNiveisFromApi(c.sicafNiveis),
+    niveis: extra?.niveis ?? mapNiveisFromSicafNiveisRecord(c.sicafNiveis, c.sicafStatus),
     plano: c.plano || extra?.plano,
     desde: extra?.desde,
     validadeSicaf: c.sicafValidade ? formatDateBr(c.sicafValidade) : extra?.validadeSicaf,
@@ -176,6 +201,7 @@ export async function fetchAdminClientes(opts: {
   limit?: number;
   status?: string;
   sicaf?: string;
+  filtro?: string;
 } = {}) {
   const params = new URLSearchParams();
   if (opts.search?.trim()) params.set("search", opts.search.trim());
@@ -183,6 +209,7 @@ export async function fetchAdminClientes(opts: {
   if (opts.limit) params.set("limit", String(opts.limit));
   if (opts.status && opts.status !== "all") params.set("status", opts.status);
   if (opts.sicaf && opts.sicaf !== "all") params.set("sicaf", opts.sicaf);
+  if (opts.filtro && opts.filtro !== "todos") params.set("filtro", opts.filtro);
   const res = await apiFetch(`/api/admin/clients?${params.toString()}`);
   return res.json() as Promise<{
     ok: boolean;
@@ -223,6 +250,7 @@ export async function fetchAdminClienteDetalhe(clienteId: number) {
       historico?: { acao?: string; created_at?: string; usuario_nome?: string }[];
       loginLogs?: { created_at?: string; ip?: string; navegador?: string }[];
       niveisSicaf?: { level: string; status?: string }[];
+      niveisDetail?: Record<string, { status: string; observacao?: string }>;
       contacts?: { nome?: string; cargo?: string; email?: string; telefone?: string; principal?: number }[];
     };
     error?: string;
@@ -467,7 +495,10 @@ export function mergeDetalheFromApi(
     sicaf: mapSicafUi(api.sicaf?.status),
     manutencao: api.sicaf?.manutencao_ativa === 1,
     validadeSicaf: api.sicaf?.data_validade ? formatDateBr(api.sicaf.data_validade) : base.validadeSicaf,
-    niveis: mapNiveisFromApi(undefined, api.niveisSicaf),
+    niveis: mapNiveisFromApi(undefined, api.niveisSicaf, {
+      sicafStatus: api.sicaf?.status,
+      niveisDetail: api.niveisDetail,
+    }),
   };
 }
 

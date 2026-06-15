@@ -1,13 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { HelpCircle, Search, PlayCircle, Bot, Sparkles } from "lucide-react";
+import { HelpCircle, Search, PlayCircle, Bot, Sparkles, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PageHeader, PageContainer } from "@/components/page-header";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { perguntarAjuda } from "@/lib/ajuda-api";
-import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/ajuda")({
   head: () => ({
@@ -27,17 +33,62 @@ const sugestoes = [
   "O que é Nível IV",
 ];
 
-const videos = [
-  { titulo: "Como acessar o SICAF", duracao: "2 min" },
-  { titulo: "Como atualizar certidões", duracao: "3 min" },
-  { titulo: "Como enviar documentos", duracao: "2 min" },
-  { titulo: "Como contratar a manutenção mensal", duracao: "1 min" },
+type VideoAjuda = {
+  id: string;
+  titulo: string;
+  duracao: string;
+  src?: string;
+  youtubeId?: string;
+  emBreve?: boolean;
+};
+
+const videos: VideoAjuda[] = [
+  {
+    id: "01",
+    titulo: "Instalação Assistente Cadbrasil - Inicial",
+    duracao: "Vídeo 01",
+    youtubeId: "9EdnP0bMHlg",
+  },
+  {
+    id: "02",
+    titulo: "Como atualizar certidões",
+    duracao: "Em breve",
+    emBreve: true,
+  },
+  {
+    id: "03",
+    titulo: "Como enviar documentos",
+    duracao: "Em breve",
+    emBreve: true,
+  },
+  {
+    id: "04",
+    titulo: "Como contratar a manutenção mensal",
+    duracao: "Em breve",
+    emBreve: true,
+  },
 ];
 
 function HelpPage() {
   const [q, setQ] = useState("");
   const [resposta, setResposta] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [videoAtivo, setVideoAtivo] = useState<VideoAjuda | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  function abrirVideo(v: VideoAjuda) {
+    if (!v.src && !v.youtubeId) return;
+    setVideoAtivo(v);
+    setVideoModalOpen(true);
+  }
+
+  function onVideoModalChange(open: boolean) {
+    if (!open) {
+      videoRef.current?.pause();
+      setVideoModalOpen(false);
+    }
+  }
 
   async function ask(text: string) {
     setQ(text);
@@ -77,7 +128,9 @@ function HelpPage() {
                 className="h-12 pl-9 text-base"
               />
             </div>
-            <Button type="submit" size="lg">Perguntar</Button>
+            <Button type="submit" size="lg">
+              Perguntar
+            </Button>
           </form>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -120,23 +173,75 @@ function HelpPage() {
         </CardHeader>
         <CardContent>
           <ul className="grid gap-2 sm:grid-cols-2">
-            {videos.map((v) => (
-              <li
-                key={v.titulo}
-                className="group flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition hover:border-primary/40 hover:shadow-soft"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground">
-                  <PlayCircle className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">{v.titulo}</p>
-                  <p className="text-xs text-muted-foreground">{v.duracao}</p>
-                </div>
-              </li>
-            ))}
+            {videos.map((v) => {
+              const clicavel = Boolean(v.src || v.youtubeId);
+              return (
+                <li key={v.id}>
+                  <button
+                    type="button"
+                    disabled={!clicavel}
+                    onClick={() => abrirVideo(v)}
+                    className={cn(
+                      "group flex w-full items-center gap-3 rounded-lg border bg-card p-3 text-left transition",
+                      clicavel
+                        ? "border-border hover:border-primary/40 hover:bg-primary/5 hover:shadow-soft cursor-pointer"
+                        : "border-border opacity-60 cursor-not-allowed",
+                    )}
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                      <PlayCircle className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-snug">{v.titulo}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {clicavel ? "Clique para assistir" : v.duracao}
+                      </p>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </CardContent>
       </Card>
+
+      <Dialog open={videoModalOpen} onOpenChange={onVideoModalChange}>
+        <DialogContent className="flex h-[80vh] w-[80vw] max-h-[80vh] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b px-5 py-4 text-left">
+            <DialogTitle className="pr-8 text-base leading-snug sm:text-lg">
+              {videoAtivo?.titulo}
+            </DialogTitle>
+            {videoAtivo?.duracao && (
+              <p className="text-xs text-muted-foreground">{videoAtivo.duracao}</p>
+            )}
+          </DialogHeader>
+          <div className="flex min-h-0 flex-1 items-center justify-center bg-black">
+            {videoAtivo?.youtubeId ? (
+              <iframe
+                key={videoAtivo.youtubeId}
+                className="h-full w-full"
+                src={`https://www.youtube.com/embed/${videoAtivo.youtubeId}?autoplay=1&rel=0`}
+                title={videoAtivo.titulo}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            ) : videoAtivo?.src ? (
+              <video
+                ref={videoRef}
+                key={videoAtivo.src}
+                className="h-full w-full object-contain"
+                controls
+                playsInline
+                autoPlay
+                preload="metadata"
+                src={videoAtivo.src}
+              >
+                Seu navegador não suporta reprodução de vídeo.
+              </video>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </PageContainer>
   );
 }

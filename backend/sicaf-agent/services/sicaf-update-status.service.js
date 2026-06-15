@@ -2,57 +2,13 @@
  * Alteração manual do status SICAF — espelha POST /api/sicaf/update-status do legado.
  */
 const { getDb } = require('../database/connection');
-const emailService = require('./email.service');
 const { resolveSicafDisplayStatus, calcDaysRemaining } = require('../utils/sicaf-status');
+const { sendSicafStatusEmail } = require('./sicaf-status-email.service');
 
 const VALID_STATUSES = ['Ativo', 'Vencendo', 'Vencido', 'Pendente', 'Cancelado', 'Suspenso'];
 const STATUS_COM_EMAIL = ['Vencido', 'Vencendo', 'Pendente', 'Suspenso', 'Cancelado'];
 /** Status que exigem data de pagamento + motivo (ativa vigência e financeiro). */
 const STATUS_COM_DATA_PAGAMENTO = ['Ativo', 'Vencendo'];
-const TEMPLATE_CANCELAMENTO_FALLBACK_ID = 21;
-const TEMPLATE_ALERTA_FALLBACK_ID = 24;
-
-async function findCancelamentoTemplate(db) {
-  const ativo = () => db('templates_email').whereRaw('COALESCE(ativo, 1) = 1');
-  try {
-    let row = await ativo()
-      .whereRaw('LOWER(COALESCE(codigo, \'\')) IN (?, ?, ?)', [
-        'cancelamento',
-        'cancelamento_sicaf',
-        'sicaf_cancelamento',
-      ])
-      .orderBy('id')
-      .first();
-    if (row) return row;
-
-    row = await ativo().whereRaw('LOWER(nome) LIKE ?', ['%cancelamento%']).orderBy('id').first();
-    if (row) return row;
-
-    row = await ativo().where('id', TEMPLATE_CANCELAMENTO_FALLBACK_ID).first();
-    return row || null;
-  } catch (_) {
-    return null;
-  }
-}
-
-async function findAlertaTemplate(db) {
-  try {
-    let row = await db('templates_email')
-      .whereRaw('COALESCE(ativo, 1) = 1')
-      .where('id', TEMPLATE_ALERTA_FALLBACK_ID)
-      .first();
-    if (row) return row;
-
-    row = await db('templates_email')
-      .whereRaw('COALESCE(ativo, 1) = 1')
-      .whereRaw('LOWER(nome) LIKE ?', ['%alerta%'])
-      .orderBy('id')
-      .first();
-    return row || null;
-  } catch (_) {
-    return null;
-  }
-}
 
 async function sendStatusEmailNotification(db, {
   status,
@@ -60,87 +16,17 @@ async function sendStatusEmailNotification(db, {
   oldDisplayStatus,
   mensagem,
   usuarioId,
+  novaValidade,
 }) {
-  const cliente = await db('clientes').where('id', sicaf.cliente_id).first();
-  const emailDestino = String(cliente?.email || '').trim();
-  if (!emailDestino) {
-    return { enviado: false, motivo: 'sem_email_destino' };
-  }
-
-  if (status === 'Cancelado') {
-    const templateRow = await findCancelamentoTemplate(db);
-    if (!templateRow) {
-      return {
-        enviado: false,
-        motivo: 'template_nao_encontrado',
-        templateId: TEMPLATE_CANCELAMENTO_FALLBACK_ID,
-      };
-    }
-
-    const emailAvisos = require('./email-avisos.service');
-    const envio = await emailAvisos.enviarAvisoCliente({
-      clienteId: sicaf.cliente_id,
-      templateDbId: templateRow.id,
-      to: emailDestino,
-      mensagemAdicional: String(mensagem || '').trim(),
-      usuarioId,
-    });
-
-    if (!envio.ok) {
-      return {
-        enviado: false,
-        motivo: 'erro_envio',
-        erro: envio.error || 'Falha ao enviar',
-        templateId: templateRow.id,
-        templateNome: templateRow.nome,
-      };
-    }
-
-    return {
-      enviado: !envio.simulado,
-      simulado: Boolean(envio.simulado),
-      templateId: templateRow.id,
-      templateNome: templateRow.nome,
-      para: emailDestino,
-      tipo: 'cancelamento',
-    };
-  }
-
-  const templateRow = await findAlertaTemplate(db);
-  if (!templateRow) {
-    return { enviado: false, motivo: 'template_nao_encontrado', templateId: TEMPLATE_ALERTA_FALLBACK_ID };
-  }
-
-  const nomeCliente = cliente.razao_social || cliente.nome_fantasia || '';
-  const envio = await emailService.sendTemplate(templateRow.nome, {
-    to: emailDestino,
-    vars: {
-      nome: nomeCliente,
-      email: emailDestino,
-      documento: cliente.documento || '',
-      status_anterior: oldDisplayStatus,
-      status_novo: status,
-      status,
-      data_atual: new Date().toLocaleDateString('pt-BR'),
-      empresa_nome: nomeCliente,
-      mensagem_adicional: String(mensagem || '').trim(),
-    },
+  return sendSicafStatusEmail({
+    db,
+    status,
+    sicaf,
+    oldDisplayStatus,
+    mensagem,
+    usuarioId,
+    novaValidade,
   });
-
-  return envio.ok
-    ? {
-        enviado: true,
-        templateId: templateRow.id,
-        templateNome: templateRow.nome,
-        para: emailDestino,
-        tipo: 'alerta',
-      }
-    : {
-        enviado: false,
-        motivo: 'erro_envio',
-        erro: envio.error || 'Falha ao enviar',
-        templateId: templateRow.id,
-      };
 }
 
 function isPaidTaxaStatus(status) {
@@ -349,8 +235,23 @@ async function updateSicafStatusManual({ sicafId, status, usuarioId, mensagem, d
     });
   } catch (_) {}
 
-  let emailNotificacao = { enviado: false, motivo: 'status_ativo' };
-  if (STATUS_COM_EMAIL.includes(status)) {
+  let emailNotificacao = { enviado: false, motivo: 'nao_aplicavel' };
+  if (status === 'Ativo') {
+    try {
+      const pagamentoEmail = require('./pagamento-confirmado-email.service');
+
+      emailNotificacao = await pagamentoEmail.enviarAposConfirmacao({
+        clienteId: sicaf.cliente_id,
+        novaValidade: validity.validadeStr,
+        observacoes: String(mensagem || '').trim(),
+        usuarioId,
+        contexto: 'ativacao',
+        dataInicio: validity.dataInicioAplicada || null,
+      });
+    } catch (emailErr) {
+      emailNotificacao = { enviado: false, motivo: 'erro_envio', erro: emailErr.message };
+    }
+  } else if (STATUS_COM_EMAIL.includes(status)) {
     try {
       emailNotificacao = await sendStatusEmailNotification(db, {
         status,
@@ -358,6 +259,7 @@ async function updateSicafStatusManual({ sicafId, status, usuarioId, mensagem, d
         oldDisplayStatus,
         mensagem: String(mensagem || '').trim(),
         usuarioId,
+        novaValidade: validity.validadeStr || null,
       });
     } catch (emailErr) {
       emailNotificacao = { enviado: false, motivo: 'erro_envio', erro: emailErr.message };

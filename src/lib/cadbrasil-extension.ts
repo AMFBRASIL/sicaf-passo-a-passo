@@ -149,7 +149,6 @@ function pingViaPostMessage(timeoutMs = 2500): Promise<{ ok: boolean; version?: 
 export async function detectCadBrasilExtension(): Promise<ExtensionDetection> {
   const domId = readDomId();
   if (domId) {
-    persistId(domId);
     const postPing = await pingViaPostMessage(1800);
     if (postPing.ok) {
       persistId(domId, postPing.version);
@@ -160,7 +159,8 @@ export async function detectCadBrasilExtension(): Promise<ExtensionDetection> {
       persistId(domId, chromePing.version);
       return buildState();
     }
-    return { installed: true, extensionId: domId, version: cachedVersion || undefined };
+    clearCachedId();
+    return { installed: false };
   }
 
   const postPing = await pingViaPostMessage(2500);

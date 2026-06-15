@@ -87,50 +87,29 @@ function extractCommands(text: string): { clean: string; commands: Array<{ type:
 /**
  * Envia comandos para a extensão via window.parent.postMessage.
  * O sidepanel.js escuta e repassa para o background.js.
- * Em localhost (debug), também publica no event bus para exibir no chat.
  */
-const _debugBus: Array<(msg: string, isError?: boolean) => void> = [];
-
-function sendCommandsToExtension(
-  commands: Array<{ type: string; param: string }>,
-  debug = false,
-) {
+function sendCommandsToExtension(commands: Array<{ type: string; param: string }>) {
   if (!commands.length) return;
-
-  if (debug) {
-    const summary = commands.map((c) => `${c.type}: ${c.param}`).join("\n");
-    _debugBus.forEach((fn) => fn(`📡 Comandos enviados (${commands.length}):\n${summary}`));
-  }
 
   try {
     window.parent.postMessage(
       { source: "cadbrasil-chat", type: "extension-commands", commands },
       "*",
     );
-  } catch (err) {
-    if (debug) {
-      const msg = err instanceof Error ? err.message : "postMessage falhou";
-      _debugBus.forEach((fn) => fn(`postMessage erro: ${msg}`, true));
-    }
+  } catch (_) {
+    /* extensão indisponível */
   }
-}
-
-function detectLocalDebug(): boolean {
-  if (typeof window === "undefined") return false;
-  const host = window.location.hostname;
-  return host === "localhost" || host === "127.0.0.1";
 }
 
 interface ChatMsg {
   id: number;
-  role: "user" | "bot" | "system" | "debug";
+  role: "user" | "bot" | "system";
   text: string;
 }
 
 let msgId = 0;
 
 export default function SicafAssistantChat() {
-  const [isDebug, setIsDebug] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([
     {
       id: msgId++,
@@ -151,28 +130,6 @@ export default function SicafAssistantChat() {
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
-
-  useEffect(() => {
-    setIsDebug(detectLocalDebug());
-  }, []);
-
-  // ── Debug: registrar callback para mostrar comandos/erros no chat ──
-  const addDebugMsg = useCallback((text: string, isError?: boolean) => {
-    if (!isDebug) return;
-    setMessages((prev) => [
-      ...prev,
-      { id: msgId++, role: "debug" as ChatMsg["role"], text: (isError ? "❌ " : "🔧 ") + text },
-    ]);
-  }, [isDebug]);
-
-  useEffect(() => {
-    if (!isDebug) return;
-    _debugBus.push(addDebugMsg);
-    return () => {
-      const idx = _debugBus.indexOf(addDebugMsg);
-      if (idx >= 0) _debugBus.splice(idx, 1);
-    };
-  }, [addDebugMsg, isDebug]);
 
   // ── Pedir contexto fresco da página SICAF à extensão (on-demand, a cada mensagem) ──
   const requestPageContext = useCallback((): Promise<{ url: string; pageText: string; title: string; formData: string[] }> => {
@@ -213,24 +170,13 @@ export default function SicafAssistantChat() {
       const msg = event.data;
       if (!msg || msg.source !== "cadbrasil-extension") return;
 
-      if (msg.type === "command-result" && isDebug) {
-        const status = msg.error ? "❌" : "✅";
-        addDebugMsg(`${status} Resultado: ${msg.command} → ${JSON.stringify(msg.result || msg.error)}`);
-      }
-
-      // Progresso de fluxos orquestrados (Situação Fornecedor, etc.)
-      if (msg.type === "flow-progress") {
-        if (isDebug) {
-          addDebugMsg(msg.isError ? `❌ ${msg.message}` : `🔄 ${msg.message}`);
-        }
-        if (!isDebug && !msg.isError) {
-          addMsg("system", `🔄 ${msg.message}`);
-        }
+      if (msg.type === "flow-progress" && !msg.isError) {
+        addMsg("system", `🔄 ${msg.message}`);
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [addDebugMsg, addMsg]);
+  }, [addMsg]);
 
   // ── Verificar CNPJ no backend e atualizar status do chat ──
   const lastReceivedCnpjKey = useRef("");
@@ -264,12 +210,6 @@ export default function SicafAssistantChat() {
         headers: getHeaders(),
       });
       const data = await res.json();
-      if (isDebug) {
-        addDebugMsg(
-          `Retorno API /api/clients/by-documento/${cnpjDigits} (HTTP ${res.status}):\n` +
-          JSON.stringify(data, null, 2)
-        );
-      }
 
       const REGULARIZE_BTN = `\n\n<a href="https://fornecedor.cadbrasil.com.br/sicaf" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;padding:8px 16px;background:#238636;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:12px;">Regularizar no CadBrasil →</a>`;
 
@@ -299,8 +239,6 @@ export default function SicafAssistantChat() {
       // Licença válida = SICAF ativo/vencendo OU renovação concluída
       const licencaValida = sicafOk || hasValidRenovacao;
 
-      if (isDebug) addDebugMsg(`CNPJ ${cnpj} → clienteStatus=${c.status}, sicafId=${c.sicafId}, sicafStatus=${sicafStatus}, sicafValid=${c.sicafValid}, validade=${sicafValidade}, renovacao=${renovacao ? renovacao.status : "nenhuma"}`);
-
       if (licencaValida) {
         setChatBlocked(false);
         const detalhes = sicafOk
@@ -323,10 +261,10 @@ export default function SicafAssistantChat() {
         );
         setChatBlocked(true);
       }
-    } catch (err) {
-      if (isDebug) addDebugMsg(`Erro ao consultar CNPJ ${cnpj}: ${err}`);
+    } catch (_) {
+      /* falha silenciosa na verificação de CNPJ */
     }
-  }, [addMsg, addDebugMsg, isDebug]);
+  }, [addMsg]);
 
   const recheckCnpj = useCallback(async () => {
     const cnpj = lastValidCnpj.current;
@@ -405,9 +343,6 @@ export default function SicafAssistantChat() {
     try {
       // Pedir contexto fresco da página SICAF à extensão neste momento
       const pageContext = await requestPageContext();
-      if (isDebug && pageContext.url) {
-        addDebugMsg(`📄 Contexto capturado: ${pageContext.url}\n   Texto: ${(pageContext.pageText || "").substring(0, 200)}...`);
-      }
 
       // Montar histórico de conversa para enviar (stateless — servidor não guarda nada)
       const chatHistory = messagesRef.current
@@ -431,7 +366,6 @@ export default function SicafAssistantChat() {
       if (!res.ok) {
         const errText = `HTTP ${res.status} ${res.statusText}`;
         updateLastBot("⚠ Erro ao comunicar com o servidor.");
-        if (isDebug) addDebugMsg(`Erro API /chat: ${errText}`, true);
         setLoading(false);
         return;
       }
@@ -463,12 +397,11 @@ export default function SicafAssistantChat() {
                 // Extrair e enviar comandos para a extensão
                 const { clean, commands } = extractCommands(fullText);
                 updateLastBot(clean || fullText);
-                sendCommandsToExtension(commands, isDebug);
+                sendCommandsToExtension(commands);
                 // Ações do servidor (já extraídas lá também)
                 if (parsed.actions?.length) {
                   sendCommandsToExtension(
                     parsed.actions.map((a: string) => ({ type: "action", param: a })),
-                    isDebug,
                   );
                 }
               }
@@ -481,11 +414,10 @@ export default function SicafAssistantChat() {
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Erro desconhecido";
       updateLastBot("⚠ Sem conexão: " + errMsg);
-      if (isDebug) addDebugMsg(`Exceção sendMessage: ${errMsg}`, true);
     }
 
     setLoading(false);
-  }, [input, chatBlocked, addMsg, updateLastBot, addDebugMsg, requestPageContext, isDebug]);
+  }, [input, chatBlocked, addMsg, updateLastBot, requestPageContext]);
 
   // ── Upload PDF ──
   const uploadFile = useCallback(async (file: File) => {
@@ -511,7 +443,6 @@ export default function SicafAssistantChat() {
           errorDetail = errData.error || errorDetail;
         } catch (_) { /* response não é JSON */ }
         updateLastBot("⚠ Erro no upload: " + errorDetail);
-        if (isDebug) addDebugMsg(`Erro API /upload: ${errorDetail}`, true);
         setLoading(false);
         return;
       }
@@ -578,32 +509,23 @@ export default function SicafAssistantChat() {
         } else {
           updateLastBot("📄 Documento recebido! Analisando com IA...");
         }
-        if (isDebug) {
-          addDebugMsg(`Upload OK: ${data.fileName} (${data.textLength} chars extraídos)`);
-          if (data.dbResult) addDebugMsg(`DB: ${data.dbResult.saved ? "✔ Salvo" : "✖ " + (data.dbResult.reason || "Erro")} — ${JSON.stringify(data.dbResult).substring(0, 200)}`);
-        }
-        // Enviar prompt de análise para o chat (inclui contexto do banco)
         await sendMessage(data.prompt);
       } else {
         updateLastBot("⚠ " + (data.error || "Erro ao processar."));
-        if (isDebug) addDebugMsg(`Upload falhou: ${data.error}`, true);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Erro";
       updateLastBot("⚠ Erro: " + errMsg);
-      if (isDebug) addDebugMsg(`Exceção upload: ${errMsg}`, true);
     }
 
     setLoading(false);
-  }, [chatBlocked, addMsg, updateLastBot, sendMessage, addDebugMsg, isDebug]);
+  }, [chatBlocked, addMsg, updateLastBot, sendMessage]);
 
   // ── Escutar PDF capturado pela extensão (interceptado em memória) ──
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data;
       if (!msg || msg.source !== "cadbrasil-extension" || msg.type !== "pdf-captured") return;
-
-      if (isDebug) addDebugMsg(`📥 PDF recebido da extensão: ${msg.fileName} (${(msg.size / 1024).toFixed(1)} KB)`);
 
       try {
         // Converter base64 data URL para Blob/File
@@ -615,7 +537,6 @@ export default function SicafAssistantChat() {
         // Verificar magic bytes do PDF (%PDF-)
         const isPdf = byteString.length > 5 && byteString.substring(0, 5) === "%PDF-";
         if (!isPdf) {
-          if (isDebug) addDebugMsg("❌ Conteúdo capturado NÃO é PDF (magic bytes ausentes). Provavelmente HTML.", true);
           addMsg("bot", "⚠ O arquivo capturado não é um PDF válido. O PDF foi baixado na sua pasta **Downloads**. Por favor, envie pelo botão 📎 abaixo.");
           return;
         }
@@ -630,24 +551,20 @@ export default function SicafAssistantChat() {
 
         // Disparar upload automático
         uploadFile(file);
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : "Erro ao processar PDF";
-        if (isDebug) addDebugMsg(`Erro processando PDF capturado: ${errMsg}`, true);
+      } catch (_) {
         addMsg("bot", "⚠ Erro ao processar o PDF. Ele foi baixado na pasta **Downloads**. Envie pelo botão 📎.");
       }
     };
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [uploadFile, addDebugMsg, addMsg]);
+  }, [uploadFile, addMsg]);
 
   // ── Escutar PDF baixado pelo browser (download na pasta Downloads) ──
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data;
       if (!msg || msg.source !== "cadbrasil-extension" || msg.type !== "pdf-downloaded") return;
-
-      if (isDebug) addDebugMsg(`📁 PDF baixado pelo browser: ${msg.fileName}`);
 
       addMsg("bot",
         `✅ O PDF **${msg.fileName || "Situação do Fornecedor"}** foi baixado com sucesso na sua pasta **Downloads**!\n\n` +
@@ -657,7 +574,7 @@ export default function SicafAssistantChat() {
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [addDebugMsg, addMsg]);
+  }, [addMsg]);
 
   // ── Renderizar markdown básico ──
   const renderText = (text: string) => {
@@ -673,14 +590,6 @@ export default function SicafAssistantChat() {
       <div style={{ background: "linear-gradient(135deg, #1a7f37, #238636)", padding: "14px 16px", textAlign: "center", flexShrink: 0 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>🟢 Assistente SICAF — CadBrasil</div>
         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>Assistente Virtual IA Gratuito para SICAF</div>
-        {isDebug ? (
-          <div
-            suppressHydrationWarning
-            style={{ fontSize: 10, color: "#ffa500", marginTop: 4, background: "rgba(0,0,0,0.3)", display: "inline-block", padding: "2px 8px", borderRadius: 4 }}
-          >
-            DEBUG MODE — localhost
-          </div>
-        ) : null}
       </div>
 
       {/* Chat */}
@@ -699,8 +608,6 @@ export default function SicafAssistantChat() {
                 ? { background: "#161b22", border: "1px solid #30363d", color: "#c9d1d9", alignSelf: "flex-start", borderBottomLeftRadius: 4 }
                 : m.role === "user"
                 ? { background: "#238636", color: "#fff", alignSelf: "flex-end", borderBottomRightRadius: 4 }
-                : m.role === "debug"
-                ? { background: "rgba(255,165,0,0.1)", border: "1px solid rgba(255,165,0,0.3)", color: "#ffa500", alignSelf: "stretch", fontFamily: "monospace", fontSize: 11, maxWidth: "100%", whiteSpace: "pre-wrap" as const, padding: "8px 10px", borderRadius: 6 }
                 : m.text.startsWith("🔴")
                 ? { background: "rgba(248,81,73,0.12)", border: "1px solid rgba(248,81,73,0.35)", color: "#f85149", alignSelf: "stretch", textAlign: "left" as const, fontSize: 12, maxWidth: "100%" }
                 : { background: "rgba(31,111,235,0.13)", border: "1px solid rgba(31,111,235,0.26)", color: "#58a6ff", alignSelf: "center", textAlign: "center" as const, fontSize: 12, maxWidth: "100%" }),

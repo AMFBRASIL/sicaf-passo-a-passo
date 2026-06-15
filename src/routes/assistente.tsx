@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Loader2,
   CircleHelp,
+  ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ import {
   CADBRASIL_EXTENSION_STORE_URL,
   useCadBrasilExtension,
 } from "@/hooks/use-cadbrasil-extension";
+import { probeCadBrasilExtension } from "@/lib/cadbrasil-extension";
 import {
   analisarSituacaoPdf,
   buildComparadorSnapshots,
@@ -241,7 +243,9 @@ const SNAPSHOT_VAZIO: SnapshotSicaf = {
 function AssistentePage() {
   const { cnpj } = Route.useSearch();
   const navigate = useNavigate();
-  const { extensionInstalled, extensionChecking } = useCadBrasilExtension();
+  const { extensionInstalled, extensionChecking, extensionVersion, checkExtension } =
+    useCadBrasilExtension();
+  const [verificandoExtensao, setVerificandoExtensao] = useState(false);
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [progresso, setProgresso] = useState(0);
   const [analisando, setAnalisando] = useState(false);
@@ -317,6 +321,28 @@ function AssistentePage() {
       setOnboardingOpen(true);
     }
   }, []);
+
+  useEffect(() => {
+    probeCadBrasilExtension();
+    void checkExtension({ waitMs: 8000 });
+  }, [checkExtension]);
+
+  const verificarExtensaoNovamente = useCallback(async () => {
+    setVerificandoExtensao(true);
+    try {
+      probeCadBrasilExtension();
+      const ok = await checkExtension({ waitMs: 10000 });
+      if (ok) {
+        toast.success("Extensão CadBrasil SICAF detectada!");
+      } else {
+        toast.info("Extensão não detectada", {
+          description: "Instale no Chrome e clique em verificar novamente.",
+        });
+      }
+    } finally {
+      setVerificandoExtensao(false);
+    }
+  }, [checkExtension]);
 
   useEffect(() => {
     if (!cnpj) {
@@ -473,12 +499,70 @@ function AssistentePage() {
                 <Loader2 className="h-3 w-3 animate-spin opacity-80" />
               ) : extensionInstalled ? (
                 <span className="flex h-2 w-2 rounded-full bg-white shadow-sm" title="Extensão detectada" />
-              ) : null}
+              ) : (
+                <AlertTriangle className="h-3 w-3 text-amber-200" title="Extensão não detectada" />
+              )}
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
         }
       />
+
+      {cnpj && extensionChecking && (
+        <Card className="mt-6 border-primary/30 bg-primary/5">
+          <CardContent className="flex items-center gap-3 py-4">
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" />
+            <div>
+              <p className="text-sm font-medium">Verificando extensão CadBrasil SICAF…</p>
+              <p className="text-xs text-muted-foreground">
+                O assistente precisa da extensão instalada no Google Chrome para acessar o portal.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {cnpj && !extensionChecking && !extensionInstalled && (
+        <Card className="mt-6 border-warning/40 bg-warning/5">
+          <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-start">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-warning/15">
+              <AlertTriangle className="h-6 w-6 text-warning-foreground" />
+            </div>
+            <div className="min-w-0 flex-1 space-y-3">
+              <div>
+                <p className="font-semibold text-warning-foreground">Extensão CadBrasil não detectada</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Para abrir o SICAF com o Assistente Digital IA, instale a extensão{" "}
+                  <strong>CadBrasil — Assistente SICAF</strong> no Google Chrome. Sem ela, o botão
+                  &quot;Acessar SICAF&quot; não consegue automatizar o portal.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className="gap-2"
+                  onClick={() => window.open(CADBRASIL_EXTENSION_STORE_URL, "_blank", "noopener,noreferrer")}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Instalar extensão
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  disabled={verificandoExtensao}
+                  onClick={() => void verificarExtensaoNovamente()}
+                >
+                  {verificandoExtensao ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Já instalei — verificar
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {!cnpj && (
         <Card className="mt-6 border-dashed">
@@ -523,10 +607,20 @@ function AssistentePage() {
                     <CheckCircle2 className="h-3 w-3" />
                     100% · Nível máximo
                   </Badge>
-                ) : (
+                ) : extensionChecking ? (
+                  <Badge variant="outline" className="gap-1.5 border-primary/40 bg-primary/10 text-primary">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Verificando extensão…
+                  </Badge>
+                ) : extensionInstalled ? (
                   <Badge variant="outline" className="gap-1.5 border-success/40 bg-success/10 text-success">
-                    <Activity className="h-3 w-3" />
-                    {extensionInstalled ? "Extensão ativa" : "Dados reais"}
+                    <CheckCircle2 className="h-3 w-3" />
+                    Extensão ativa{extensionVersion ? ` · v${extensionVersion}` : ""}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1.5 border-warning/40 bg-warning/10 text-warning-foreground">
+                    <AlertTriangle className="h-3 w-3" />
+                    Extensão não instalada
                   </Badge>
                 )}
               </div>

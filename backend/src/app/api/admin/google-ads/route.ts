@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     const result = await svc.getAdminGoogleAds({
       days: parseInt(url.searchParams.get("days") || "30", 10),
       palavra: url.searchParams.get("palavra") || "",
+      pagos: url.searchParams.get("pagos") || "",
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 500 });
   } catch (error) {

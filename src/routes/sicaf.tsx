@@ -166,7 +166,7 @@ function AssistenteDialog({
   onOpenChange: (v: boolean) => void;
   onConcluido: () => void;
 }) {
-  const { extensionInstalled, checkExtension, waitForExtension } = useCadBrasilExtension();
+  const { checkExtension, waitForExtension } = useCadBrasilExtension();
   const [estado, setEstado] = useState<"checando" | "nao-instalado" | "instalando" | "ok">(
     "checando",
   );
@@ -182,7 +182,7 @@ function AssistenteDialog({
     (async () => {
       const ok = await checkExtension();
       if (cancelled) return;
-      if (ok || extensionInstalled) {
+      if (ok) {
         setEstado("ok");
         setTimeout(() => {
           onConcluido();
@@ -195,7 +195,7 @@ function AssistenteDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, checkExtension, extensionInstalled, onConcluido, onOpenChange]);
+  }, [open, checkExtension, onConcluido, onOpenChange]);
 
   const instalar = () => {
     window.open(CADBRASIL_EXTENSION_STORE_URL, "_blank", "noopener,noreferrer");
@@ -683,16 +683,12 @@ function SicafPage() {
       nextCliente: SicafPageCliente,
       nextPainel: EmpresaGerenciarPainel,
       nextCertificado: CertificadoDigitalInfo | null,
-      renovandoAtual: boolean,
     ) => {
       setCliente(nextCliente);
       setPainel(nextPainel);
       setCertificado(nextCertificado);
-      setEtapaAtual(
-        deriveEtapaAtual(nextPainel, nextCertificado, extensionInstalled, renovandoAtual, total),
-      );
     },
-    [extensionInstalled, total],
+    [],
   );
 
   const recarregar = useCallback(async () => {
@@ -703,7 +699,7 @@ function SicafPage() {
       carregarDocumentos(id),
     ]);
     if (data.ok && data.painel && data.cliente) {
-      aplicarDados(data.cliente, data.painel, data.certificado ?? null, renovando);
+      aplicarDados(data.cliente, data.painel, data.certificado ?? null);
     }
   }, [aplicarDados, carregarDocumentos, cliente?.clienteId, renovando]);
 
@@ -727,7 +723,7 @@ function SicafPage() {
         return;
       }
       if (data.valorRenovacaoFmt) setValorRenovacaoFmt(data.valorRenovacaoFmt);
-      aplicarDados(data.cliente, data.painel, data.certificado ?? null, false);
+      aplicarDados(data.cliente, data.painel, data.certificado ?? null);
     });
 
     return () => {

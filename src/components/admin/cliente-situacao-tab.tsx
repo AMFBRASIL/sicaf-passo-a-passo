@@ -90,6 +90,15 @@ const SICAF_STATUSES = [
 const STATUS_COM_MODAL_PAGAMENTO = new Set(["Ativo", "Vencendo"]);
 const STATUS_CANCELADO = "Cancelado";
 
+const STATUS_EMAIL_LABELS: Record<string, string> = {
+  Vencendo: "E-mail de SICAF vencendo enviado ao cliente.",
+  Vencido: "E-mail de SICAF vencido enviado ao cliente.",
+  Pendente: "E-mail de pendências SICAF enviado ao cliente.",
+  Suspenso: "E-mail de suspensão SICAF enviado ao cliente.",
+  Cancelado: "E-mail de cancelamento enviado ao cliente.",
+  Ativo: "E-mail de licença ativada enviado ao cliente.",
+};
+
 function statusBadgeClass(status: string) {
   if (status === "Ativo" || status === "Vencendo") return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500";
   if (status === "Pendente") return "bg-amber-500/10 text-amber-600 dark:text-amber-500";
@@ -172,19 +181,17 @@ export function SituacaoTab({
         toast.success("Pagamento registrado no financeiro do cliente.");
       }
       if (res.emailNotificacao?.enviado) {
-        toast.success(
-          newStatus === STATUS_CANCELADO
-            ? "E-mail de cancelamento enviado ao cliente."
-            : "E-mail de notificação enviado ao cliente.",
-        );
+        toast.success(STATUS_EMAIL_LABELS[newStatus] || "E-mail de notificação enviado ao cliente.");
       } else if (res.emailNotificacao?.simulado) {
         toast.warning("E-mail registrado (SMTP não configurado — modo simulação).");
-      } else if (res.emailNotificacao && !res.emailNotificacao.enviado && newStatus !== "Ativo") {
+      } else if (res.emailNotificacao && !res.emailNotificacao.enviado) {
         const motivo =
           res.emailNotificacao.motivo === "sem_email_destino"
             ? "Cliente sem e-mail cadastrado"
             : res.emailNotificacao.motivo === "template_nao_encontrado"
-              ? "Template de cancelamento não encontrado no sistema"
+              ? newStatus === STATUS_CANCELADO
+                ? "Template de cancelamento não encontrado no sistema"
+                : "Template de e-mail não encontrado — verifique templates_email"
               : res.emailNotificacao.erro || "Falha no envio do e-mail";
         toast.warning(motivo);
       }
@@ -224,7 +231,9 @@ export function SituacaoTab({
       : "Ativar SICAF";
   const dialogSubtitulo = isPendingCancelamento
     ? "O cliente receberá o e-mail de cancelamento. Informe o motivo para o histórico."
-    : "Informe a data do pagamento e o motivo — a vigência do SICAF e o financeiro serão atualizados.";
+    : pendingStatus === "Ativo"
+      ? "Informe a data de ativação e o motivo. O cliente receberá um e-mail informando que o processo foi iniciado, a licença está ativa a partir dessa data e que já pode enviar documentos."
+      : "Informe a data do pagamento e o motivo — a vigência do SICAF e o financeiro serão atualizados.";
 
   if (carregando) {
     return (
@@ -394,10 +403,22 @@ export function SituacaoTab({
               </div>
             )}
 
+            {!isPendingCancelamento && pendingStatus === "Ativo" && (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground">
+                  Será enviado automaticamente um <strong>e-mail de licença ativada</strong> para{" "}
+                  <strong>{cliente.email || "o e-mail do cliente"}</strong>, informando o início do processo,
+                  a data de ativação e a orientação para enviar a documentação no portal.
+                </p>
+              </div>
+            )}
+
             {!isPendingCancelamento && (
               <div className="space-y-2">
                 <label className="text-sm font-medium">
-                  Data do pagamento <span className="text-red-500">*</span>
+                  {pendingStatus === "Ativo" ? "Data de ativação" : "Data do pagamento"}{" "}
+                  <span className="text-red-500">*</span>
                 </label>
                 <Input
                   type="date"
@@ -407,8 +428,9 @@ export function SituacaoTab({
                   max={new Date().toISOString().slice(0, 10)}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  O SICAF passa a valer por 1 ano a partir desta data. O financeiro (taxa/pagamento) será
-                  atualizado com a mesma data.
+                  {pendingStatus === "Ativo"
+                    ? "A licença SICAF fica ativa por 1 ano a partir desta data. Essa data será informada ao cliente no e-mail."
+                    : "O SICAF passa a valer por 1 ano a partir desta data. O financeiro (taxa/pagamento) será atualizado com a mesma data."}
                 </p>
               </div>
             )}

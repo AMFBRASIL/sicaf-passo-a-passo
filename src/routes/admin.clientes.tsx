@@ -157,7 +157,7 @@ function ClienteMobileCard({
   c: ApiAdminClient;
   onOpen: () => void;
 }) {
-  const niveis = mapNiveisFromApi(c.sicafNiveis);
+  const niveis = mapNiveisFromApi(c.sicafNiveis, undefined, { sicafStatus: c.sicafStatus });
   const apto = isClienteApto(niveis);
   const sicafAtivo = c.sicafAtivo ?? (c.sicafStatus === "Ativo" || c.sicafStatus === "Vencendo");
 
@@ -267,6 +267,7 @@ function ClientesPage() {
       page: p,
       limit,
       sicaf: sicafApiParam,
+      filtro,
     });
     if (!res.ok) {
       toast.error(res.error || "Erro ao carregar clientes");
@@ -278,41 +279,20 @@ function ClientesPage() {
     setTotalPages(res.totalPages ?? 1);
     if (res.stats) setStats(res.stats);
     setLoading(false);
-  }, [page, itemsPerPage, sicafApiParam]);
+  }, [filtro, sicafApiParam]);
 
   useEffect(() => {
     const t = setTimeout(() => {
       void carregar(q, page, itemsPerPage);
     }, q ? 300 : 0);
     return () => clearTimeout(t);
-  }, [q, page, itemsPerPage, carregar]);
+  }, [q, page, itemsPerPage, filtro, carregar]);
 
   useEffect(() => {
     setPage(1);
   }, [q, filtro, itemsPerPage]);
 
-  const lista = useMemo(() => {
-    return empresas.filter((c) => {
-      const niveis = mapNiveisFromApi(c.sicafNiveis);
-      const apto = isClienteApto(niveis);
-      switch (filtro) {
-        case "pagou":
-          return !!c.sicafPago;
-        case "nao_pagou":
-          return !c.sicafPago;
-        case "manutencao":
-          return !!c.manutencaoAtiva;
-        case "novo":
-          return !!c.novo;
-        case "apto":
-          return apto;
-        case "inapto":
-          return !apto;
-        default:
-          return true;
-      }
-    });
-  }, [empresas, filtro]);
+  const lista = empresas;
 
   const startIndex = total > 0 ? (page - 1) * itemsPerPage + 1 : 0;
   const endIndex = Math.min(page * itemsPerPage, total);
@@ -332,7 +312,7 @@ function ClientesPage() {
       }
     }
 
-    const niveis = mapNiveisFromApi(c.sicafNiveis);
+    const niveis = mapNiveisFromApi(c.sicafNiveis, undefined, { sicafStatus: c.sicafStatus });
     const detalhe = mapApiClientToDetalhe(c, { niveis });
     setGrupoSel({
       id: c.userId ? `u-${c.userId}` : `c-${c.id}`,
@@ -419,9 +399,6 @@ function ClientesPage() {
                 Exibindo <span className="font-semibold text-foreground">{total > 0 ? startIndex : 0}</span> a{" "}
                 <span className="font-semibold text-foreground">{endIndex}</span> de{" "}
                 <span className="font-semibold text-foreground">{total.toLocaleString("pt-BR")}</span> empresas
-                {lista.length !== empresas.length && (
-                  <span className="ml-1">({lista.length} nesta página após filtro)</span>
-                )}
               </>
             )}
           </span>
@@ -510,7 +487,7 @@ function ClientesPage() {
               )}
               {!loading &&
                 lista.map((c) => {
-                  const niveis = mapNiveisFromApi(c.sicafNiveis);
+                  const niveis = mapNiveisFromApi(c.sicafNiveis, undefined, { sicafStatus: c.sicafStatus });
                   const apto = isClienteApto(niveis);
                   const sicafAtivo =
                     c.sicafAtivo ?? (c.sicafStatus === "Ativo" || c.sicafStatus === "Vencendo");
