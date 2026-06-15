@@ -596,6 +596,54 @@ export async function criarAdminClienteNota(
   return data;
 }
 
+export type AtualizacoesGratuitasUi = {
+  usadas: number;
+  limite: number;
+  bonus: number;
+  limiteEfetivo: number;
+  restantes: number;
+  restantesGratuitas: number;
+  manutencaoAtiva: boolean;
+  contadorAtivo: boolean;
+  bloqueado: boolean;
+  resetEm?: string | null;
+  semSicaf?: boolean;
+  razaoSocial?: string;
+};
+
+export async function fetchAdminAtualizacoesGratuitas(clienteId: number): Promise<{
+  ok: boolean;
+  error?: string;
+} & Partial<AtualizacoesGratuitasUi>> {
+  const res = await apiFetch(`/api/admin/clients/${clienteId}/atualizacoes-gratuitas`);
+  return res.json() as Promise<{ ok: boolean; error?: string } & Partial<AtualizacoesGratuitasUi>>;
+}
+
+export async function ajustarAdminAtualizacoesGratuitas(
+  clienteId: number,
+  payload: { disponiveis: number; motivo?: string },
+): Promise<{
+  ok: boolean;
+  message?: string;
+  error?: string;
+  antes?: AtualizacoesGratuitasUi;
+  depois?: AtualizacoesGratuitasUi;
+  anulados?: number;
+}> {
+  const res = await apiFetch(`/api/admin/clients/${clienteId}/atualizacoes-gratuitas`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.json() as Promise<{
+    ok: boolean;
+    message?: string;
+    error?: string;
+    antes?: AtualizacoesGratuitasUi;
+    depois?: AtualizacoesGratuitasUi;
+    anulados?: number;
+  }>;
+}
+
 export type UpdateSicafStatusManualResult = {
   ok: boolean;
   message?: string;

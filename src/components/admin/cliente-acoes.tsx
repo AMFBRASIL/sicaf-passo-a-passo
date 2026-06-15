@@ -31,7 +31,9 @@ import {
   Edit3,
   Trash2,
   Loader2,
+  RefreshCw,
   StickyNote,
+  Gift,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { readAuthToken } from "@/lib/auth-cookie";
@@ -47,9 +49,23 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AvisosEmailModal } from "@/components/admin/avisos-email-modal";
 import { ContratosModal } from "@/components/admin/contratos-modal";
-import { fetchAdminClienteNotas, criarAdminClienteNota } from "@/lib/admin-clientes-api";
+import {
+  fetchAdminClienteNotas,
+  criarAdminClienteNota,
+  fetchAdminAtualizacoesGratuitas,
+  ajustarAdminAtualizacoesGratuitas,
+  type AtualizacoesGratuitasUi,
+} from "@/lib/admin-clientes-api";
 
-type AcaoKey = "contatos" | "avisos" | "contratos" | "sicaf-manual" | "relatorio" | "historico" | "notas";
+type AcaoKey =
+  | "contatos"
+  | "avisos"
+  | "contratos"
+  | "sicaf-manual"
+  | "cota-gratuita"
+  | "relatorio"
+  | "historico"
+  | "notas";
 
 const ACOES: {
   key: AcaoKey;
@@ -90,6 +106,14 @@ const ACOES: {
     icon: FileUp,
     tone: "bg-emerald-50 dark:bg-emerald-950/20 ring-emerald-200/60 dark:ring-emerald-900/40",
     iconBg: "bg-emerald-500 text-white",
+  },
+  {
+    key: "cota-gratuita",
+    titulo: "Cota gratuita Assistente",
+    desc: "Restaurar ou conceder utilizações gratuitas da Situação do Fornecedor",
+    icon: Gift,
+    tone: "bg-sky-50 dark:bg-sky-950/20 ring-sky-200/60 dark:ring-sky-900/40",
+    iconBg: "bg-sky-500 text-white",
   },
   {
     key: "relatorio",
@@ -164,6 +188,12 @@ export function AcoesTab({ cliente, clienteId }: { cliente: ClienteDetalhe; clie
         clienteId={clienteId}
       />
       <SicafManualModal open={aberta === "sicaf-manual"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} clienteId={clienteId} />
+      <CotaGratuitaModal
+        open={aberta === "cota-gratuita"}
+        onOpenChange={(v) => !v && setAberta(null)}
+        cliente={cliente}
+        clienteId={clienteId}
+      />
       <RelatorioModal open={aberta === "relatorio"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
       <HistoricoModal open={aberta === "historico"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
       <NotasModal
@@ -405,6 +435,241 @@ function SicafManualModal({
                 )}
               </Button>
             </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------- COTA GRATUITA ---------- */
+function CotaGratuitaModal({
+  open,
+  onOpenChange,
+  cliente,
+  clienteId,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  cliente: ClienteDetalhe;
+  clienteId?: number;
+}) {
+  const [status, setStatus] = useState<AtualizacoesGratuitasUi | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [disponiveis, setDisponiveis] = useState("3");
+  const [motivo, setMotivo] = useState("");
+
+  const carregar = useCallback(async () => {
+    if (!clienteId) return;
+    setCarregando(true);
+    try {
+      const res = await fetchAdminAtualizacoesGratuitas(clienteId);
+      if (!res.ok) {
+        toast.error(res.error || "Não foi possível carregar a cota");
+        setStatus(null);
+        return;
+      }
+      const next: AtualizacoesGratuitasUi = {
+        usadas: res.usadas ?? 0,
+        limite: res.limite ?? 3,
+        bonus: res.bonus ?? 0,
+        limiteEfetivo: res.limiteEfetivo ?? res.limite ?? 3,
+        restantes: res.restantes ?? 0,
+        restantesGratuitas: res.restantesGratuitas ?? res.restantes ?? 0,
+        manutencaoAtiva: !!res.manutencaoAtiva,
+        contadorAtivo: !!res.contadorAtivo,
+        bloqueado: !!res.bloqueado,
+        resetEm: res.resetEm,
+        semSicaf: res.semSicaf,
+      };
+      setStatus(next);
+      setDisponiveis(String(Math.max(next.restantes, 3)));
+    } catch {
+      toast.error("Erro ao carregar cota gratuita");
+      setStatus(null);
+    } finally {
+      setCarregando(false);
+    }
+  }, [clienteId]);
+
+  useEffect(() => {
+    if (open) void carregar();
+  }, [open, carregar]);
+
+  const aplicar = async (valor: number) => {
+    if (!clienteId) return;
+    setSalvando(true);
+    try {
+      const res = await ajustarAdminAtualizacoesGratuitas(clienteId, {
+        disponiveis: valor,
+        motivo: motivo.trim() || undefined,
+      });
+      if (!res.ok) {
+        toast.error(res.error || "Não foi possível ajustar a cota");
+        return;
+      }
+      toast.success(res.message || "Cota ajustada com sucesso");
+      if (res.depois) {
+        setStatus(res.depois);
+        setDisponiveis(String(res.depois.restantes));
+      } else {
+        await carregar();
+      }
+      setMotivo("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao ajustar cota");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const limitePadrao = status?.limite ?? 3;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Gift className="h-5 w-5 text-sky-500" /> Cota gratuita do Assistente
+          </DialogTitle>
+          <DialogDescription>
+            Ajuste as utilizações gratuitas da Situação do Fornecedor para{" "}
+            <span className="font-medium text-foreground">{cliente.razao}</span>.
+          </DialogDescription>
+        </DialogHeader>
+
+        {carregando ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" /> Carregando cota...
+          </div>
+        ) : status ? (
+          <div className="space-y-4">
+            {status.manutencaoAtiva ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
+                Este cliente possui manutenção mensal ativa — a cota gratuita não se aplica.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  <Card className="p-3 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Usadas</p>
+                    <p className="text-xl font-bold">{status.usadas}</p>
+                  </Card>
+                  <Card className="p-3 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Limite</p>
+                    <p className="text-xl font-bold">
+                      {status.limiteEfetivo}
+                      {status.bonus > 0 && (
+                        <span className="ml-1 text-xs font-normal text-sky-600">+{status.bonus}</span>
+                      )}
+                    </p>
+                  </Card>
+                  <Card className="p-3 text-center">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Restantes</p>
+                    <p
+                      className={`text-xl font-bold ${status.bloqueado ? "text-rose-600" : "text-emerald-600"}`}
+                    >
+                      {status.restantes}
+                    </p>
+                  </Card>
+                </div>
+
+                {status.bloqueado && (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50/60 p-3 text-sm text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-200">
+                    Cota esgotada — o cliente não consegue usar o Assistente para atualizar até o ajuste.
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Atalhos rápidos
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={salvando}
+                      onClick={() => void aplicar(limitePadrao)}
+                    >
+                      Restaurar {limitePadrao} utilizações
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={salvando}
+                      onClick={() => void aplicar(limitePadrao + 1)}
+                    >
+                      Conceder {limitePadrao + 1} utilizações
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Utilizações disponíveis agora
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={disponiveis}
+                    onChange={(e) => setDisponiveis(e.target.value)}
+                    disabled={salvando}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Motivo (opcional, fica no histórico)
+                  </label>
+                  <Textarea
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                    rows={2}
+                    placeholder="Ex.: cliente usou por engano, liberar nova tentativa"
+                    disabled={salvando}
+                    className="resize-none"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Não foi possível carregar os dados da cota.
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={salvando}>
+            Fechar
+          </Button>
+          {status && !status.manutencaoAtiva && (
+            <Button
+              className="gap-1.5"
+              disabled={salvando || !clienteId}
+              onClick={() => {
+                const n = parseInt(disponiveis, 10);
+                if (!Number.isFinite(n) || n < 0 || n > 20) {
+                  toast.error("Informe um valor entre 0 e 20");
+                  return;
+                }
+                void aplicar(n);
+              }}
+            >
+              {salvando ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Aplicando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4" /> Aplicar ajuste
+                </>
+              )}
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

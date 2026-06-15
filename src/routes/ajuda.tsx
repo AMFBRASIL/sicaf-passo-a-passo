@@ -52,8 +52,8 @@ const videos: VideoAjuda[] = [
   {
     id: "02",
     titulo: "Como atualizar certidões",
-    duracao: "Em breve",
-    emBreve: true,
+    duracao: "Vídeo 02",
+    youtubeId: "HzfZo8MkLd0",
   },
   {
     id: "03",
@@ -63,9 +63,9 @@ const videos: VideoAjuda[] = [
   },
   {
     id: "04",
-    titulo: "Como contratar a manutenção mensal",
-    duracao: "Em breve",
-    emBreve: true,
+    titulo: "Como contratar Manutenção Mensal",
+    duracao: "Vídeo 04",
+    youtubeId: "tpVaxYwPhsc",
   },
 ];
 
