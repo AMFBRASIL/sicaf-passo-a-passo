@@ -31,6 +31,7 @@ import { Progress } from "@/components/ui/progress";
 import { PageHeader, PageContainer } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import { executarModuloIA, type ResultadoIA } from "@/lib/servicos-ia-api";
+import { openServicosIaRelatorioPreview } from "@/lib/servicos-ia-relatorio";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/servicos-ia")({
@@ -405,13 +406,35 @@ function WizardDialog({ modulo, onClose }: { modulo: Modulo | null; onClose: () 
     if (modulo.id === "edital" || modulo.id === "preco" || modulo.id === "impugnacao") {
       return !!arquivo || textoLivre.trim().length > 0;
     }
-    if (modulo.id === "assistente") return textoLivre.trim().length > 10;
+    if (modulo.id === "assistente") return !!arquivo || textoLivre.trim().length > 10;
     return uploadProgress === 100 || textoLivre.trim().length > 0 || modulo.id === "match" || modulo.id === "situacao";
   })();
 
   const podeAvancar =
     (step.key === "objetivo" && !!objetivo) ||
     (step.key === "documento" && documentoOk);
+
+  const abrirRelatorio = () => {
+    if (!resultado) {
+      toast.error("Nenhum resultado disponível para gerar o relatório.");
+      return;
+    }
+    const objetivoTitulo = modulo.opcoesObjetivo.find((o) => o.id === objetivo)?.titulo;
+    const ok = openServicosIaRelatorioPreview(
+      {
+        moduloTitulo: modulo.titulo,
+        moduloId: modulo.id,
+        objetivoTitulo,
+        arquivoNome: arquivo?.name,
+        perguntaCliente: textoLivre.trim() || undefined,
+        geradoEm: new Date(),
+      },
+      resultado,
+    );
+    if (!ok) {
+      toast.error("Não foi possível abrir o relatório. Permita pop-ups para este site.");
+    }
+  };
 
   const proximo = () => {
     if (step.key === "documento") {
@@ -627,12 +650,18 @@ function WizardDialog({ modulo, onClose }: { modulo: Modulo | null; onClose: () 
 
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Ou descreva em texto
+                      {modulo.id === "assistente"
+                        ? "Descreva sua dúvida ou o que buscar no PDF"
+                        : "Ou descreva em texto"}
                     </p>
                     <Textarea
                       value={textoLivre}
                       onChange={(e) => setTextoLivre(e.target.value)}
-                      placeholder="Cole aqui o trecho ou descreva o que quer analisar..."
+                      placeholder={
+                        modulo.id === "assistente"
+                          ? "Ex.: Quais certidões são exigidas? Há cláusula de exclusividade? Qual o prazo de entrega?"
+                          : "Cole aqui o trecho ou descreva o que quer analisar..."
+                      }
                       className="min-h-[110px]"
                     />
                   </div>
@@ -734,12 +763,12 @@ function WizardDialog({ modulo, onClose }: { modulo: Modulo | null; onClose: () 
                     <div>
                       <p className="text-sm font-semibold">Resultado pronto para uso</p>
                       <p className="text-xs text-muted-foreground">
-                        Baixe em PDF ou compartilhe direto com seu time.
+                        Abra o relatório em HTML para imprimir ou salvar como PDF.
                       </p>
                     </div>
-                    <Button size="sm" variant="outline" className="gap-1.5">
+                    <Button size="sm" variant="outline" className="gap-1.5" onClick={abrirRelatorio}>
                       <Download className="h-4 w-4" />
-                      Baixar relatório
+                      Abrir relatório
                     </Button>
                   </div>
                 </div>

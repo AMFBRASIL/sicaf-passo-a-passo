@@ -14,6 +14,8 @@ export type ResultadoIA = {
   resumo: string;
   metricas: { label: string; valor: string; tom: "ok" | "warn" | "info" }[];
   pontos: { titulo: string; texto: string }[];
+  /** Texto integral da IA (relatório completo para impressão). */
+  corpoCompleto?: string;
 };
 
 type EditalJson = {
@@ -44,6 +46,7 @@ function mapTextoParaResultado(titulo: string, texto: string): ResultadoIA {
   return {
     titulo,
     resumo: paragrafos[0]?.slice(0, 220) || texto.slice(0, 220),
+    corpoCompleto: texto.trim(),
     metricas: [
       { label: "Confiança", valor: "Alta", tom: "ok" },
       { label: "Extensão", valor: `${texto.length} caracteres`, tom: "info" },
@@ -185,6 +188,30 @@ async function uploadPdf(endpoint: string, file: File) {
   }
 }
 
+async function uploadPdfComPrompt(
+  endpoint: string,
+  file: File,
+  fields: { pergunta?: string; objetivo?: string; modulo?: string },
+) {
+  const token = readAuthToken() || localStorage.getItem("cadbrasil_token") || "";
+  const form = new FormData();
+  form.append("file", file, file.name);
+  if (fields.pergunta) form.append("pergunta", fields.pergunta);
+  if (fields.objetivo) form.append("objetivo", fields.objetivo);
+  if (fields.modulo) form.append("modulo", fields.modulo);
+  const res = await fetch(apiUrl(endpoint), {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const raw = await res.text();
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return { ok: false, error: raw?.slice(0, 200) || `Erro HTTP ${res.status}` };
+  }
+}
+
 export async function executarModuloIA(
   moduloId: string,
   opts: {
@@ -245,25 +272,46 @@ export async function executarModuloIA(
     assistente: `Como consultor CADBRASIL, responda em linguagem simples. Tema: ${objetivo}.`,
   };
 
-  const contexto = textoLivre?.trim() || (arquivo ? `Documento anexado: ${arquivo.name}` : "");
-  const pergunta = `${prompts[moduloId] || "Responda sobre licitações e SICAF."}\n\n${contexto}`.trim();
-
-  if (!pergunta || pergunta.length < 20) {
-    return { ok: false, error: "Descreva sua dúvida ou envie um documento de referência." };
-  }
-
-  onProgress?.(40);
-  const chat = await perguntarAjuda(pergunta, () => {});
-  onProgress?.(90);
-  if (!chat.ok || !chat.fullText) {
-    return { ok: false, error: chat.error || "Assistente indisponível no momento." };
-  }
-
   const titulos: Record<string, string> = {
     preco: "Preço sugerido calculado",
     impugnacao: "Impugnação gerada",
     assistente: "Resposta do assistente",
   };
 
-  return { ok: true, resultado: mapTextoParaResultado(titulos[moduloId] || "Análise concluída", chat.fullText) };
+  if (moduloId === "assistente" || moduloId === "preco" || moduloId === "impugnacao") {
+    if (arquivo) {
+      onProgress?.(35);
+      const data = await uploadPdfComPrompt("/api/ai-reader/analisar-documento", arquivo, {
+        pergunta: textoLivre?.trim() || "",
+        objetivo,
+        modulo: moduloId,
+      });
+      onProgress?.(90);
+      if (!data.ok) {
+        return { ok: false, error: String(data.error || "Erro ao analisar documento com IA") };
+      }
+      return {
+        ok: true,
+        resultado: mapTextoParaResultado(titulos[moduloId] || "Análise concluída", String(data.texto || "")),
+      };
+    }
+
+    const contexto = textoLivre?.trim() || "";
+    const pergunta = `${prompts[moduloId]}\n\n${contexto}`.trim();
+    const minLen = moduloId === "assistente" ? 10 : 1;
+    if (!contexto || contexto.length < minLen) {
+      return { ok: false, error: "Descreva sua dúvida ou envie um documento PDF para análise." };
+    }
+
+    onProgress?.(40);
+    const chat = await perguntarAjuda(pergunta, () => {});
+    onProgress?.(90);
+    if (!chat.ok || !chat.fullText) {
+      return { ok: false, error: chat.error || "Assistente indisponível no momento." };
+    }
+
+    return { ok: true, resultado: mapTextoParaResultado(titulos[moduloId], chat.fullText) };
+  }
+
+  return { ok: false, error: "Módulo não reconhecido." };
 }

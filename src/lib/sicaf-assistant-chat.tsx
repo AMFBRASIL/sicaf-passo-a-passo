@@ -519,8 +519,17 @@ export default function SicafAssistantChat() {
       const data = await res.json();
       if (data.ok && data.prompt) {
         // Mostrar feedback do banco de dados se disponível
-        if (data.dbResult && data.dbResult.saved) {
+          if (data.dbResult && data.dbResult.saved) {
           const db = data.dbResult;
+
+          let emailBloco = "";
+          if (db.emailNotificacao?.enviado) {
+            emailBloco = `\n\n📧 **E-mail enviado** para ${db.emailNotificacao.para} com o resumo de todos os níveis SICAF.`;
+          } else if (db.emailNotificacao?.motivo === "sem_email_destino") {
+            emailBloco = "\n\n📧 Cadastre o e-mail da empresa para receber o resumo automático dos níveis.";
+          } else if (db.emailNotificacao?.erro) {
+            emailBloco = `\n\n📧 Não foi possível enviar o e-mail: ${db.emailNotificacao.erro}`;
+          }
 
           // Bloco do plano de manutenção (apenas quando contabilizado)
           let planoBloco = "";
@@ -560,6 +569,7 @@ export default function SicafAssistantChat() {
             `(${db.certidoesInserted} nova(s), ${db.certidoesUpdated} atualizada(s))\n` +
             (db.niveisAfetados?.length ? `📋 Níveis afetados: ${db.niveisAfetados.join(", ")}\n` : "") +
             (db.sicafStatus ? `🔄 Status SICAF: **${db.sicafStatus.status || "?"}** (${db.sicafStatus.completude || 0}% completo)\n` : "") +
+            emailBloco +
             planoBloco +
             `\n\n⏳ Analisando detalhes com IA...`
           );

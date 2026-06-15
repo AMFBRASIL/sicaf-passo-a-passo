@@ -660,6 +660,139 @@ function _vencimento30dias() {
   return d.toISOString().slice(0, 10);
 }
 
+const OBJETIVO_ASSISTENTE_LABEL = {
+  sicaf: 'SICAF e cadastros (níveis, prazos, pendências)',
+  edital: 'Interpretação de edital (cláusulas e exigências)',
+  recurso: 'Recursos e impugnações (prazos e estratégia)',
+  geral: 'Dúvida geral sobre licitações',
+};
+
+const OBJETIVO_PRECO_LABEL = {
+  agressivo: 'Preço agressivo para maximizar chance de vitória',
+  equilibrado: 'Preço equilibrado entre margem e competitividade',
+  premium: 'Margem premium com foco em rentabilidade',
+  custom: 'Estratégia personalizada de precificação',
+};
+
+const OBJETIVO_IMPUGNACAO_LABEL = {
+  restritivo: 'Edital restritivo — cláusulas que limitam concorrência',
+  tecnico: 'Erro técnico — especificação direcionada',
+  prazo: 'Prazo insuficiente — cronograma inviável',
+  legal: 'Vício legal — descumprimento da Lei 14.133/2021',
+};
+
+function _promptDocumentoPersonalizado(modulo, objetivo, pergunta) {
+  const pedido =
+    pergunta?.trim() ||
+    (modulo === 'assistente'
+      ? 'Resuma o documento e destaque tudo que for relevante para participar de licitações.'
+      : modulo === 'preco'
+        ? 'Identifique itens, quantidades e valores de referência para sugerir faixa de lance vencedor.'
+        : 'Identifique cláusulas e trechos que fundamentem uma impugnação ao edital.');
+
+  const foco =
+    (modulo === 'assistente' && OBJETIVO_ASSISTENTE_LABEL[objetivo]) ||
+    (modulo === 'preco' && OBJETIVO_PRECO_LABEL[objetivo]) ||
+    (modulo === 'impugnacao' && OBJETIVO_IMPUGNACAO_LABEL[objetivo]) ||
+    objetivo ||
+    'Análise geral';
+
+  return `Você é um especialista em licitações públicas brasileiras (CADBRASIL).
+
+Analise o DOCUMENTO PDF fornecido abaixo e responda ao pedido do cliente.
+
+FOCO DA ANÁLISE: ${foco}
+
+PEDIDO DO CLIENTE:
+${pedido}
+
+INSTRUÇÕES:
+- Leia o documento com atenção e busque trechos que respondam ao pedido
+- Cite cláusulas, itens, artigos ou seções quando encontrar (ex.: "Item 7.3", "Cláusula 12")
+- Se a informação não estiver no documento, diga claramente que não foi encontrada
+- Responda em português brasileiro, linguagem clara
+- Estruture a resposta com seções markdown: ## Resumo, ## Detalhes encontrados no documento, ## Recomendações práticas`;
+}
+
+/**
+ * Analisa PDF com prompt livre do cliente (Serviços IA — assistente, preço, impugnação).
+ * Não consome créditos de leitura de edital.
+ */
+async function analisarDocumentoPersonalizado(usuarioId, filePath, fileName, fileSize, opts = {}) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const modulo = String(opts.modulo || 'assistente').trim();
+  const objetivo = String(opts.objetivo || 'geral').trim();
+  const pergunta = String(opts.pergunta || '').trim();
+
+  try {
+    let texto;
+    try {
+      texto = await extrairTextoPDF(filePath);
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+
+    if (!texto || texto.trim().length < 80) {
+      return {
+        ok: false,
+        error:
+          'Não foi possível extrair texto suficiente do PDF. Verifique se o arquivo contém texto selecionável (não é apenas imagem escaneada).',
+      };
+    }
+
+    const textoTruncado =
+      texto.length > 100000
+        ? texto.substring(0, 100000) + '\n\n[... documento truncado para análise ...]'
+        : texto;
+
+    const systemPrompt = _promptDocumentoPersonalizado(modulo, objetivo, pergunta);
+    const openai = await iaService.ensureReady();
+    const params = await iaService.getParams();
+
+    console.log(
+      `[AI Reader] Análise personalizada (${modulo}/${objetivo}) user ${usuarioId}: ${fileName}`,
+    );
+
+    const response = await openai.chat.completions.create({
+      model: params.model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: `DOCUMENTO: ${fileName}\n\n--- INÍCIO DO TEXTO DO PDF ---\n${textoTruncado}\n--- FIM DO TEXTO DO PDF ---`,
+        },
+      ],
+      temperature: Math.min(0.4, params.temperature || 0.4),
+      max_tokens: Math.min(3500, params.maxTokens),
+    });
+
+    const content = response.choices?.[0]?.message?.content?.trim();
+    if (!content) {
+      return { ok: false, error: 'A IA não retornou conteúdo para esta análise.' };
+    }
+
+    return {
+      ok: true,
+      texto: content,
+      meta: {
+        arquivo: fileName,
+        tamanho: fileSize || 0,
+        modulo,
+        objetivo,
+        caracteresDocumento: textoTruncado.length,
+      },
+    };
+  } catch (e) {
+    console.error('[AI Reader] Erro analisarDocumentoPersonalizado:', e.message);
+    if (e.code === 'IA_NOT_CONFIGURED') {
+      return { ok: false, error: e.message };
+    }
+    return { ok: false, error: e.message || 'Erro ao analisar documento com IA' };
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // EXPORTS
 // ══════════════════════════════════════════════════════════════════════════════
@@ -671,6 +804,7 @@ module.exports = {
   comprarPacote,
   confirmarCompraPacote,
   analisarEdital,
+  analisarDocumentoPersonalizado,
   chatEdital,
   listarLeituras,
   getLeitura,

@@ -4,6 +4,8 @@ import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Consultas pesadas ao MySQL remoto — mais tempo na Vercel. */
+export const maxDuration = 60;
 
 type AdminClientsService = {
   listClientsForAdmin: (params: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -23,10 +25,18 @@ export async function GET(request: Request) {
       page: parseInt(url.searchParams.get("page") || "1", 10),
       limit: parseInt(url.searchParams.get("limit") || "200", 10),
     });
-    return NextResponse.json(result, { status: result.ok ? 200 : 500 });
+    const err = typeof result.error === "string" ? result.error : "";
+    return NextResponse.json(result, {
+      status: result.ok ? 200 : err.includes("Banco") ? 503 : 500,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao listar clientes";
-    const status = message.includes("Token") || message.includes("Sessão") ? 401 : 500;
+    const status =
+      message.includes("Token") || message.includes("Sessão")
+        ? 401
+        : message.includes("Banco") || message.includes("banco")
+          ? 503
+          : 500;
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }

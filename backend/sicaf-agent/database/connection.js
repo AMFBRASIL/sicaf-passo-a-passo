@@ -1,13 +1,29 @@
 /**
  * Conexão com MySQL via Knex.
+ * Na Vercel/serverless usa o bundle gerado no build (knex + mysql2 + tarn).
  */
-const config = require('../config');
-let db = null;
-let initError = null;
+const path = require('path');
 
 function isServerlessRuntime() {
   return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 }
+
+if (isServerlessRuntime()) {
+  const bundlePath = path.join(__dirname, '..', '..', 'lib', 'sicaf-db.bundle.cjs');
+  try {
+    module.exports = require(bundlePath);
+    return;
+  } catch (e) {
+    console.error(
+      '[sicaf-agent DB] Falha ao carregar bundle serverless:',
+      e instanceof Error ? e.message : e,
+    );
+  }
+}
+
+const config = require('../config');
+let db = null;
+let initError = null;
 
 function validateDbConfig() {
   const { host, user, password, database } = config.db;

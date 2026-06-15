@@ -162,6 +162,7 @@ async function processPdfUpload(fileBuffer, fileName) {
             niveisAfetados: result.niveisAfetados,
             niveisEvidencias: result.niveisEvidencias || [],
             sicafStatus: result.sicafStatus,
+            emailNotificacao: result.emailNotificacao || null,
           };
         } else {
           dbResult = { saved: false, reason: result.reason };

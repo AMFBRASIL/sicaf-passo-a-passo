@@ -260,17 +260,37 @@ async function saveCertidoesToDB(data) {
       }
 
       // Mapeamento de situação do PDF → status do banco
-      // Pendência tem prioridade sobre Regular (PDF pode ter "Regular" mas descricao com "Pendência")
+      // Pendência explícita no PDF tem prioridade; caso contrário, nível presente = regular.
       function mapNivelStatus(situacao, descricao) {
-        const s = (situacao || '').toLowerCase();
-        const d = (descricao || '').toLowerCase();
-        const combined = s + ' ' + d;
-        // Pendência tem prioridade máxima
-        if (combined.includes('pendên') || combined.includes('penden') || combined.includes('irregular') || combined.includes('parcial')) return 'Pendente';
+        const s = String(situacao || '').toLowerCase().trim();
+        const d = String(descricao || '').toLowerCase();
+
+        const temPendenciaExplicita =
+          d.includes('possui pendência') ||
+          d.includes('possui pendencia') ||
+          s.includes('possui pendência') ||
+          s.includes('possui pendencia') ||
+          s === 'pendente' ||
+          s.includes('pendência') ||
+          s.includes('pendencia');
+
+        if (temPendenciaExplicita) return 'Pendente';
         if (s.includes('vencido') || s.includes('expirad')) return 'Vencido';
         if (s.includes('vencendo') || s.includes('próxim') || s.includes('proxim')) return 'Vencendo';
-        if (s.includes('regular') || s.includes('válido') || s.includes('valido')) return 'Válido';
-        return 'Pendente';
+
+        if (
+          s.includes('regular') ||
+          s.includes('válido') ||
+          s.includes('valido') ||
+          s.includes('habilitado') ||
+          s.includes('credenciado') ||
+          s.includes('ativo')
+        ) {
+          return 'Válido';
+        }
+
+        // Nível listado no PDF sem marcador de problema → considerar regular
+        return 'Válido';
       }
 
       // Habilitar cada nível presente no PDF (com status e observação do PDF)
@@ -329,6 +349,7 @@ async function saveCertidoesToDB(data) {
     // Regra de negócio: em "Situação do Fornecedor", NÃO alterar sicaf_cadastros.status.
     const sicafStatusResult = await updateSicafStatus(cliente.id, sicaf.id, {
       preserveSicafStatus: isSituacaoFornecedor,
+      preserveNivelStatusFromPdf: isSituacaoFornecedor,
     });
     if (isSituacaoFornecedor) {
       console.log('  [DB] ✔ Níveis/certidões/completude atualizados (status geral do SICAF preservado)');
@@ -352,6 +373,23 @@ async function saveCertidoesToDB(data) {
       };
     });
 
+    let emailNotificacao = { enviado: false, motivo: 'nao_aplicavel' };
+    if (isSituacaoFornecedor) {
+      try {
+        const situacaoEmailService = require('../../../services/sicaf-situacao-email.service');
+        emailNotificacao = await situacaoEmailService.sendSituacaoFornecedorEmail({
+          cliente,
+          cnpj: docFormatted,
+          niveisEvidencias,
+          sicafStatus: sicafStatusResult,
+          certidoesCount: inserted + updated,
+        });
+      } catch (emailErr) {
+        emailNotificacao = { enviado: false, motivo: 'erro_envio', erro: emailErr.message };
+        console.log(`  [Email] ✖ Falha ao enviar resumo: ${emailErr.message.substring(0, 80)}`);
+      }
+    }
+
     return {
       saved: true,
       clienteId: cliente.id,
@@ -365,6 +403,7 @@ async function saveCertidoesToDB(data) {
       niveisAfetados: Array.from(niveisAfetados),
       niveisEvidencias,
       sicafStatus: sicafStatusResult || { niveis: niveisResult },
+      emailNotificacao,
     };
   } catch (e) {
     console.log(`  [DB] ✖ Erro ao salvar: ${e.message.substring(0, 120)}`);
@@ -380,12 +419,14 @@ async function saveCertidoesToDB(data) {
  * @param {number} sicafId
  * @param {Object} [options]
  * @param {boolean} [options.preserveSicafStatus=false] - Se true, NÃO altera sicaf_cadastros.status
+ * @param {boolean} [options.preserveNivelStatusFromPdf=false] - Se true, mantém status dos níveis já gravados pelo PDF
  * @returns {Object} { status, completude, niveis }
  */
 async function updateSicafStatus(clienteId, sicafId, options = {}) {
   const db = getDb();
   if (!db) return null;
   const preserveSicafStatus = !!options.preserveSicafStatus;
+  const preserveNivelStatusFromPdf = !!options.preserveNivelStatusFromPdf;
 
   try {
     // 1. Buscar todas as certidões do cliente com nivel_sicaf definido
@@ -581,51 +622,75 @@ async function updateSicafStatus(clienteId, sicafId, options = {}) {
       const certDoNivel = certPorNivel[nivel] || [];
       const temCertidoesReais = certDoNivel.length > 0;
 
-      // Montar observação baseada nas certidões do banco (dados reais)
-      let observacao = null;
-      if (temCertidoesReais) {
-        const obs = [];
-        for (const tipoId of tiposRequeridos) {
-          const cert = certDoNivel.find(c => c.tipo_certidao_id === tipoId);
-          const nome = tipoIdToNome[tipoId] || `Tipo #${tipoId}`;
-          if (cert) {
-            const valStr = cert.data_validade ? new Date(cert.data_validade).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—';
-            obs.push(`${nome}: ${cert.status} (Val: ${valStr})`);
-          } else {
-            obs.push(`${nome}: Não informado`);
-          }
-        }
-        observacao = obs.join('\n');
-      }
-
       try {
         const existeNivel = await db('sicaf_niveis').where({ sicaf_id: sicafId, nivel }).first();
         const certStatus = info.status;
 
-        // Prioridade de severidade: Pendente (do PDF/SICAF) não pode ser rebaixado por certidões
-        const SEVERITY = { 'Pendente': 4, 'Vencido': 3, 'Parcial': 2, 'Vencendo': 1, 'Válido': 0, 'Não informado': -1 };
-        const dbStatus = existeNivel?.status || 'Não informado';
-        const dbSev = SEVERITY[dbStatus] ?? -1;
-        const certSev = SEVERITY[certStatus] ?? -1;
-        const finalStatus = dbSev > certSev ? dbStatus : certStatus;
+        let finalStatus = certStatus;
+        let observacao = null;
 
-        if (finalStatus !== certStatus) {
-          console.log(`  [DB]   ⚠ Nível ${nivel}: cert=${certStatus} → mantendo ${finalStatus} (do PDF/SICAF)`);
+        if (temCertidoesReais) {
+          const obs = [];
+          for (const tipoId of tiposRequeridos) {
+            const cert = certDoNivel.find((c) => c.tipo_certidao_id === tipoId);
+            const nome = tipoIdToNome[tipoId] || `Tipo #${tipoId}`;
+            if (cert) {
+              const valStr = cert.data_validade
+                ? new Date(cert.data_validade).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+                : '—';
+              obs.push(`${nome}: ${cert.status} (Val: ${valStr})`);
+            } else {
+              obs.push(`${nome}: Não informado`);
+            }
+          }
+          observacao = obs.join('\n');
+        }
+
+        if (preserveNivelStatusFromPdf && existeNivel?.status) {
+          finalStatus = existeNivel.status;
+          if (existeNivel.observacao) {
+            observacao = existeNivel.observacao;
+          } else if (observacao && finalStatus === 'Pendente' && certStatus !== 'Pendente') {
+            observacao = `⚠️ POSSUI PENDÊNCIA (conforme SICAF)\n${observacao}`;
+          }
+        } else {
+          // Prioridade de severidade: Pendente (do PDF/SICAF) não pode ser rebaixado por certidões
+          const SEVERITY = {
+            Pendente: 4,
+            Vencido: 3,
+            Parcial: 2,
+            Vencendo: 1,
+            Válido: 0,
+            'Não informado': -1,
+          };
+          const dbStatus = existeNivel?.status || 'Não informado';
+          const dbSev = SEVERITY[dbStatus] ?? -1;
+          const certSev = SEVERITY[certStatus] ?? -1;
+          finalStatus = dbSev > certSev ? dbStatus : certStatus;
+
+          if (finalStatus !== certStatus) {
+            console.log(`  [DB]   ⚠ Nível ${nivel}: cert=${certStatus} → mantendo ${finalStatus} (do PDF/SICAF)`);
+          }
+
+          if (observacao) {
+            if (finalStatus === 'Pendente' && certStatus !== 'Pendente') {
+              observacao = `⚠️ POSSUI PENDÊNCIA (conforme SICAF)\n${observacao}`;
+            }
+          }
         }
 
         const updateFields = { status: finalStatus };
-        if (observacao) {
-          if (finalStatus === 'Pendente' && certStatus !== 'Pendente') {
-            updateFields.observacao = `⚠️ POSSUI PENDÊNCIA (conforme SICAF)\n${observacao}`;
-          } else {
-            updateFields.observacao = observacao;
-          }
-        }
+        if (observacao) updateFields.observacao = observacao;
 
         if (existeNivel) {
           await db('sicaf_niveis').where({ sicaf_id: sicafId, nivel }).update(updateFields);
         } else {
-          await db('sicaf_niveis').insert({ sicaf_id: sicafId, nivel, habilitado: finalStatus !== 'Não informado' ? 1 : 0, ...updateFields });
+          await db('sicaf_niveis').insert({
+            sicaf_id: sicafId,
+            nivel,
+            habilitado: finalStatus !== 'Não informado' ? 1 : 0,
+            ...updateFields,
+          });
         }
       } catch (_) {}
     }

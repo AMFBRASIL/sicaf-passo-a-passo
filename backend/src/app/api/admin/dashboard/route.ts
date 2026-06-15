@@ -17,7 +17,10 @@ export async function GET(request: Request) {
 
     const svc = await getSicafAgentModule<AdminDashboardService>("services/admin-dashboard.service");
     const result = await svc.getAdminDashboard();
-    return NextResponse.json(result, { status: result.ok ? 200 : 500 });
+    const err = typeof result.error === "string" ? result.error : "";
+    return NextResponse.json(result, {
+      status: result.ok ? 200 : err.includes("Banco") ? 503 : 500,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao carregar dashboard";
     const status =
@@ -25,7 +28,9 @@ export async function GET(request: Request) {
         ? 401
         : message.includes("restrito")
           ? 403
-          : 500;
+          : message.includes("Banco de dados") || message.includes("banco")
+            ? 503
+            : 500;
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 }
