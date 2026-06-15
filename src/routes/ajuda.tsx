@@ -58,8 +58,8 @@ const videos: VideoAjuda[] = [
   {
     id: "03",
     titulo: "Como enviar documentos",
-    duracao: "Em breve",
-    emBreve: true,
+    duracao: "Vídeo 03",
+    youtubeId: "XF9oV31fOt4",
   },
   {
     id: "04",

@@ -384,9 +384,11 @@ function HomePage() {
                   Abrir Chamado
                 </Link>
               </Button>
-              <Button variant="ghost" className="w-full justify-start">
-                <PlayCircle className="mr-2 h-4 w-4 text-primary" />
-                Ver Vídeo Explicativo
+              <Button asChild variant="ghost" className="w-full justify-start">
+                <Link to="/ajuda">
+                  <PlayCircle className="mr-2 h-4 w-4 text-primary" />
+                  Ver Vídeo Explicativo
+                </Link>
               </Button>
             </CardContent>
           </Card>
