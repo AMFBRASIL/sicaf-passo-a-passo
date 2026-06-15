@@ -2393,9 +2393,7 @@ function EmpresasPage() {
     "23.456.789/0001-11": 5,
   });
 
-  const empresasPendentes = empresasMock.filter((e) =>
-    shouldGerenciarAbrirPagamentoFromSicaf(e.sicaf),
-  );
+  const empresasPendentes = empresasMock.filter((e) => e.taxaPendente);
 
   useEffect(() => {
     if (empresasPendentes.length === 0) return;

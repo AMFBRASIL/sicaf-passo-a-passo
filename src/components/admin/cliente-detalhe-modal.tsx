@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { NivelDots, NIVEIS_SICAF, type NivelStatus } from "./nivel-dots";
+import { CopyButton } from "@/components/copy-button";
 import {
   Phone,
   Mail,
@@ -233,9 +234,16 @@ export function ClienteDetalheModal({
                   {iniciais}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold truncate">{exibicao.razao}</p>
-                <p className="text-[11px] font-mono text-white/70 truncate">{exibicao.cnpj}</p>
+                <div className="flex items-center gap-0.5 min-w-0">
+                  <p className="text-[11px] font-mono text-white/70 truncate">{exibicao.cnpj}</p>
+                  <CopyButton
+                    value={exibicao.cnpj}
+                    label="CNPJ"
+                    className="h-6 w-6 shrink-0 text-white/70 hover:text-white hover:bg-white/10 [&_svg]:text-inherit"
+                  />
+                </div>
               </div>
             </div>
 

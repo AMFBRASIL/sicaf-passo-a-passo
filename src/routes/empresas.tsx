@@ -82,7 +82,7 @@ export const Route = createFileRoute("/empresas")({
 
 type Filtro = "todas" | SicafStatus;
 type ViewMode = "cards" | "lista";
-const VIEW_MODE_KEY = "cadbrasil-empresas-view";
+const VIEW_MODE_KEY = "cadbrasil-empresas-view-v2";
 
 function readViewMode(): ViewMode {
   try {
@@ -158,16 +158,18 @@ function EmpresasPage() {
   }, [busca, loadEmpresas]);
 
   const empresasPendentes = useMemo(
-    () => empresas.filter((e) => shouldGerenciarAbrirPagamentoFromSicaf(e.sicaf)),
+    () => empresas.filter((e) => e.taxaPendente),
     [empresas],
   );
 
   useEffect(() => {
     if (loading || pendenciasAutoShown.current || taxaModalOpen) return;
-    if (empresasPendentes.length > 0) {
+    if (empresasPendentes.length === 0) return;
+    const timer = setTimeout(() => {
       setPendenciasOpen(true);
       pendenciasAutoShown.current = true;
-    }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [loading, empresasPendentes.length, taxaModalOpen]);
 
   const handleGerenciar = async (empresa: EmpresaData) => {
