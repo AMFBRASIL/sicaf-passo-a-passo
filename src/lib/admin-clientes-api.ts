@@ -36,6 +36,8 @@ export type ApiAdminClient = {
   mrr?: number;
   manutencaoAtiva?: boolean;
   pagou?: boolean;
+  pagamentoSicafStatus?: string;
+  pagamentoSicafDetalhe?: string;
   novo?: boolean;
   plano?: string;
   createdAt?: string;
@@ -150,7 +152,9 @@ export function mapApiClientToDetalhe(c: ApiAdminClient, extra?: Partial<Cliente
     email: c.email,
     telefone: c.phone,
     sicaf: mapSicafUi(c.sicafStatus),
-    pagou: c.pagou ?? true,
+    pagou: !!c.pagou,
+    pagamentoSicafStatus: c.pagamentoSicafStatus,
+    pagamentoSicafDetalhe: c.pagamentoSicafDetalhe,
     manutencao: c.manutencaoAtiva ?? !!c.sicafManutencao,
     novo: c.novo ?? false,
     mrr: c.mrr ?? 0,

@@ -13,6 +13,106 @@ const TAXA_SICAF_PAGA_WHERE =
 const TAXA_SICAF_PAGA_TS_WHERE =
   "(LOWER(TRIM(CAST(ts.status AS CHAR))) IN ('pago','paga','aprovado','aprovada') OR ts.status IN ('Pago','Paga','pago','paga','Aprovado','Aprovada','aprovado','aprovada'))";
 
+const TAXA_SICAF_ABERTA_STATUSES = [
+  'Pendente', 'pendente', 'Aguardando', 'aguardando', 'Gerado', 'gerado',
+  'Vencido', 'vencido', 'Atrasado', 'atrasado',
+];
+
+const PAGAMENTO_PENDENTE_STATUSES = [
+  'pendente', 'aguardando', 'aberto', 'gerado', 'vencido', 'atrasado',
+  'Pendente', 'Aguardando', 'Aberto', 'Gerado', 'Vencido', 'Atrasado',
+];
+
+function formatDateBr(d) {
+  if (!d) return null;
+  try {
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return String(d);
+    return dt.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+  } catch {
+    return String(d);
+  }
+}
+
+function diasAteValidadeSicaf(sicafValidade) {
+  if (!sicafValidade) return null;
+  const val = new Date(sicafValidade);
+  if (Number.isNaN(val.getTime())) return null;
+  const now = new Date();
+  const nowUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const valUtc = Date.UTC(val.getUTCFullYear(), val.getUTCMonth(), val.getUTCDate());
+  return Math.ceil((valUtc - nowUtc) / 86_400_000);
+}
+
+function isCredencialVigente(sicafValidade, sicafStatus) {
+  if (sicafStatus === 'Vencido') return false;
+  const dias = diasAteValidadeSicaf(sicafValidade);
+  return dias !== null && dias > 0;
+}
+
+/** Mesma regra do card "Pagamento SICAF" no modal de detalhe (Resumo). */
+function derivePagamentoSicafResumo({
+  sicafStatus,
+  sicafValidade,
+  temTaxaAberta,
+  temPagamentoPendente,
+}) {
+  const temAberto = temTaxaAberta || temPagamentoPendente;
+  const vigente = isCredencialVigente(sicafValidade, sicafStatus);
+  const dias = diasAteValidadeSicaf(sicafValidade);
+  const validadeFmt = formatDateBr(sicafValidade);
+
+  if (vigente && validadeFmt) {
+    const vencendoEmBreve = dias !== null && dias <= 30;
+    if (temAberto) {
+      return {
+        pagou: true,
+        pagamentoSicafStatus: vencendoEmBreve ? 'Vencendo' : 'Vigente',
+        pagamentoSicafDetalhe: `Válido até ${validadeFmt} · renovação em aberto`,
+      };
+    }
+    return {
+      pagou: true,
+      pagamentoSicafStatus: vencendoEmBreve ? 'Vencendo' : 'Em dia',
+      pagamentoSicafDetalhe: vencendoEmBreve
+        ? `Válido até ${validadeFmt}`
+        : 'Taxa SICAF quitada',
+    };
+  }
+
+  if (dias !== null && dias <= 0) {
+    return {
+      pagou: false,
+      pagamentoSicafStatus: 'Vencido',
+      pagamentoSicafDetalhe: validadeFmt
+        ? `Validade expirada em ${validadeFmt}`
+        : 'Credenciamento expirado',
+    };
+  }
+
+  if (temAberto) {
+    return {
+      pagou: false,
+      pagamentoSicafStatus: 'Pendente',
+      pagamentoSicafDetalhe: 'Taxa pendente · sem vigência ativa no cadastro',
+    };
+  }
+
+  if (sicafStatus === 'Vencido') {
+    return {
+      pagou: false,
+      pagamentoSicafStatus: 'Vencido',
+      pagamentoSicafDetalhe: 'SICAF vencido',
+    };
+  }
+
+  return {
+    pagou: false,
+    pagamentoSicafStatus: 'Sem vigência',
+    pagamentoSicafDetalhe: 'Nenhum credenciamento SICAF vigente',
+  };
+}
+
 const NIVEL_APTO_SQL = `sn.habilitado = 1 AND (
   LOWER(CAST(sn.status AS CHAR)) LIKE '%valid%'
   OR LOWER(CAST(sn.status AS CHAR)) LIKE '%habilit%'
@@ -77,17 +177,49 @@ async function enrichClients(clients) {
     } catch (_) {}
   }
 
-  let pendenteMap = {};
+  let taxaAbertaMap = {};
+  let pendenteSicafMap = {};
   if (clientIds.length && db) {
     try {
-      const pendentes = await db('pagamentos_gerencianet')
+      const taxasAbertas = await db('taxas_sicaf')
         .whereIn('cliente_id', clientIds)
-        .whereIn('status', ['pendente', 'aguardando', 'aberto'])
+        .whereIn('status', TAXA_SICAF_ABERTA_STATUSES)
         .groupBy('cliente_id')
         .select('cliente_id')
         .count('* as total');
-      for (const p of pendentes) {
-        pendenteMap[p.cliente_id] = parseInt(p.total, 10) > 0;
+      for (const row of taxasAbertas) {
+        taxaAbertaMap[row.cliente_id] = parseInt(row.total, 10) > 0;
+      }
+    } catch (_) {}
+
+    try {
+      const hasPagamentos = await db.schema.hasTable('pagamentos');
+      if (hasPagamentos) {
+        const pendentesV2 = await db('pagamentos')
+          .whereIn('cliente_id', clientIds)
+          .where('origem', 'sicaf')
+          .whereIn('status', PAGAMENTO_PENDENTE_STATUSES)
+          .groupBy('cliente_id')
+          .select('cliente_id')
+          .count('* as total');
+        for (const p of pendentesV2) {
+          pendenteSicafMap[p.cliente_id] = parseInt(p.total, 10) > 0;
+        }
+      }
+    } catch (_) {}
+
+    try {
+      const pendentesGn = await db('pagamentos_gerencianet')
+        .whereIn('cliente_id', clientIds)
+        .where('origem', 'sicaf')
+        .whereIn('status', PAGAMENTO_PENDENTE_STATUSES)
+        .groupBy('cliente_id')
+        .select('cliente_id')
+        .count('* as total');
+      for (const p of pendentesGn) {
+        if (!pendenteSicafMap[p.cliente_id]) {
+          pendenteSicafMap[p.cliente_id] = parseInt(p.total, 10) > 0;
+        }
       }
     } catch (_) {}
   }
@@ -110,9 +242,15 @@ async function enrichClients(clients) {
     const usuario = c.userId ? userMap[c.userId] : null;
     const manut = manutMap[c.id];
     const mrr = manut ? parseFloat(manut.valor) || 0 : 0;
-    const temPendencia = !!pendenteMap[c.id];
+    const temTaxaAberta = !!taxaAbertaMap[c.id];
+    const temPagamentoSicafPendente = !!pendenteSicafMap[c.id];
     const sicafPago = !!sicafPagoMap[c.id];
-    const pagou = !temPendencia && c.sicafStatus !== 'Vencido';
+    const pagamento = derivePagamentoSicafResumo({
+      sicafStatus: c.sicafStatus,
+      sicafValidade: c.sicafValidade,
+      temTaxaAberta,
+      temPagamentoPendente: temPagamentoSicafPendente,
+    });
     const novo = c.createdAt
       ? Date.now() - new Date(c.createdAt).getTime() < 30 * 24 * 60 * 60 * 1000
       : false;
@@ -125,7 +263,9 @@ async function enrichClients(clients) {
       usuarioDesde: usuario?.created_at || c.createdAt,
       mrr,
       manutencaoAtiva: !!manut,
-      pagou,
+      pagou: pagamento.pagou,
+      pagamentoSicafStatus: pagamento.pagamentoSicafStatus,
+      pagamentoSicafDetalhe: pagamento.pagamentoSicafDetalhe,
       sicafPago,
       sicafAtivo: c.sicafStatus === 'Ativo' || c.sicafStatus === 'Vencendo',
       novo,

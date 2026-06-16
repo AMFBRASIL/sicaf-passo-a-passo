@@ -89,6 +89,8 @@ export interface ClienteDetalhe {
   telefone?: string;
   sicaf: "ok" | "pendente" | "vencido";
   pagou: boolean;
+  pagamentoSicafStatus?: string;
+  pagamentoSicafDetalhe?: string;
   manutencao: boolean;
   novo: boolean;
   mrr: number;
@@ -787,11 +789,15 @@ function ResumoTab({
   const pagamentoSicaf = derivePagamentoSicafCard(cliente, faturas);
   const manutencao = deriveManutencaoCard(cliente);
 
+  const pagamentoEmDia = ["Vigente", "Em dia", "Pago e válido", "Vencendo"].includes(
+    pagamentoSicaf.status,
+  );
+
   const alerts: { tone: "danger" | "warn" | "ok"; text: string; icon: typeof AlertTriangle }[] = [];
   if (cliente.sicaf === "vencido")
     alerts.push({ tone: "danger", text: "SICAF vencido — renovar imediatamente", icon: AlertTriangle });
-  if (!cliente.pagou)
-    alerts.push({ tone: "danger", text: "Cliente inadimplente neste ciclo", icon: AlertTriangle });
+  if (!pagamentoEmDia)
+    alerts.push({ tone: "danger", text: "Taxa SICAF pendente ou credenciamento irregular", icon: AlertTriangle });
   if (cliente.sicaf === "pendente")
     alerts.push({ tone: "warn", text: "Há níveis SICAF pendentes de validação", icon: AlertTriangle });
   if (!alerts.length)
@@ -856,15 +862,15 @@ function ResumoTab({
           <HealthBar label="SICAF completude" value={completude} tone="primary" />
           <HealthBar
             label="Pagamentos em dia"
-            value={cliente.pagou ? 100 : 30}
-            tone={cliente.pagou ? "ok" : "danger"}
+            value={pagamentoEmDia ? 100 : 30}
+            tone={pagamentoEmDia ? "ok" : "danger"}
           />
           <HealthBar
             label="Engajamento (últimos 30d)"
             value={72}
             tone="primary"
           />
-          <HealthBar label="Risco de cancelamento" value={cliente.pagou ? 12 : 78} tone="danger" />
+          <HealthBar label="Risco de cancelamento" value={pagamentoEmDia ? 12 : 78} tone="danger" />
         </div>
       </Card>
 

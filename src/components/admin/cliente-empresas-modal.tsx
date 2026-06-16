@@ -98,6 +98,44 @@ function resumoGrupo(empresas: ClienteDetalhe[]) {
   };
 }
 
+function pagamentoEmpresaUi(emp: ClienteDetalhe) {
+  const status = emp.pagamentoSicafStatus ?? (emp.pagou ? "Em dia" : "Atrasado");
+  const detalhe =
+    emp.pagamentoSicafDetalhe ??
+    (emp.pagou ? "Taxa SICAF quitada" : "Taxa pendente ou vencida");
+
+  if (status === "Vigente" || status === "Em dia") {
+    return {
+      valor: status,
+      detalhe,
+      cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300",
+      statusIcon: CheckCircle2,
+    };
+  }
+  if (status === "Vencendo") {
+    return {
+      valor: status,
+      detalhe,
+      cls: "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+      statusIcon: AlertTriangle,
+    };
+  }
+  if (status === "Pendente") {
+    return {
+      valor: status,
+      detalhe,
+      cls: "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+      statusIcon: AlertTriangle,
+    };
+  }
+  return {
+    valor: status === "Vencido" ? "Vencido" : "Atrasado",
+    detalhe,
+    cls: "border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-300",
+    statusIcon: XCircle,
+  };
+}
+
 function passaFiltro(emp: ClienteDetalhe, filtro: FiltroLista): boolean {
   switch (filtro) {
     case "sicaf_ok":
@@ -288,6 +326,8 @@ function EmpresaCard({ emp, onSelect }: { emp: ClienteDetalhe; onSelect: () => v
   const sicaf = sicafMeta[emp.sicaf];
   const SicafIcon = sicaf.icon;
   const apto = isClienteApto(emp.niveis);
+  const pagamento = pagamentoEmpresaUi(emp);
+  const PagamentoIcon = pagamento.statusIcon;
 
   return (
     <div
@@ -348,14 +388,10 @@ function EmpresaCard({ emp, onSelect }: { emp: ClienteDetalhe; onSelect: () => v
               <StatusBox
                 icon={CreditCard}
                 titulo="Pagamento"
-                valor={emp.pagou ? "Em dia" : "Atrasado"}
-                detalhe={emp.pagou ? "Taxa SICAF quitada" : "Taxa pendente ou vencida"}
-                cls={
-                  emp.pagou
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
-                    : "border-rose-500/30 bg-rose-500/10 text-rose-800 dark:text-rose-300"
-                }
-                statusIcon={emp.pagou ? CheckCircle2 : XCircle}
+                valor={pagamento.valor}
+                detalhe={pagamento.detalhe}
+                cls={pagamento.cls}
+                statusIcon={PagamentoIcon}
               />
               <StatusBox
                 icon={Wrench}
