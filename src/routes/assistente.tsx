@@ -543,7 +543,7 @@ function AssistentePage() {
                   onClick={() => window.open(CADBRASIL_EXTENSION_STORE_URL, "_blank", "noopener,noreferrer")}
                 >
                   <ExternalLink className="h-4 w-4" />
-                  Instalar extensão
+                  Instalar Assistente CadBrasil
                 </Button>
                 <Button
                   variant="outline"
@@ -1044,7 +1044,7 @@ function AssistentePage() {
                     onClick={() => window.open(CADBRASIL_EXTENSION_STORE_URL, "_blank")}
                   >
                     <Download className="h-4 w-4" />
-                    Instalar assistente
+                    Instalar Assistente CadBrasil
                   </Button>
                   <Button
                     size="lg"
