@@ -3,6 +3,7 @@ export {
   empresasMock,
   statusLabel,
   isEmpresaApto,
+  isSicafPagoInapto,
   getAptoSituacao,
   countNiveisAtualizadosAssistente,
   formatSicafValidade,
@@ -35,6 +36,7 @@ import {
   Sparkles,
   LayoutGrid,
   List,
+  Rocket,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,6 +46,7 @@ import { CopyButton } from "@/components/copy-button";
 import {
   statusLabel,
   isEmpresaApto,
+  isSicafPagoInapto,
   getAptoSituacao,
   formatSicafValidade,
   countNiveisAtivosExibicao,
@@ -61,6 +64,7 @@ import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { PagamentosPendentesWizard } from "@/components/pagamentos-pendentes-wizard";
 import { detectarFluxoPagamentoSicaf } from "@/lib/cliente-financeiro-api";
 import { SicafAnalisarProblemaModal } from "@/components/sicaf/SicafAnalisarProblemaModal";
+import { ResolverSicafInaptoModal } from "@/components/resolver-sicaf-inapto-modal";
 import {
   Tabs,
   TabsList,
@@ -121,6 +125,7 @@ function EmpresasPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [manutencaoAtivada, setManutencaoAtivada] = useState<Record<string, number>>({});
   const [analiseModalOpen, setAnaliseModalOpen] = useState(false);
+  const [resolverSicaf, setResolverSicaf] = useState<EmpresaData | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>(() => readViewMode());
   const pendenciasAutoShown = useRef(false);
 
@@ -209,6 +214,15 @@ function EmpresasPage() {
     return { aptos, inaptos };
   }, [empresas]);
 
+  const empresasSicafPagoInapto = useMemo(
+    () => empresas.filter((e) => isSicafPagoInapto(e)),
+    [empresas],
+  );
+
+  const abrirResolverSicaf = useCallback((empresa: EmpresaData) => {
+    setResolverSicaf(empresa);
+  }, []);
+
   const contagem = useMemo(() => {
     const base: Record<SicafStatus, number> = {
       ativo: 0,
@@ -291,6 +305,35 @@ function EmpresasPage() {
           tone="warn"
         />
       </div>
+
+      {empresasSicafPagoInapto.length > 0 && (
+        <Card className="mt-6 border-amber-500/40 bg-gradient-to-r from-amber-500/10 via-background to-red-500/5">
+          <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700">
+                <Rocket className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">
+                  {empresasSicafPagoInapto.length === 1
+                    ? "1 empresa com SICAF pago, mas INAPTA"
+                    : `${empresasSicafPagoInapto.length} empresas com SICAF pago, mas INAPTAS`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                  A taxa está quitada — regularize com o Assistente e o envio da documentação no portal GOV.
+                </p>
+              </div>
+            </div>
+            <Button
+              className="shrink-0 gap-1.5 bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => abrirResolverSicaf(empresasSicafPagoInapto[0])}
+            >
+              <Rocket className="h-4 w-4" />
+              Resolver meu SICAF
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Toolbar */}
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -380,6 +423,7 @@ function EmpresasPage() {
               empresa={empresa}
               manutencaoDia={manutencaoAtivada[empresa.cnpj]}
               onGerenciar={() => handleGerenciar(empresa)}
+              onResolverSicaf={() => abrirResolverSicaf(empresa)}
               gerenciando={gerenciandoClienteId === empresa.clienteId}
             />
           ))}
@@ -399,6 +443,7 @@ function EmpresasPage() {
               empresa={empresa}
               manutencaoDia={manutencaoAtivada[empresa.cnpj]}
               onGerenciar={() => handleGerenciar(empresa)}
+              onResolverSicaf={() => abrirResolverSicaf(empresa)}
               gerenciando={gerenciandoClienteId === empresa.clienteId}
             />
           ))}
@@ -444,6 +489,12 @@ function EmpresasPage() {
           .map((e) => ({ clienteId: e.clienteId!, nome: e.nome, cnpj: e.cnpj }))}
         onProcessed={() => loadEmpresas(busca)}
       />
+      <ResolverSicafInaptoModal
+        open={Boolean(resolverSicaf)}
+        onOpenChange={(v) => { if (!v) setResolverSicaf(null); }}
+        empresaNome={resolverSicaf?.nome}
+        cnpj={resolverSicaf?.cnpj}
+      />
     </div>
   );
 }
@@ -486,15 +537,18 @@ function EmpresaCard({
   empresa,
   manutencaoDia,
   onGerenciar,
+  onResolverSicaf,
   gerenciando,
 }: {
   empresa: EmpresaData;
   manutencaoDia?: number;
   onGerenciar: () => void;
+  onResolverSicaf: () => void;
   gerenciando?: boolean;
 }) {
   const meta = statusLabel[empresa.sicaf];
   const situacao = getAptoSituacao(empresa);
+  const precisaResolver = isSicafPagoInapto(empresa);
 
   const niveisAtivos = countNiveisAtivosExibicao(empresa);
   const temManutencao = typeof manutencaoDia === "number";
@@ -568,6 +622,16 @@ function EmpresaCard({
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
+          {precisaResolver && (
+            <Button
+              size="sm"
+              className="gap-1.5 bg-amber-600 text-white hover:bg-amber-700 shadow-sm font-semibold"
+              onClick={onResolverSicaf}
+            >
+              <Rocket className="h-3.5 w-3.5" />
+              Resolver meu SICAF
+            </Button>
+          )}
           <Button
             size="sm"
             className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
@@ -627,15 +691,18 @@ function EmpresaListRow({
   empresa,
   manutencaoDia,
   onGerenciar,
+  onResolverSicaf,
   gerenciando,
 }: {
   empresa: EmpresaData;
   manutencaoDia?: number;
   onGerenciar: () => void;
+  onResolverSicaf: () => void;
   gerenciando?: boolean;
 }) {
   const meta = statusLabel[empresa.sicaf];
   const situacao = getAptoSituacao(empresa);
+  const precisaResolver = isSicafPagoInapto(empresa);
   const niveisAtivos = countNiveisAtivosExibicao(empresa);
   const temManutencao = typeof manutencaoDia === "number";
 
@@ -688,6 +755,16 @@ function EmpresaListRow({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {precisaResolver && (
+              <Button
+                size="sm"
+                className="gap-1.5 bg-amber-600 text-white hover:bg-amber-700 font-semibold"
+                onClick={onResolverSicaf}
+              >
+                <Rocket className="h-3.5 w-3.5" />
+                Resolver meu SICAF
+              </Button>
+            )}
             <Button size="sm" className="gap-1.5" onClick={onGerenciar} disabled={gerenciando}>
               {gerenciando ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

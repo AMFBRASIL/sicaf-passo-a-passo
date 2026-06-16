@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { PageHeader, StatusBadge } from "@/components/page-header";
 import { ManutencaoModal } from "@/components/manutencao-modal";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
+import { ResolverSicafInaptoModal } from "@/components/resolver-sicaf-inapto-modal";
 import { Wrench } from "lucide-react";
 import {
   fetchEmpresaGerenciar,
@@ -219,6 +220,13 @@ export function countNiveisAtualizadosAssistente(empresa: EmpresaData): number {
 
 export function isEmpresaApto(empresa: EmpresaData): boolean {
   return countNiveisAtualizadosAssistente(empresa) > 0;
+}
+
+/** Licença SICAF paga e ativa, mas nenhum nível sincronizado pelo Assistente (INAPTO). */
+export function isSicafPagoInapto(empresa: EmpresaData): boolean {
+  if (isEmpresaApto(empresa)) return false;
+  if (empresa.taxaPendente) return false;
+  return empresa.sicaf === "ativo";
 }
 
 export function getAptoSituacao(empresa: EmpresaData): AptoSituacao {
@@ -914,6 +922,7 @@ function MeuSicafSection({
 
   const certVencidas = certidoes.filter((c) => c.status === "vencido").length;
   const certPendentes = certidoes.filter((c) => c.status === "pendente" || c.status === "vencendo").length;
+  const [resolverOpen, setResolverOpen] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -957,7 +966,18 @@ function MeuSicafSection({
                 </HoverCardContent>
               </HoverCard>
               <p className="text-sm opacity-90 mt-1">{situacao.bannerSubtitulo}</p>
-              {!situacao.apto && meta.status === "ok" && (
+              {isSicafPagoInapto(empresa) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="mt-3 gap-1.5 bg-white text-red-700 hover:bg-white/90 font-semibold shadow-md"
+                  onClick={() => setResolverOpen(true)}
+                >
+                  <Rocket className="h-3.5 w-3.5" />
+                  Resolver meu SICAF
+                </Button>
+              )}
+              {!situacao.apto && meta.status === "ok" && !isSicafPagoInapto(empresa) && (
                 <p className="mt-2 text-xs rounded-lg bg-white/15 px-3 py-2 leading-snug">
                   A licença SICAF está paga e válida, mas os níveis ainda não foram sincronizados
                   pelo Assistente. Envie a Situação do Fornecedor para ficar APTO.
@@ -1134,6 +1154,13 @@ function MeuSicafSection({
           </div>
         </div>
       </div>
+
+      <ResolverSicafInaptoModal
+        open={resolverOpen}
+        onOpenChange={setResolverOpen}
+        empresaNome={empresa.nome}
+        cnpj={empresa.cnpj}
+      />
     </div>
   );
 }
