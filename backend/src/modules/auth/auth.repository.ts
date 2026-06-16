@@ -100,7 +100,14 @@ export class AuthRepository {
   ): Promise<void> {
     const pool = getWritePool();
     const sets: string[] = [];
-    const params: Record<string, unknown> = { id: usuarioId };
+    const params: {
+      id: number;
+      nome?: string;
+      email?: string;
+      telefone?: string | null;
+      departamento?: string | null;
+      senhaHash?: string;
+    } = { id: usuarioId };
 
     if (data.nome !== undefined) {
       sets.push("nome = :nome");
