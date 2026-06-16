@@ -108,7 +108,9 @@ export type LicitacaoDisplay = {
   na_mira?: boolean;
   status?: string | null;
   numero_processo?: string | null;
+  numero_controle_pncp?: string | null;
   link_edital?: string | null;
+  link_portal?: string | null;
 };
 
 function formatCurrency(raw: number | string | null | undefined): string {
@@ -144,6 +146,67 @@ export function computeMatchScore(item: ApiLicitacao): number {
   return Math.min(99, s);
 }
 
+function isHttpUrl(value?: string | null): value is string {
+  if (!value) return false;
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Monta URL pública PNCP a partir do número de controle (CNPJ-1-SEQUENCIAL/ANO). */
+export function buildPncpUrlFromControle(numeroControle?: string | null): string | null {
+  const raw = String(numeroControle || "").trim();
+  if (!raw) return null;
+
+  const slashIdx = raw.lastIndexOf("/");
+  if (slashIdx <= 0) return null;
+  const ano = raw.slice(slashIdx + 1).replace(/\D/g, "");
+  const prefix = raw.slice(0, slashIdx);
+  const marker = "-1-";
+  const markerIdx = prefix.lastIndexOf(marker);
+  if (markerIdx <= 0 || ano.length !== 4) return null;
+
+  const cnpj = prefix.slice(0, markerIdx).replace(/\D/g, "");
+  const sequencial = prefix.slice(markerIdx + marker.length).replace(/\D/g, "");
+  if (cnpj.length !== 14 || !sequencial) return null;
+
+  const seq = String(parseInt(sequencial, 10));
+  if (!seq || seq === "NaN") return null;
+
+  return `https://pncp.gov.br/app/editais/${cnpj}/${ano}/${seq}`;
+}
+
+type LicitacaoLinkSource = Pick<
+  ApiLicitacao | LicitacaoDisplay,
+  "link_portal" | "link_edital" | "numero_controle_pncp"
+>;
+
+/** URL para participar da licitação no PNCP (página oficial da contratação). */
+export function resolveLicitacaoPncpUrl(item: LicitacaoLinkSource): string | null {
+  const portal = String(item.link_portal || "").trim();
+  if (isHttpUrl(portal)) {
+    if (portal.includes("pncp.gov.br")) return portal;
+  }
+
+  const fromControle = buildPncpUrlFromControle(item.numero_controle_pncp);
+  if (fromControle) return fromControle;
+
+  if (isHttpUrl(portal)) return portal;
+
+  const edital = String(item.link_edital || "").trim();
+  if (isHttpUrl(edital)) return edital;
+
+  const controle = String(item.numero_controle_pncp || "").trim();
+  if (controle) {
+    return `https://pncp.gov.br/app/editais?palavraChave=${encodeURIComponent(controle)}`;
+  }
+
+  return null;
+}
+
 export function mapApiToDisplay(item: ApiLicitacao): LicitacaoDisplay {
   const valorNum = Number(item.valor_estimado) || 0;
   const orgao = [item.nome_orgao, item.municipio, item.uf].filter(Boolean).join(" / ") || "—";
@@ -166,7 +229,9 @@ export function mapApiToDisplay(item: ApiLicitacao): LicitacaoDisplay {
     na_mira: item.na_mira,
     status: item.status,
     numero_processo: item.numero_processo,
+    numero_controle_pncp: item.numero_controle_pncp,
     link_edital: item.link_edital,
+    link_portal: item.link_portal,
   };
 }
 

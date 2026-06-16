@@ -51,6 +51,7 @@ import {
   fetchLicitacoesList,
   fetchLicitacoesStats,
   mapApiToDisplay,
+  resolveLicitacaoPncpUrl,
   toggleLicitacaoMira,
   type LicitacaoDisplay,
   type LicitacaoPersonalKpis,
@@ -786,6 +787,16 @@ function DetalheDialog({
 }) {
   const [step, setStep] = useState("resumo");
 
+  const confirmarParticipacao = () => {
+    if (!licitacao) return;
+    const url = resolveLicitacaoPncpUrl(licitacao);
+    if (!url) {
+      toast.error("Link PNCP não disponível para esta licitação.");
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   if (!licitacao) return null;
 
   return (
@@ -918,7 +929,7 @@ function DetalheDialog({
                 Voltar
               </Button>
               {step === steps[steps.length - 1].id ? (
-                <Button>
+                <Button onClick={confirmarParticipacao}>
                   <Rocket className="mr-2 h-4 w-4" />
                   Confirmar participação
                 </Button>
@@ -943,6 +954,8 @@ function DetalheDialog({
 
 /* ---------- STEPS ---------- */
 function StepResumo({ l }: { l: Licitacao }) {
+  const urlPncp = resolveLicitacaoPncpUrl(l);
+
   return (
     <div className="space-y-6">
       <div>
@@ -985,12 +998,20 @@ function StepResumo({ l }: { l: Licitacao }) {
       </Card>
 
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm">
-          <Download className="mr-2 h-4 w-4" /> Baixar edital
-        </Button>
-        <Button variant="outline" size="sm">
-          <ExternalLink className="mr-2 h-4 w-4" /> Ver no Compras.gov.br
-        </Button>
+        {l.link_edital && (
+          <Button variant="outline" size="sm" asChild>
+            <a href={l.link_edital} target="_blank" rel="noopener noreferrer">
+              <Download className="mr-2 h-4 w-4" /> Baixar edital
+            </a>
+          </Button>
+        )}
+        {urlPncp && (
+          <Button variant="outline" size="sm" asChild>
+            <a href={urlPncp} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="mr-2 h-4 w-4" /> Ver no PNCP
+            </a>
+          </Button>
+        )}
       </div>
     </div>
   );
