@@ -87,6 +87,8 @@ export interface ClienteDetalhe {
   cidade: string;
   email?: string;
   telefone?: string;
+  celular?: string;
+  login?: string;
   sicaf: "ok" | "pendente" | "vencido";
   pagou: boolean;
   pagamentoSicafStatus?: string;
@@ -488,13 +490,13 @@ export function ClienteDetalheModal({
         open={editarOpen}
         onOpenChange={setEditarOpen}
         onSalvar={async (data) => {
-          const res = await atualizarAdminCliente(parseInt(exibicao.id, 10), { ...data });
+          const res = await atualizarAdminCliente(parseInt(exibicao.id, 10), data);
           if (!res.ok) {
             toast.error(res.error || "Erro ao salvar");
             return false;
           }
-          toast.success("Cliente atualizado");
-          onUpdated?.();
+          toast.success(res.message || "Cliente atualizado");
+          atualizarPainel();
           return true;
         }}
       />

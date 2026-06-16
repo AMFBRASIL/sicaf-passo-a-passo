@@ -18,21 +18,26 @@ import {
   EyeOff,
   RefreshCw,
   ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { toast } from "sonner";
 import type { ClienteDetalhe } from "./cliente-detalhe-modal";
+import {
+  fetchAdminClienteDetalhe,
+  type EditarClientePayload,
+} from "@/lib/admin-clientes-api";
 
 interface Props {
   cliente: ClienteDetalhe | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onSalvar?: (data: FormState) => Promise<boolean>;
+  onSalvar?: (data: EditarClientePayload) => Promise<boolean>;
 }
 
 type StepKey = "empresa" | "contato" | "acesso" | "revisar";
 
-const steps: { key: StepKey; label: string; desc: string; icon: any }[] = [
+const steps: { key: StepKey; label: string; desc: string; icon: React.ElementType }[] = [
   { key: "empresa", label: "Empresa", desc: "Dados cadastrais", icon: Building2 },
   { key: "contato", label: "Contato", desc: "Responsável e canais", icon: User },
   { key: "acesso", label: "Acesso", desc: "Login e senha", icon: KeyRound },
@@ -41,53 +46,96 @@ const steps: { key: StepKey; label: string; desc: string; icon: any }[] = [
 
 const planos = ["Onboarding", "Essencial", "Manutenção SICAF", "Manutenção SICAF Plus", "Premium"];
 
-interface FormState {
-  razao: string;
-  cnpj: string;
-  cidade: string;
-  plano: string;
-  responsavel: string;
-  email: string;
-  telefone: string;
-  whatsapp: string;
-  login: string;
-  senha: string;
-  forcarTroca: boolean;
-  enviarReset: boolean;
-}
+type FormState = EditarClientePayload & { plano: string };
+
+const emptyForm = (): FormState => ({
+  razao: "",
+  cnpj: "",
+  cidade: "",
+  plano: "",
+  responsavel: "",
+  email: "",
+  telefone: "",
+  whatsapp: "",
+  login: "",
+  senha: "",
+  forcarTroca: false,
+  enviarReset: false,
+});
 
 function gerarSenha() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
   return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
+function mapClienteToForm(cliente: ClienteDetalhe): FormState {
+  return {
+    razao: cliente.razao,
+    cnpj: cliente.cnpj,
+    cidade: cliente.cidade,
+    plano: cliente.plano ?? "",
+    responsavel: cliente.responsavel,
+    email: cliente.email ?? "",
+    telefone: cliente.telefone ?? "",
+    whatsapp: cliente.celular ?? "",
+    login: cliente.login ?? cliente.email ?? "",
+    senha: "",
+    forcarTroca: false,
+    enviarReset: false,
+  };
+}
+
 export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Props) {
   const [step, setStep] = useState<StepKey>("empresa");
   const [showSenha, setShowSenha] = useState(false);
-  const [data, setData] = useState<FormState>({
-    razao: "", cnpj: "", cidade: "", plano: "",
-    responsavel: "", email: "", telefone: "", whatsapp: "",
-    login: "", senha: "", forcarTroca: true, enviarReset: false,
-  });
+  const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [data, setData] = useState<FormState>(emptyForm);
 
   useEffect(() => {
-    if (cliente && open) {
-      setData({
-        razao: cliente.razao,
-        cnpj: cliente.cnpj,
-        cidade: cliente.cidade,
-        plano: cliente.plano ?? "",
-        responsavel: cliente.responsavel,
-        email: cliente.email ?? "",
-        telefone: cliente.telefone ?? "",
-        whatsapp: "",
-        login: cliente.email ?? cliente.cnpj,
-        senha: "",
-        forcarTroca: true,
-        enviarReset: false,
-      });
+    if (!cliente || !open) return;
+
+    let cancelled = false;
+    const clienteId = parseInt(cliente.id, 10);
+
+    const carregar = async () => {
+      setCarregando(true);
       setStep("empresa");
-    }
+      setShowSenha(false);
+
+      if (Number.isFinite(clienteId)) {
+        const det = await fetchAdminClienteDetalhe(clienteId);
+        if (cancelled) return;
+
+        if (det.ok && det.client) {
+          const c = det.client;
+          setData({
+            razao: c.razao_social || cliente.razao,
+            cnpj: c.documento || cliente.cnpj,
+            cidade: [c.cidade, c.estado].filter(Boolean).join("/") || cliente.cidade,
+            plano: cliente.plano ?? "",
+            responsavel: c.responsavel_nome || cliente.responsavel,
+            email: c.email || c.responsavel_email || cliente.email || "",
+            telefone: c.telefone || c.responsavel_telefone || cliente.telefone || "",
+            whatsapp: c.celular || cliente.celular || "",
+            login: c.usuario_principal?.email || cliente.login || c.email || cliente.email || "",
+            senha: "",
+            forcarTroca: false,
+            enviarReset: false,
+          });
+          setCarregando(false);
+          return;
+        }
+      }
+
+      setData(mapClienteToForm(cliente));
+      setCarregando(false);
+    };
+
+    void carregar();
+    return () => {
+      cancelled = true;
+    };
   }, [cliente, open]);
 
   if (!cliente) return null;
@@ -98,18 +146,29 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
   const canNext: Record<StepKey, boolean> = {
     empresa: !!data.razao.trim() && !!data.cnpj.trim(),
     contato: !!data.responsavel.trim() && !!data.email.trim(),
-    acesso: !!data.login.trim(),
+    acesso: !!data.login.trim() && (!data.senha.trim() || data.senha.trim().length >= 6),
     revisar: true,
   };
 
   const salvar = async () => {
-    if (onSalvar) {
-      const ok = await onSalvar(data);
-      if (!ok) return;
-    } else {
-      toast.success(`Dados de ${data.razao} atualizados`);
+    if (data.senha.trim() && data.senha.trim().length < 6) {
+      toast.error("A nova senha deve ter no mínimo 6 caracteres");
+      return;
     }
-    onOpenChange(false);
+
+    const { plano: _plano, ...payload } = data;
+    setSalvando(true);
+    try {
+      if (onSalvar) {
+        const ok = await onSalvar(payload);
+        if (!ok) return;
+      } else {
+        toast.success(`Dados de ${data.razao} atualizados`);
+      }
+      onOpenChange(false);
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const idxAtual = steps.findIndex((s) => s.key === step);
@@ -144,7 +203,7 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
                 return (
                   <button
                     key={s.key}
-                    onClick={() => setStep(s.key)}
+                    onClick={() => !carregando && setStep(s.key)}
                     className={`w-full text-left rounded-lg px-3 py-2.5 flex items-start gap-3 transition ${
                       active ? "bg-white/15 backdrop-blur" : "hover:bg-white/5"
                     }`}
@@ -185,6 +244,13 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
 
             <ScrollArea className="flex-1 max-h-[460px]">
               <div className="px-6 py-5">
+                {carregando ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <p className="text-sm">Carregando dados do cliente…</p>
+                  </div>
+                ) : (
+                  <>
                 {step === "empresa" && (
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Razão social *" className="col-span-2">
@@ -201,6 +267,9 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
                         <SelectTrigger><SelectValue placeholder="Selecione o plano" /></SelectTrigger>
                         <SelectContent>{planos.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
                       </Select>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Plano exibido para referência — alterações de manutenção são feitas na aba Manutenção.
+                      </p>
                     </Field>
                   </div>
                 )}
@@ -225,7 +294,12 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
                 {step === "acesso" && (
                   <div className="space-y-4">
                     <Field label="Login de acesso *">
-                      <Input value={data.login} onChange={(e) => upd("login", e.target.value)} placeholder="email@empresa.com ou CNPJ" />
+                      <Input
+                        type="email"
+                        value={data.login}
+                        onChange={(e) => upd("login", e.target.value)}
+                        placeholder="email@empresa.com"
+                      />
                     </Field>
                     <Field label="Nova senha">
                       <div className="flex gap-2">
@@ -253,14 +327,16 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
                     <div className="flex items-start justify-between rounded-lg border p-4">
                       <div>
                         <div className="text-sm font-medium">Forçar troca no próximo login</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">Cliente deverá definir nova senha ao acessar.</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">Cliente verá o fluxo de boas-vindas novamente ao acessar.</div>
                       </div>
                       <Switch checked={data.forcarTroca} onCheckedChange={(v) => upd("forcarTroca", v)} />
                     </div>
                     <div className="flex items-start justify-between rounded-lg border p-4">
                       <div>
                         <div className="text-sm font-medium">Enviar e-mail de redefinição</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">Envia link seguro para o e-mail cadastrado.</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Envia login e senha para o e-mail cadastrado. Se não informar senha, uma será gerada.
+                        </div>
                       </div>
                       <Switch checked={data.enviarReset} onCheckedChange={(v) => upd("enviarReset", v)} />
                     </div>
@@ -279,13 +355,15 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
                       <InfoCard label="Telefone" value={data.telefone || "—"} />
                       <InfoCard label="WhatsApp" value={data.whatsapp || "—"} />
                       <InfoCard label="Login" value={data.login} />
-                      <InfoCard label="Senha" value={data.senha ? "•••••••• (atualizada)" : "Mantida"} />
+                      <InfoCard label="Senha" value={data.senha ? "•••••••• (atualizada)" : data.enviarReset ? "Será gerada e enviada" : "Mantida"} />
                     </div>
                     <div className="rounded-lg border bg-card p-4 text-sm space-y-1">
                       <div>{data.forcarTroca ? "✓" : "✗"} Forçar troca de senha no próximo login</div>
                       <div>{data.enviarReset ? "✓" : "✗"} Enviar e-mail de redefinição</div>
                     </div>
                   </div>
+                )}
+                  </>
                 )}
               </div>
             </ScrollArea>
@@ -294,6 +372,7 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
               <Button
                 variant="ghost"
                 size="sm"
+                disabled={salvando}
                 onClick={() => {
                   if (idxAtual > 0) setStep(steps[idxAtual - 1].key);
                   else onOpenChange(false);
@@ -302,12 +381,13 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
                 {step === "empresa" ? "Cancelar" : "Voltar"}
               </Button>
               {step !== "revisar" ? (
-                <Button size="sm" className="gap-1.5" disabled={!canNext[step]} onClick={() => setStep(steps[idxAtual + 1].key)}>
+                <Button size="sm" className="gap-1.5" disabled={!canNext[step] || carregando} onClick={() => setStep(steps[idxAtual + 1].key)}>
                   Continuar <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               ) : (
-                <Button size="sm" className="gap-1.5" onClick={salvar}>
-                  <Save className="h-3.5 w-3.5" /> Salvar alterações
+                <Button size="sm" className="gap-1.5" disabled={carregando || salvando} onClick={salvar}>
+                  {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Salvar alterações
                 </Button>
               )}
             </div>

@@ -47,6 +47,17 @@ export async function PUT(
       return NextResponse.json({ ok: false, error: "ID inválido" }, { status: 400 });
     }
     const body = await request.json();
+    const login = String(body.login || body.usuario_principal?.email || "").trim();
+    const senha = String(body.senha || body.usuario_principal?.nova_senha || "").trim();
+    const usuarioPrincipal: Record<string, unknown> = {
+      ...(body.usuario_principal && typeof body.usuario_principal === "object"
+        ? body.usuario_principal
+        : {}),
+    };
+    if (login) usuarioPrincipal.email = login;
+    if (senha) usuarioPrincipal.nova_senha = senha;
+    if (body.responsavel) usuarioPrincipal.nome = body.responsavel;
+
     const svc = await getSicafAgentModule<AdminClientsService>("services/admin-clients.service");
     const result = await svc.updateClient(
       clienteId,
@@ -62,6 +73,9 @@ export async function PUT(
         responsavel_email: body.email,
         responsavel_telefone: body.telefone,
         observacoes: body.observacoes,
+        forcar_troca: body.forcarTroca ?? body.forcar_troca,
+        enviar_reset: body.enviarReset ?? body.enviar_reset,
+        ...(Object.keys(usuarioPrincipal).length > 0 ? { usuario_principal: usuarioPrincipal } : {}),
       },
       usuarioId,
     );

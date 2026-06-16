@@ -248,7 +248,15 @@ export async function fetchAdminClienteDetalhe(clienteId: number) {
       estado?: string;
       responsavel_nome?: string;
       observacoes?: string;
+      celular?: string;
       created_at?: string;
+      usuario_principal?: {
+        id?: number;
+        nome?: string;
+        email?: string;
+        telefone?: string;
+        status?: string;
+      } | null;
       sicaf?: { id?: number; status?: string; data_validade?: string; manutencao_ativa?: number };
       certidoes?: { tipo_nome?: string; data_validade?: string; status?: string; arquivo_url?: string }[];
       historico?: { acao?: string; created_at?: string; usuario_nome?: string }[];
@@ -488,12 +496,15 @@ export function mergeDetalheFromApi(
   api: NonNullable<Awaited<ReturnType<typeof fetchAdminClienteDetalhe>>["client"]>,
 ): ClienteDetalhe {
   const cidade = [api.cidade, api.estado].filter(Boolean).join("/") || base.cidade;
+  const login = api.usuario_principal?.email || base.login;
   return {
     ...base,
     razao: api.razao_social || base.razao,
     cnpj: api.documento || base.cnpj,
-    email: api.email || base.email,
-    telefone: api.telefone || base.telefone,
+    email: api.email || api.responsavel_email || base.email,
+    telefone: api.telefone || api.responsavel_telefone || base.telefone,
+    celular: api.celular || base.celular,
+    login,
     responsavel: api.responsavel_nome || base.responsavel,
     cidade,
     sicaf: mapSicafUi(api.sicaf?.status),
@@ -890,12 +901,65 @@ export async function criarAdminCliente(data: NovoClienteData) {
   return res.json() as Promise<{ ok: boolean; error?: string; message?: string; clienteId?: number }>;
 }
 
-export async function atualizarAdminCliente(clienteId: number, data: Record<string, unknown>) {
+export type EditarClientePayload = {
+  razao: string;
+  cnpj: string;
+  cidade: string;
+  responsavel: string;
+  email: string;
+  telefone: string;
+  whatsapp: string;
+  login: string;
+  senha: string;
+  forcarTroca: boolean;
+  enviarReset: boolean;
+};
+
+export function buildAtualizarClientePayload(data: EditarClientePayload): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    razao: data.razao.trim(),
+    cnpj: data.cnpj.trim(),
+    cidade: data.cidade.trim(),
+    responsavel: data.responsavel.trim(),
+    email: data.email.trim(),
+    telefone: data.telefone.trim(),
+    whatsapp: data.whatsapp.trim(),
+    forcarTroca: data.forcarTroca,
+    enviarReset: data.enviarReset,
+  };
+
+  const login = data.login.trim();
+  const senha = data.senha.trim();
+  const usuarioPrincipal: Record<string, unknown> = {};
+
+  if (login) {
+    payload.login = login;
+    usuarioPrincipal.email = login;
+  }
+  if (data.responsavel.trim()) {
+    usuarioPrincipal.nome = data.responsavel.trim();
+  }
+  if (senha) {
+    payload.senha = senha;
+    usuarioPrincipal.nova_senha = senha;
+  }
+  if (Object.keys(usuarioPrincipal).length > 0) {
+    payload.usuario_principal = usuarioPrincipal;
+  }
+
+  return payload;
+}
+
+export async function atualizarAdminCliente(clienteId: number, data: EditarClientePayload | Record<string, unknown>) {
+  const body =
+    "razao" in data && "cnpj" in data && "login" in data
+      ? buildAtualizarClientePayload(data as EditarClientePayload)
+      : data;
   const res = await apiFetch(`/api/admin/clients/${clienteId}`, {
     method: "PUT",
-    body: JSON.stringify(data),
+    body: JSON.stringify(body),
   });
-  return res.json() as Promise<{ ok: boolean; error?: string; message?: string }>;
+  return res.json() as Promise<{ ok: boolean; error?: string; message?: string; emailEnviado?: boolean }>;
 }
 
 export async function validarPagamentoAdmin(pagamentoId: number) {

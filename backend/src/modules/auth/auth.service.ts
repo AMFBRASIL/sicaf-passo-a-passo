@@ -1,5 +1,5 @@
 import { signAccessToken, type TokenPayload } from "@/lib/auth/jwt";
-import { verifyPassword } from "@/lib/auth/password";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { parseUserAgent } from "@/lib/auth/user-agent";
 import { unauthorized } from "@/lib/http/errors";
 import { auditService } from "@/services/audit/audit.service";
@@ -149,6 +149,86 @@ export class AuthService {
     } catch {
       return { ok: false, error: "Sessão inválida" };
     }
+  }
+
+  async updateProfileLegacy(
+    userId: number,
+    input: {
+      nome?: string;
+      email?: string;
+      telefone?: string;
+      departamento?: string;
+      senhaAtual?: string;
+      novaSenha?: string;
+    },
+  ): Promise<{ ok: true; user: AuthUser } | { ok: false; error: string }> {
+    const usuario = await authRepository.findById(userId);
+    if (!usuario || usuario.status !== "Ativo") {
+      return { ok: false, error: "Usuário não encontrado" };
+    }
+
+    const patch: Partial<Pick<UsuarioRow, "nome" | "email" | "telefone" | "departamento" | "senha_hash">> = {};
+
+    if (input.nome !== undefined) {
+      const nome = String(input.nome).trim();
+      if (!nome) return { ok: false, error: "Nome é obrigatório" };
+      patch.nome = nome;
+    }
+
+    if (input.email !== undefined) {
+      const email = String(input.email).trim().toLowerCase();
+      if (!email) return { ok: false, error: "E-mail é obrigatório" };
+      if (email !== usuario.email.toLowerCase()) {
+        const dupe = await authRepository.findByEmail(email);
+        if (dupe && dupe.id !== userId) {
+          return { ok: false, error: "Este e-mail já está em uso por outra conta" };
+        }
+      }
+      patch.email = email;
+    }
+
+    if (input.telefone !== undefined) {
+      const tel = String(input.telefone).trim();
+      patch.telefone = tel.length ? tel : null;
+    }
+
+    if (input.departamento !== undefined) {
+      const dep = String(input.departamento).trim();
+      patch.departamento = dep.length ? dep : null;
+    }
+
+    if (input.novaSenha !== undefined && String(input.novaSenha).trim()) {
+      const novaSenha = String(input.novaSenha).trim();
+      if (novaSenha.length < 6) {
+        return { ok: false, error: "A nova senha deve ter no mínimo 6 caracteres" };
+      }
+      const senhaAtual = String(input.senhaAtual || "").trim();
+      if (!senhaAtual) {
+        return { ok: false, error: "Informe a senha atual para definir uma nova senha" };
+      }
+      const senhaOk = await verifyPassword(senhaAtual, usuario.senha_hash);
+      if (!senhaOk) {
+        return { ok: false, error: "Senha atual incorreta" };
+      }
+      patch.senha_hash = await hashPassword(novaSenha);
+    }
+
+    if (!Object.keys(patch).length) {
+      return { ok: false, error: "Nenhum campo para atualizar" };
+    }
+
+    await authRepository.updateProfile(userId, patch);
+
+    await auditService.log({
+      usuarioId: userId,
+      acao: patch.senha_hash ? "PERFIL_ATUALIZADO_COM_SENHA" : "PERFIL_ATUALIZADO",
+      entidade: "usuarios",
+      entidadeId: userId,
+    });
+
+    const updated = await authRepository.findById(userId);
+    if (!updated) return { ok: false, error: "Erro ao recarregar perfil" };
+    return { ok: true, user: await this.buildUser(updated) };
   }
 }
 

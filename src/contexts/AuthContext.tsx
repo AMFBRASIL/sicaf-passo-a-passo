@@ -37,6 +37,8 @@ interface AuthContextType {
   permissoes: string[];
   login: (email: string, password: string) => Promise<{ ok: boolean; user?: AuthUser; error?: string }>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
+  setUser: (user: AuthUser | null) => void;
   hasPermission: (pageId: string) => boolean;
 }
 
@@ -113,6 +115,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const t = readAuthToken();
+    if (!t) return;
+    await verifyToken(t);
+  }, [verifyToken]);
+
   const permissoes = useMemo(() => user?.permissoes ?? [], [user?.permissoes]);
 
   const hasPermission = useCallback(
@@ -134,6 +142,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         permissoes,
         login,
         logout,
+        refreshUser,
+        setUser,
         hasPermission,
       }}
     >

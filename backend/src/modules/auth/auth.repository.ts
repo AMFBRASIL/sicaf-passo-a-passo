@@ -94,6 +94,44 @@ export class AuthRepository {
     );
   }
 
+  async updateProfile(
+    usuarioId: number,
+    data: Partial<Pick<UsuarioRow, "nome" | "email" | "telefone" | "departamento" | "senha_hash">>,
+  ): Promise<void> {
+    const pool = getWritePool();
+    const sets: string[] = [];
+    const params: Record<string, unknown> = { id: usuarioId };
+
+    if (data.nome !== undefined) {
+      sets.push("nome = :nome");
+      params.nome = data.nome;
+    }
+    if (data.email !== undefined) {
+      sets.push("email = :email");
+      params.email = data.email;
+    }
+    if (data.telefone !== undefined) {
+      sets.push("telefone = :telefone");
+      params.telefone = data.telefone;
+    }
+    if (data.departamento !== undefined) {
+      sets.push("departamento = :departamento");
+      params.departamento = data.departamento;
+    }
+    if (data.senha_hash !== undefined) {
+      sets.push("senha_hash = :senhaHash");
+      params.senhaHash = data.senha_hash;
+    }
+
+    if (!sets.length) return;
+
+    sets.push("updated_at = NOW()");
+    await pool.execute(
+      `UPDATE usuarios SET ${sets.join(", ")} WHERE id = :id AND deleted_at IS NULL`,
+      params,
+    );
+  }
+
   async findPerfilById(perfilId: number): Promise<PerfilRow | null> {
     const pool = getWritePool();
     return queryOne<PerfilRow>(

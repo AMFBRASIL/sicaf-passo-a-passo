@@ -1736,6 +1736,43 @@ async function consultPendingBoletosByCnpj(cnpj) {
 const PORTES_VALIDOS = ['MEI', 'ME', 'EPP', 'Média', 'Grande'];
 const STATUS_VALIDOS = ['Ativo', 'Pendente', 'Inativo'];
 
+async function _sendClienteAcessoEmail({ cliente, loginEmail, senhaPlana }) {
+  const emailService = require('./email.service');
+  const to =
+    loginEmail ||
+    cliente?.responsavel_email ||
+    cliente?.email ||
+    null;
+  if (!to) return { ok: false, error: 'E-mail de destino não encontrado para envio de acesso.' };
+
+  const portalBase =
+    process.env.PORTAL_URL ||
+    process.env.FRONTEND_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    'https://app.cadbrasil.com.br';
+  const login = loginEmail || to;
+  const senhaTxt = senhaPlana
+    ? `<p style="margin:12px 0"><strong>Senha:</strong> ${senhaPlana}</p>`
+    : '<p style="margin:12px 0">Use a senha que você já possui ou solicite uma nova ao suporte.</p>';
+
+  const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;color:#0f172a;padding:24px;max-width:560px">
+    <h2 style="margin:0 0 8px">Dados de acesso — CadBrasil</h2>
+    <p>Olá${cliente?.responsavel_nome ? `, <strong>${cliente.responsavel_nome}</strong>` : ''}!</p>
+    <p>Seguem os dados para acessar o portal CadBrasil:</p>
+    <p style="margin:12px 0"><strong>Login:</strong> ${login}</p>
+    ${senhaTxt}
+    <p style="margin:20px 0"><a href="${portalBase}/login" style="background:#2563eb;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;display:inline-block">Acessar o portal</a></p>
+    <p style="font-size:12px;color:#64748b">Se você não solicitou esta alteração, entre em contato com o suporte.</p>
+  </body></html>`;
+
+  return emailService.send({
+    to,
+    subject: 'Seus dados de acesso — CadBrasil',
+    html,
+    text: `Login: ${login}\nAcesse: ${portalBase}/login`,
+  });
+}
+
 /**
  * Atualiza cadastro do cliente (campos permitidos via whitelist).
  * @param {number} id
@@ -1823,10 +1860,28 @@ async function updateClient(id, payload, usuarioId = null) {
       }
     }
 
+    const forcarTroca = payload.forcar_troca === true || payload.forcarTroca === true;
+    const enviarReset = payload.enviar_reset === true || payload.enviarReset === true;
+
     const principalPayload = payload?.usuario_principal && typeof payload.usuario_principal === 'object'
       ? payload.usuario_principal
       : null;
+    let senhaPlana = null;
+    let loginEmail = null;
+
     if (principalPayload) {
+      if (!cliente.usuario_id) {
+        const precisaAcesso =
+          (principalPayload.email && str(principalPayload.email)) ||
+          (principalPayload.nova_senha && String(principalPayload.nova_senha || '').trim());
+        if (precisaAcesso) {
+          return {
+            ok: false,
+            error: 'Este cliente não possui usuário de acesso vinculado. Vincule um usuário antes de alterar login ou senha.',
+          };
+        }
+      }
+
       if (principalPayload.nome !== undefined) userUpdates.nome = str(principalPayload.nome);
       if (principalPayload.telefone !== undefined) userUpdates.telefone = str(principalPayload.telefone);
       if (principalPayload.email !== undefined) {
@@ -1839,6 +1894,7 @@ async function updateClient(id, payload, usuarioId = null) {
           if (emailDupe) {
             return { ok: false, error: 'Este e-mail já está em uso por outro usuário.' };
           }
+          loginEmail = email;
         }
         userUpdates.email = email;
       }
@@ -1848,9 +1904,27 @@ async function updateClient(id, payload, usuarioId = null) {
           if (senha.length < 6) {
             return { ok: false, error: 'A nova senha do usuário principal deve ter no mínimo 6 caracteres.' };
           }
+          senhaPlana = senha;
           userUpdates.senha_hash = await bcrypt.hash(senha, 10);
         }
       }
+    }
+
+    if (enviarReset && !cliente.usuario_id) {
+      return {
+        ok: false,
+        error: 'Este cliente não possui usuário de acesso vinculado para enviar e-mail de redefinição.',
+      };
+    }
+
+    if (enviarReset && !senhaPlana) {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+      senhaPlana = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+      userUpdates.senha_hash = await bcrypt.hash(senhaPlana, 10);
+    }
+
+    if (forcarTroca && (senhaPlana || enviarReset)) {
+      userUpdates.boas_vindas_visto_em = null;
     }
 
     if (Object.keys(updates).length === 0 && Object.keys(userUpdates).length === 0) {
@@ -1896,6 +1970,26 @@ async function updateClient(id, payload, usuarioId = null) {
           created_at: db.fn.now(),
         });
       } catch (_) {}
+    }
+
+    if (enviarReset) {
+      const usuarioAtual = cliente.usuario_id
+        ? await db('usuarios').where('id', cliente.usuario_id).select('email').first()
+        : null;
+      const emailLogin = loginEmail || usuarioAtual?.email || updates.email || cliente.email;
+      const emailResult = await _sendClienteAcessoEmail({
+        cliente: { ...cliente, ...updates },
+        loginEmail: emailLogin,
+        senhaPlana,
+      });
+      if (!emailResult.ok) {
+        return {
+          ok: true,
+          message: 'Cliente atualizado, mas o e-mail de acesso não foi enviado: ' + (emailResult.error || 'erro desconhecido'),
+          emailEnviado: false,
+        };
+      }
+      return { ok: true, message: 'Cliente atualizado e e-mail de acesso enviado', emailEnviado: true };
     }
 
     return { ok: true, message: 'Cliente atualizado com sucesso' };
