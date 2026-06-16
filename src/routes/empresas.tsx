@@ -88,9 +88,9 @@ const VIEW_MODE_KEY = "cadbrasil-empresas-view-v2";
 function readViewMode(): ViewMode {
   try {
     const v = localStorage.getItem(VIEW_MODE_KEY);
-    return v === "lista" ? "lista" : "cards";
+    return v === "cards" ? "cards" : "lista";
   } catch {
-    return "cards";
+    return "lista";
   }
 }
 
