@@ -3,8 +3,9 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { parseUserAgent } from "@/lib/auth/user-agent";
 import { unauthorized } from "@/lib/http/errors";
 import { auditService } from "@/services/audit/audit.service";
-import { authRepository, type UsuarioRow } from "@/modules/auth/auth.repository";
-import type { LoginInput } from "@/modules/auth/auth.schemas";
+import { authRepository, type UsuarioRow, generatePasswordResetToken, hashPasswordResetToken } from "@/modules/auth/auth.repository";
+import type { LoginInput, ForgotPasswordInput, ResetPasswordInput } from "@/modules/auth/auth.schemas";
+import { buildPasswordResetUrl, sendPasswordResetEmail } from "@/modules/auth/password-reset-email";
 
 export type AuthUser = {
   id: number;
@@ -229,6 +230,80 @@ export class AuthService {
     const updated = await authRepository.findById(userId);
     if (!updated) return { ok: false, error: "Erro ao recarregar perfil" };
     return { ok: true, user: await this.buildUser(updated) };
+  }
+
+  /** Sempre retorna sucesso genérico (não revela se o e-mail existe). */
+  async requestPasswordReset(
+    input: ForgotPasswordInput,
+    meta: { ip?: string | null },
+  ): Promise<{ ok: true; message: string }> {
+    const genericMessage =
+      "Se o e-mail estiver cadastrado, você receberá as instruções para redefinir a senha em instantes.";
+
+    const usuario = await authRepository.findByEmail(input.email);
+    if (!usuario || usuario.status !== "Ativo") {
+      return { ok: true, message: genericMessage };
+    }
+
+    const token = generatePasswordResetToken();
+    const tokenHash = hashPasswordResetToken(token);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    await authRepository.createPasswordResetToken(usuario.id, tokenHash, expiresAt, meta.ip);
+
+    const resetUrl = buildPasswordResetUrl(token);
+    const emailResult = await sendPasswordResetEmail({
+      to: usuario.email,
+      nome: usuario.nome,
+      resetUrl,
+    });
+
+    if (!emailResult.ok) {
+      console.error("[Auth] Falha ao enviar e-mail de recuperação:", emailResult.error);
+    }
+
+    await auditService.log({
+      usuarioId: usuario.id,
+      acao: "PASSWORD_RESET_SOLICITADO",
+      entidade: "usuarios",
+      entidadeId: usuario.id,
+      ipAddress: meta.ip,
+    });
+
+    return { ok: true, message: genericMessage };
+  }
+
+  async resetPasswordWithToken(
+    input: ResetPasswordInput,
+  ): Promise<{ ok: true; message: string } | { ok: false; error: string }> {
+    const tokenHash = hashPasswordResetToken(input.token.trim());
+    const row = await authRepository.findValidPasswordResetToken(tokenHash);
+
+    if (!row) {
+      return {
+        ok: false,
+        error: "Link inválido ou expirado. Solicite uma nova redefinição de senha.",
+      };
+    }
+
+    const usuario = await authRepository.findById(row.usuario_id);
+    if (!usuario || usuario.status !== "Ativo") {
+      return { ok: false, error: "Conta indisponível. Entre em contato com o suporte." };
+    }
+
+    const senhaHash = await hashPassword(input.novaSenha);
+    await authRepository.updateProfile(usuario.id, { senha_hash: senhaHash });
+    await authRepository.markPasswordResetTokenUsed(row.id);
+    await authRepository.invalidatePasswordResetTokens(usuario.id);
+
+    await auditService.log({
+      usuarioId: usuario.id,
+      acao: "PASSWORD_RESET_CONCLUIDO",
+      entidade: "usuarios",
+      entidadeId: usuario.id,
+    });
+
+    return { ok: true, message: "Senha redefinida com sucesso. Você já pode entrar com a nova senha." };
   }
 }
 

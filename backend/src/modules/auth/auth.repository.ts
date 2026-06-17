@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import type { RowDataPacket } from "mysql2/promise";
 import { getWritePool } from "@/lib/db/mysql";
 import { queryOne } from "@/lib/db/query";
@@ -24,7 +25,102 @@ export type PerfilRow = RowDataPacket & {
   ativo: number;
 };
 
+type PasswordResetTokenRow = RowDataPacket & {
+  id: number;
+  usuario_id: number;
+  token_hash: string;
+  expires_at: Date;
+  used_at: Date | null;
+};
+
+let passwordResetTableReady = false;
+
+export function hashPasswordResetToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export function generatePasswordResetToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
 export class AuthRepository {
+  private async ensurePasswordResetTable(): Promise<void> {
+    if (passwordResetTableReady) return;
+    const pool = getWritePool();
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        usuario_id BIGINT UNSIGNED NOT NULL,
+        token_hash CHAR(64) NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used_at DATETIME DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        ip VARCHAR(45) DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY idx_prt_usuario (usuario_id),
+        KEY idx_prt_hash (token_hash),
+        KEY idx_prt_expires (expires_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    passwordResetTableReady = true;
+  }
+
+  async invalidatePasswordResetTokens(usuarioId: number): Promise<void> {
+    await this.ensurePasswordResetTable();
+    const pool = getWritePool();
+    await pool.execute(
+      `UPDATE password_reset_tokens
+          SET used_at = NOW()
+        WHERE usuario_id = :usuarioId
+          AND used_at IS NULL`,
+      { usuarioId },
+    );
+  }
+
+  async createPasswordResetToken(
+    usuarioId: number,
+    tokenHash: string,
+    expiresAt: Date,
+    ip?: string | null,
+  ): Promise<void> {
+    await this.ensurePasswordResetTable();
+    const pool = getWritePool();
+    await this.invalidatePasswordResetTokens(usuarioId);
+    await pool.execute(
+      `INSERT INTO password_reset_tokens (usuario_id, token_hash, expires_at, ip)
+       VALUES (:usuarioId, :tokenHash, :expiresAt, :ip)`,
+      {
+        usuarioId,
+        tokenHash,
+        expiresAt,
+        ip: ip ?? null,
+      },
+    );
+  }
+
+  async findValidPasswordResetToken(tokenHash: string): Promise<PasswordResetTokenRow | null> {
+    await this.ensurePasswordResetTable();
+    const pool = getWritePool();
+    return queryOne<PasswordResetTokenRow>(
+      pool,
+      `SELECT id, usuario_id, token_hash, expires_at, used_at
+         FROM password_reset_tokens
+        WHERE token_hash = :tokenHash
+          AND used_at IS NULL
+          AND expires_at > NOW()
+        LIMIT 1`,
+      { tokenHash },
+    );
+  }
+
+  async markPasswordResetTokenUsed(id: number): Promise<void> {
+    const pool = getWritePool();
+    await pool.execute(
+      `UPDATE password_reset_tokens SET used_at = NOW() WHERE id = :id`,
+      { id },
+    );
+  }
+
   async findById(id: number): Promise<UsuarioRow | null> {
     const pool = getWritePool();
     return queryOne<UsuarioRow>(

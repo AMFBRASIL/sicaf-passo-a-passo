@@ -19,3 +19,20 @@ export function normalizeLoginInput(body: z.infer<typeof loginBodySchema>): Logi
   if (!senha) throw badRequest("Senha obrigatória");
   return { email: body.email, senha };
 }
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("E-mail inválido"),
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(32, "Token inválido"),
+  novaSenha: z.string().min(6, "A senha deve ter no mínimo 6 caracteres"),
+  confirmarSenha: z.string().min(6).optional(),
+}).refine(
+  (data) => !data.confirmarSenha || data.novaSenha === data.confirmarSenha,
+  { message: "As senhas não coincidem", path: ["confirmarSenha"] },
+);
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

@@ -23,6 +23,7 @@ import { Route as MissoesRouteImport } from './routes/missoes'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LicitacoesRouteImport } from './routes/licitacoes'
 import { Route as FaltamRouteImport } from './routes/faltam'
+import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as EmpresasLegacyRouteImport } from './routes/empresas-legacy'
 import { Route as EmpresasRouteImport } from './routes/empresas'
 import { Route as DocumentosRouteImport } from './routes/documentos'
@@ -34,7 +35,9 @@ import { Route as AssistenteRouteImport } from './routes/assistente'
 import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthIndexRouteImport } from './routes/auth.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AuthRecuperarSenhaRouteImport } from './routes/auth.recuperar-senha'
 import { Route as AdminSuporteRouteImport } from './routes/admin.suporte'
 import { Route as AdminSicafRouteImport } from './routes/admin.sicaf'
 import { Route as AdminRelatoriosRouteImport } from './routes/admin.relatorios'
@@ -123,6 +126,11 @@ const FaltamRoute = FaltamRouteImport.update({
   path: '/faltam',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
+  id: '/esqueci-senha',
+  path: '/esqueci-senha',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EmpresasLegacyRoute = EmpresasLegacyRouteImport.update({
   id: '/empresas-legacy',
   path: '/empresas-legacy',
@@ -178,10 +186,20 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthIndexRoute = AuthIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminRoute,
+} as any)
+const AuthRecuperarSenhaRoute = AuthRecuperarSenhaRouteImport.update({
+  id: '/recuperar-senha',
+  path: '/recuperar-senha',
+  getParentRoute: () => AuthRoute,
 } as any)
 const AdminSuporteRoute = AdminSuporteRouteImport.update({
   id: '/suporte',
@@ -274,13 +292,14 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
   '/empresas-legacy': typeof EmpresasLegacyRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
   '/faltam': typeof FaltamRoute
   '/licitacoes': typeof LicitacoesRoute
   '/login': typeof LoginRoute
@@ -312,19 +331,21 @@ export interface FileRoutesByFullPath {
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRoute
+  '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
   '/admin/': typeof AdminIndexRoute
+  '/auth/': typeof AuthIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
-  '/auth': typeof AuthRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
   '/empresas-legacy': typeof EmpresasLegacyRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
   '/faltam': typeof FaltamRoute
   '/licitacoes': typeof LicitacoesRoute
   '/login': typeof LoginRoute
@@ -356,7 +377,9 @@ export interface FileRoutesByTo {
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRoute
+  '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
   '/admin': typeof AdminIndexRoute
+  '/auth': typeof AuthIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -364,13 +387,14 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
-  '/auth': typeof AuthRoute
+  '/auth': typeof AuthRouteWithChildren
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
   '/empresas-legacy': typeof EmpresasLegacyRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
   '/faltam': typeof FaltamRoute
   '/licitacoes': typeof LicitacoesRoute
   '/login': typeof LoginRoute
@@ -402,7 +426,9 @@ export interface FileRoutesById {
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRoute
+  '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
   '/admin/': typeof AdminIndexRoute
+  '/auth/': typeof AuthIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -418,6 +444,7 @@ export interface FileRouteTypes {
     | '/documentos'
     | '/empresas'
     | '/empresas-legacy'
+    | '/esqueci-senha'
     | '/faltam'
     | '/licitacoes'
     | '/login'
@@ -449,19 +476,21 @@ export interface FileRouteTypes {
     | '/admin/relatorios'
     | '/admin/sicaf'
     | '/admin/suporte'
+    | '/auth/recuperar-senha'
     | '/admin/'
+    | '/auth/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/ajuda'
     | '/assistente'
-    | '/auth'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
     | '/documentos'
     | '/empresas'
     | '/empresas-legacy'
+    | '/esqueci-senha'
     | '/faltam'
     | '/licitacoes'
     | '/login'
@@ -493,7 +522,9 @@ export interface FileRouteTypes {
     | '/admin/relatorios'
     | '/admin/sicaf'
     | '/admin/suporte'
+    | '/auth/recuperar-senha'
     | '/admin'
+    | '/auth'
   id:
     | '__root__'
     | '/'
@@ -507,6 +538,7 @@ export interface FileRouteTypes {
     | '/documentos'
     | '/empresas'
     | '/empresas-legacy'
+    | '/esqueci-senha'
     | '/faltam'
     | '/licitacoes'
     | '/login'
@@ -538,7 +570,9 @@ export interface FileRouteTypes {
     | '/admin/relatorios'
     | '/admin/sicaf'
     | '/admin/suporte'
+    | '/auth/recuperar-senha'
     | '/admin/'
+    | '/auth/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -546,13 +580,14 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   AjudaRoute: typeof AjudaRoute
   AssistenteRoute: typeof AssistenteRoute
-  AuthRoute: typeof AuthRoute
+  AuthRoute: typeof AuthRouteWithChildren
   CertidoesRoute: typeof CertidoesRoute
   ColaboradoresRoute: typeof ColaboradoresRoute
   ConcluidoRoute: typeof ConcluidoRoute
   DocumentosRoute: typeof DocumentosRoute
   EmpresasRoute: typeof EmpresasRoute
   EmpresasLegacyRoute: typeof EmpresasLegacyRoute
+  EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   FaltamRoute: typeof FaltamRoute
   LicitacoesRoute: typeof LicitacoesRoute
   LoginRoute: typeof LoginRoute
@@ -669,6 +704,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FaltamRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/esqueci-senha': {
+      id: '/esqueci-senha'
+      path: '/esqueci-senha'
+      fullPath: '/esqueci-senha'
+      preLoaderRoute: typeof EsqueciSenhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/empresas-legacy': {
       id: '/empresas-legacy'
       path: '/empresas-legacy'
@@ -746,12 +788,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/': {
+      id: '/auth/'
+      path: '/'
+      fullPath: '/auth/'
+      preLoaderRoute: typeof AuthIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/admin/': {
       id: '/admin/'
       path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/auth/recuperar-senha': {
+      id: '/auth/recuperar-senha'
+      path: '/recuperar-senha'
+      fullPath: '/auth/recuperar-senha'
+      preLoaderRoute: typeof AuthRecuperarSenhaRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/admin/suporte': {
       id: '/admin/suporte'
@@ -919,18 +975,31 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface AuthRouteChildren {
+  AuthRecuperarSenhaRoute: typeof AuthRecuperarSenhaRoute
+  AuthIndexRoute: typeof AuthIndexRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthRecuperarSenhaRoute: AuthRecuperarSenhaRoute,
+  AuthIndexRoute: AuthIndexRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
   AjudaRoute: AjudaRoute,
   AssistenteRoute: AssistenteRoute,
-  AuthRoute: AuthRoute,
+  AuthRoute: AuthRouteWithChildren,
   CertidoesRoute: CertidoesRoute,
   ColaboradoresRoute: ColaboradoresRoute,
   ConcluidoRoute: ConcluidoRoute,
   DocumentosRoute: DocumentosRoute,
   EmpresasRoute: EmpresasRoute,
   EmpresasLegacyRoute: EmpresasLegacyRoute,
+  EsqueciSenhaRoute: EsqueciSenhaRoute,
   FaltamRoute: FaltamRoute,
   LicitacoesRoute: LicitacoesRoute,
   LoginRoute: LoginRoute,

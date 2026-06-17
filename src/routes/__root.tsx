@@ -160,7 +160,11 @@ function RootLayout() {
   const [editarOpen, setEditarOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
-  const isAuth = pathname === "/auth" || pathname === "/login";
+  const isAuth =
+    pathname === "/auth" ||
+    pathname === "/login" ||
+    pathname === "/esqueci-senha" ||
+    pathname.startsWith("/auth/");
   const isIframeChat =
     pathname === "/sicaf-assistant-chat" || pathname === "/sicaf-assistant";
 
