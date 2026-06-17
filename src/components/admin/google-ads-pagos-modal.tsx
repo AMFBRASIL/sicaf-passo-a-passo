@@ -3,7 +3,6 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Building2,
   Calendar,
@@ -86,7 +85,7 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="z-[100] flex max-h-[92vh] max-w-5xl w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl border-0 shadow-2xl [&>button:last-child]:hidden">
+      <DialogContent className="z-[100] flex h-[min(92vh,900px)] max-h-[92vh] max-w-5xl w-[95vw] flex-col gap-0 overflow-hidden p-0 top-[4vh] translate-y-0 sm:rounded-2xl border-0 shadow-2xl [&>button:last-child]:hidden">
         <DialogTitle className="sr-only">
           Pagos validados — {palavra?.palavra || "palavra-chave"}
         </DialogTitle>
@@ -148,7 +147,7 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
           )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden bg-muted/30">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-muted/30">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-20 text-sm text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -160,9 +159,8 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
               <p className="mt-3 text-sm font-medium">Nenhum pagamento validado nesta palavra no período.</p>
             </div>
           ) : (
-            <ScrollArea className="h-full">
-              <div className="space-y-3 p-4 sm:p-5">
-                {clientes.map((c) => (
+            <div className="space-y-3 p-4 sm:p-5">
+              {clientes.map((c) => (
                   <div
                     key={c.clienteId}
                     className="overflow-hidden rounded-2xl border bg-card shadow-sm transition hover:shadow-md"
@@ -242,8 +240,7 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
                     </div>
                   </div>
                 ))}
-              </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
           </>
