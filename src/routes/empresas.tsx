@@ -450,7 +450,11 @@ function EmpresasPage() {
         </div>
       )}
 
-      <NovaEmpresaWizard open={wizardOpen} onOpenChange={setWizardOpen} />
+      <NovaEmpresaWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        onEmpresaCriada={() => loadEmpresas(busca)}
+      />
       <EmpresaDetalhesSheet
         empresa={detalhesEmpresa}
         open={Boolean(detalhesEmpresa)}

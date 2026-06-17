@@ -17,6 +17,7 @@ function normalizeSicafStatus(status?: string | null): string {
 
 /**
  * Regra 1 — SICAF Ativo **e** pago: cliente liberado (assistente, documentos, etc.).
+ * Vencendo (≤30 dias) com licença paga ainda está vigente — não exige novo pagamento.
  */
 export function sicafAcessoLiberado({
   hasSicaf,
@@ -24,16 +25,16 @@ export function sicafAcessoLiberado({
   financialReleased,
 }: SicafTaxaAccessInput): boolean {
   const s = normalizeSicafStatus(status);
-  if (!hasSicaf || s !== "Ativo") return false;
-  return financialReleased;
+  if (!hasSicaf || !financialReleased) return false;
+  return s === "Ativo" || s === "Vencendo";
 }
 
 /**
  * Quando exigir pagamento / bloquear acesso.
  *
- * Regra 2 — Vencido (data vencida): sempre bloqueia e exige pagamento (renovação).
- * Regra 3 — Sem SICAF, Pendente, Ativo sem pagamento, Vencendo, etc.: exige pagamento.
- * Regra 1 — Ativo + pago: não exige.
+ * Regra 2 — Vencido (data vencida): exige pagamento (renovação).
+ * Regra 3 — Sem SICAF, Pendente, Ativo/Vencendo sem pagamento: exige pagamento.
+ * Regra 1 — Ativo ou Vencendo + pago: não exige.
  */
 export function needsSicafTaxaPaymentFromInput(input: SicafTaxaAccessInput): boolean {
   const s = normalizeSicafStatus(input.status);
@@ -66,15 +67,16 @@ export type SicafDisplayStatus = "ativo" | "atencao" | "vencido" | "sem_cadastro
 
 /**
  * Botão "Gerenciar" em /empresas.
- * Taxa pendente (Sem SICAF, vencido, sem pagamento, inativo, vencendo…) → wizard/modal de pagamento.
- * Ativo + pago → painel lateral (EmpresaDetalhesSheet).
+ * Taxa pendente → wizard/modal de pagamento.
+ * Licença paga e vigente (Ativo/Vencendo) → painel lateral.
  */
 export function shouldGerenciarAbrirPagamentoFromInput(input: SicafTaxaAccessInput): boolean {
   return needsSicafTaxaPaymentFromInput(input);
 }
 
+/** Fallback quando `taxaPendente` não veio da API — só sem cadastro ou já vencido. */
 export function shouldGerenciarAbrirPagamentoFromSicaf(sicaf: SicafDisplayStatus): boolean {
-  return sicaf === "vencido" || sicaf === "sem_cadastro" || sicaf === "atencao";
+  return sicaf === "vencido" || sicaf === "sem_cadastro";
 }
 
 /** Preferir no front quando `taxaPendente` vem da API. */

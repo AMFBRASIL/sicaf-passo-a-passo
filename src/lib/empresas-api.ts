@@ -223,6 +223,45 @@ export type GerarTaxaPayload = {
   dataVencimento?: string;
 };
 
+export type RegistrarEmpresaPayload = {
+  documento: string;
+  razaoSocial: string;
+  nomeFantasia?: string;
+  inscricaoEstadual?: string;
+  inscricaoMunicipal?: string;
+  email?: string;
+  telefone?: string;
+  cep?: string;
+  endereco?: string;
+  cidade?: string;
+  estado?: string;
+  ramoAtividade?: string;
+  responsavelNome?: string;
+};
+
+export type RegistrarEmpresaResult = {
+  ok: boolean;
+  clienteId?: number;
+  sicafId?: number;
+  message?: string;
+  error?: string;
+};
+
+export async function registrarEmpresa(
+  payload: RegistrarEmpresaPayload,
+): Promise<RegistrarEmpresaResult> {
+  const res = await apiFetch("/api/clients/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export const PLANO_WIZARD_PARA_CODIGO: Record<"padrao" | "emergencial", string> = {
+  padrao: "sicaf_padrao",
+  emergencial: "sicaf_imediato",
+};
+
 export type PagamentoGerado = {
   barcode?: string;
   link?: string;

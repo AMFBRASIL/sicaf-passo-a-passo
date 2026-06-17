@@ -8,6 +8,7 @@ const {
   calcDaysRemaining,
   needsSicafTaxaPayment,
   isSicafAcessoLiberado,
+  resolveFinancialReleased,
 } = require('../utils/sicaf-status');
 const { getCertidoesStatus } = require('./clients.service');
 const { getChecklistDocumentosAdmin } = require('./certidoes.service');
@@ -345,17 +346,23 @@ async function getGerenciarPainel(clienteId, usuarioId) {
     niveisDetail[n.nivel] = buildNivelDetailFromRow(n);
   }
 
-  const hasPaidTaxRecord = taxasSicaf.some((t) => isPaidStatus(t.status));
+  const hasPaidTaxRecord = taxasSicaf.some((t) => isPaidStatus(t.status) || t.data_pagamento);
   const sicafDisplayStatus = sicaf
     ? resolveSicafDisplayStatus(sicaf.status, sicaf.data_validade, true)
     : 'Sem SICAF';
+  const financialReleased = resolveFinancialReleased({
+    hasSicaf: !!sicaf,
+    sicafStatus: sicaf?.status,
+    dataValidade: sicaf?.data_validade,
+    taxaReleased: hasPaidTaxRecord,
+  });
   const taxaAccessParams = {
     hasSicaf: !!sicaf,
     status: sicafDisplayStatus,
-    financialReleased: hasPaidTaxRecord,
+    financialReleased,
   };
   const taxaPendente = needsSicafTaxaPayment(taxaAccessParams);
-  const taxaPaga = hasPaidTaxRecord;
+  const taxaPaga = financialReleased;
   const acessoLiberado = isSicafAcessoLiberado(taxaAccessParams);
   const ultimaTaxa = taxasSicaf[0] || null;
 

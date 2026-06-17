@@ -42,11 +42,12 @@ function isSicafDisplayValid(dbStatus, dataValidade, hasSicaf = true) {
 
 /**
  * Regra 1 — SICAF Ativo e pago: acesso liberado (assistente, etc.).
+ * Vencendo (≤30 dias) com licença paga ainda está vigente — não exige novo pagamento até vencer.
  */
 function isSicafAcessoLiberado({ hasSicaf = false, status = '', financialReleased = false } = {}) {
   const s = String(status || '').trim() || 'Sem SICAF';
-  if (!hasSicaf || s !== 'Ativo') return false;
-  return !!financialReleased;
+  if (!hasSicaf || !financialReleased) return false;
+  return s === 'Ativo' || s === 'Vencendo';
 }
 
 /**
@@ -77,6 +78,34 @@ function enrichSicafRow(sicafRow) {
   };
 }
 
+/** Status de taxa SICAF considerado pago/liberado (qualquer registro na tabela). */
+function isTaxaSicafPaga(status) {
+  const s = String(status || '').toLowerCase().trim();
+  return ['pago', 'paga', 'aprovado', 'aprovada', 'liberado', 'liberada', 'paid', 'quitado'].includes(s);
+}
+
+/**
+ * Credencial SICAF vigente (Ativo/Vencendo com validade futura) — licença liberada.
+ * Cobre legado/migração onde sicaf_cadastros foi ativado mas taxas_sicaf ficou Pendente.
+ */
+function isSicafLicencaVigente({ hasSicaf = false, sicafStatus = null, dataValidade = null } = {}) {
+  if (!hasSicaf || !dataValidade) return false;
+  const display = resolveSicafDisplayStatus(sicafStatus, dataValidade, true);
+  if (!['Ativo', 'Vencendo'].includes(display)) return false;
+  const days = calcDaysRemaining(dataValidade);
+  return days !== null && days > 0;
+}
+
+function resolveFinancialReleased({
+  hasSicaf = false,
+  sicafStatus = null,
+  dataValidade = null,
+  taxaReleased = false,
+} = {}) {
+  if (taxaReleased) return true;
+  return isSicafLicencaVigente({ hasSicaf, sicafStatus, dataValidade });
+}
+
 module.exports = {
   calcDaysRemaining,
   resolveSicafDisplayStatus,
@@ -84,5 +113,8 @@ module.exports = {
   needsSicafTaxaPayment,
   isSicafAcessoLiberado,
   isSicafTaxaLiberada,
+  isTaxaSicafPaga,
+  isSicafLicencaVigente,
+  resolveFinancialReleased,
   enrichSicafRow,
 };

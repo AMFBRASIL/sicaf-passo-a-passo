@@ -2,7 +2,7 @@
  * Listagem de empresas SICAF do usuário logado (portado do launcher legado).
  */
 const { getDb } = require('../database/connection');
-const { calcDaysRemaining, resolveSicafDisplayStatus } = require('../utils/sicaf-status');
+const { calcDaysRemaining, resolveSicafDisplayStatus, isTaxaSicafPaga, resolveFinancialReleased } = require('../utils/sicaf-status');
 
 async function listSicaf(search = '', usuarioId) {
   const db = getDb();
@@ -84,15 +84,21 @@ async function listSicaf(search = '', usuarioId) {
           .orderBy('created_at', 'desc');
         for (const t of taxaRows) {
           const cid = Number(t.cliente_id || 0);
-          if (!cid || financialMap[cid]) continue;
+          if (!cid) continue;
           const statusRaw = String(t.status || '').trim();
-          const s = statusRaw.toLowerCase();
-          const released = ['pago', 'paga', 'aprovado', 'aprovada', 'liberado', 'liberada'].includes(s);
-          financialMap[cid] = {
-            status: statusRaw || 'Não informado',
-            released,
-            paidAt: t.data_pagamento || null,
-          };
+          if (!financialMap[cid]) {
+            financialMap[cid] = {
+              status: statusRaw || 'Não informado',
+              released: false,
+              paidAt: null,
+            };
+          }
+          if (isTaxaSicafPaga(statusRaw) || t.data_pagamento) {
+            financialMap[cid].released = true;
+            if (!financialMap[cid].paidAt && t.data_pagamento) {
+              financialMap[cid].paidAt = t.data_pagamento;
+            }
+          }
         }
       } catch (_) {
         financialMap = {};
@@ -179,7 +185,12 @@ async function listSicaf(search = '', usuarioId) {
         daysValid,
         annualCredential: r.credenciamento_anual === 1,
         financialStatus: financialMap[r.cliente_id]?.status || 'Não informado',
-        financialReleased: !!financialMap[r.cliente_id]?.released,
+        financialReleased: resolveFinancialReleased({
+          hasSicaf,
+          sicafStatus: r.sicaf_status,
+          dataValidade: r.data_validade,
+          taxaReleased: !!financialMap[r.cliente_id]?.released,
+        }),
         hasSicaf,
       };
     });

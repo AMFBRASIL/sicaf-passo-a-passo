@@ -215,8 +215,8 @@ function SuportePage() {
     : null;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div className="flex h-[calc(100dvh-3.5rem)] flex-col p-4 sm:p-6 lg:p-8">
+      <div className="mb-6 flex shrink-0 flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">Central de Suporte</h1>
           <p className="text-sm text-muted-foreground">
@@ -260,7 +260,7 @@ function SuportePage() {
       </div>
 
       {erro && (
-        <div className="mb-4 flex items-start gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-800 dark:text-rose-200">
+        <div className="mb-4 flex shrink-0 items-start gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-800 dark:text-rose-200">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-medium">Não foi possível carregar os tickets</p>
@@ -274,18 +274,21 @@ function SuportePage() {
       )}
 
       {loading && Object.values(board).every((col) => col.length === 0) ? (
-        <div className="flex items-center justify-center py-24 text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center py-24 text-muted-foreground">
           <Loader2 className="mr-2 h-5 w-5 animate-spin" />
           Carregando tickets...
         </div>
       ) : (
-        <div className="overflow-x-auto pb-4">
-          <div className="flex gap-3 min-w-max">
+        <div className="min-h-0 flex-1 overflow-x-auto pb-2">
+          <div className="flex h-full min-h-[360px] gap-3 min-w-max">
             {colunas.map((col) => {
               const tickets = filtra(board[col]);
               return (
-                <div key={col} className={`w-72 shrink-0 rounded-lg bg-muted/30 ${colCls[col]}`}>
-                  <div className="flex items-center justify-between px-3 py-2.5">
+                <div
+                  key={col}
+                  className={`flex h-full w-72 shrink-0 flex-col rounded-lg bg-muted/30 ${colCls[col]}`}
+                >
+                  <div className="flex shrink-0 items-center justify-between px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold">{col}</span>
                       <Badge variant="secondary" className="h-5 rounded-full px-1.5 text-[10px]">
@@ -296,7 +299,7 @@ function SuportePage() {
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                  <div className="space-y-2 px-2 pb-3">
+                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain px-2 pb-3">
                     {tickets.length === 0 && (
                       <div className="rounded-md border border-dashed bg-background/50 py-6 text-center text-[11px] text-muted-foreground">
                         Nenhum ticket

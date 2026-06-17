@@ -20,10 +20,16 @@ import { Wrench } from "lucide-react";
 import {
   fetchEmpresaGerenciar,
   salvarEmpresaGerenciar,
+  gerarTaxaSicaf,
+  registrarEmpresa,
+  PLANO_WIZARD_PARA_CODIGO,
   type ColaboradorResumo,
   type EmpresaGerenciarPainel,
   type GerenciarItem,
+  type PagamentoGerado,
 } from "@/lib/empresas-api";
+import { BoletoGeradoPanel } from "@/components/sicaf/BoletoGeradoPanel";
+import { PixPaymentModal } from "@/components/sicaf/PixPaymentModal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { shouldGerenciarAbrirPagamentoFromEmpresa } from "@/lib/sicaf-access-rules";
@@ -2002,18 +2008,38 @@ const wizardSteps = [
   { id: 6, title: "Pronto", desc: "Empresa cadastrada", icon: CheckCircle2 },
 ];
 
-export function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function NovaEmpresaWizard({
+  open,
+  onOpenChange,
+  onEmpresaCriada,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onEmpresaCriada?: () => void;
+}) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<WizardForm>(emptyForm);
   const [consultando, setConsultando] = useState(false);
   const [consultaOk, setConsultaOk] = useState(false);
   const [consultaErro, setConsultaErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [clienteId, setClienteId] = useState<number | null>(null);
+  const [pagamentoGerado, setPagamentoGerado] = useState<PagamentoGerado | null>(null);
+  const [pixModalOpen, setPixModalOpen] = useState(false);
 
   const update = <K extends keyof WizardForm>(k: K, v: WizardForm[K]) =>
     setForm((p) => ({ ...p, [k]: v }));
 
   const reset = () => {
-    setStep(1); setForm(emptyForm); setConsultando(false); setConsultaOk(false); setConsultaErro("");
+    setStep(1);
+    setForm(emptyForm);
+    setConsultando(false);
+    setConsultaOk(false);
+    setConsultaErro("");
+    setSalvando(false);
+    setClienteId(null);
+    setPagamentoGerado(null);
+    setPixModalOpen(false);
   };
 
   const handleClose = (v: boolean) => {
@@ -2089,6 +2115,67 @@ export function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpe
 
   const next = () => setStep((s) => Math.min(6, s + 1));
   const prev = () => setStep((s) => Math.max(1, s - 1));
+
+  const vencimentoBoletoIso = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const finalizarCadastro = async () => {
+    if (!form.plano || !form.pagamento) return;
+
+    setSalvando(true);
+    try {
+      const reg = await registrarEmpresa({
+        documento: form.cnpj.replace(/\D/g, ""),
+        razaoSocial: form.razaoSocial.trim(),
+        nomeFantasia: form.nomeFantasia.trim() || undefined,
+        inscricaoEstadual: form.inscricaoEstadual.trim() || undefined,
+        inscricaoMunicipal: form.inscricaoMunicipal.trim() || undefined,
+        email: form.email.trim() || undefined,
+        telefone: form.telefone.trim() || undefined,
+        cep: form.cep.replace(/\D/g, "") || undefined,
+        endereco: form.endereco.trim() || undefined,
+        cidade: form.cidade.trim() || undefined,
+        estado: form.uf.trim() || undefined,
+        ramoAtividade: form.ramoAtividade.trim() || undefined,
+        responsavelNome: form.responsavel.trim() || undefined,
+      });
+
+      if (!reg.ok || !reg.clienteId) {
+        toast.error(reg.error || "Erro ao cadastrar empresa");
+        return;
+      }
+
+      setClienteId(reg.clienteId);
+      onEmpresaCriada?.();
+
+      const taxa = await gerarTaxaSicaf({
+        clienteId: reg.clienteId,
+        formaPagamento: form.pagamento,
+        planoCodigo: PLANO_WIZARD_PARA_CODIGO[form.plano],
+        dataVencimento: form.pagamento === "boleto" ? vencimentoBoletoIso() : undefined,
+      });
+
+      if (!taxa.ok || !taxa.pagamento) {
+        toast.error(taxa.error || "Empresa criada, mas falhou ao gerar o pagamento.");
+        setStep(6);
+        return;
+      }
+
+      setPagamentoGerado(taxa.pagamento);
+      if (form.pagamento === "pix") {
+        setPixModalOpen(true);
+      }
+      toast.success(reg.message || "Empresa cadastrada! Conclua o pagamento para iniciar o SICAF.");
+      setStep(6);
+    } catch {
+      toast.error("Erro de conexão ao cadastrar empresa.");
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   const progresso = (step / wizardSteps.length) * 100;
 
@@ -2366,22 +2453,54 @@ export function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpe
               )}
 
               {step === 6 && (
-                <div className="text-center py-8 space-y-5">
-                  <div className="h-20 w-20 rounded-full bg-success/15 text-success flex items-center justify-center mx-auto">
-                    <CheckCircle2 className="h-10 w-10" />
+                <div className="space-y-6 py-4">
+                  <div className="text-center space-y-3">
+                    <div className="h-20 w-20 rounded-full bg-success/15 text-success flex items-center justify-center mx-auto">
+                      <CheckCircle2 className="h-10 w-10" />
+                    </div>
+                    <div>
+                      <h4 className="text-2xl font-bold">Empresa cadastrada!</h4>
+                      <p className="text-muted-foreground mt-2 max-w-md mx-auto">
+                        <strong>{form.razaoSocial}</strong> foi salva no sistema.
+                        {pagamentoGerado
+                          ? " Conclua o pagamento abaixo para iniciar o cadastro SICAF."
+                          : " Gere o pagamento em Minhas Empresas se ainda não aparecer aqui."}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-2xl font-bold">Empresa cadastrada!</h4>
-                    <p className="text-muted-foreground mt-2 max-w-md mx-auto">
-                      Recebemos o pagamento e iniciamos o processo de cadastro SICAF da <strong>{form.razaoSocial}</strong>.
-                      Você vai receber atualizações por e-mail e WhatsApp.
-                    </p>
-                  </div>
+
                   <div className="rounded-xl border bg-muted/30 p-5 max-w-md mx-auto text-left grid gap-2 text-sm">
                     <div className="flex justify-between"><span className="text-muted-foreground">CNPJ</span><span className="font-medium">{form.cnpj}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Plano</span><span className="font-medium">{form.plano === "emergencial" ? "Emergencial" : "Padrão"}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Pagamento</span><span className="font-medium uppercase">{form.pagamento}</span></div>
+                    {clienteId != null && (
+                      <div className="flex justify-between"><span className="text-muted-foreground">ID</span><span className="font-mono text-xs">{clienteId}</span></div>
+                    )}
                   </div>
+
+                  {pagamentoGerado && form.pagamento === "boleto" && pagamentoGerado.barcode && (
+                    <BoletoGeradoPanel
+                      boletoData={{
+                        barcode: pagamentoGerado.barcode || "",
+                        link: pagamentoGerado.link || "",
+                        pdf: pagamentoGerado.pdf || "",
+                        valor: pagamentoGerado.valor,
+                        vencimento: pagamentoGerado.vencimento || vencimentoBoletoIso(),
+                        protocolo: pagamentoGerado.protocolo || "",
+                        chargeId: pagamentoGerado.chargeId,
+                      }}
+                      documento={form.cnpj}
+                    />
+                  )}
+
+                  {pagamentoGerado && form.pagamento === "pix" && (
+                    <div className="text-center">
+                      <Button type="button" onClick={() => setPixModalOpen(true)} className="gap-2">
+                        <QrCode className="h-4 w-4" />
+                        Abrir QR Code PIX
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2392,9 +2511,20 @@ export function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpe
               <ArrowLeft className="h-4 w-4" /> Voltar
             </Button>
             {step < 6 ? (
-              <Button onClick={next} disabled={!canNext()} size="lg" className="gap-2">
-                {step === 5 ? "Confirmar pagamento" : "Continuar"}
-                <ArrowRight className="h-4 w-4" />
+              <Button
+                onClick={() => (step === 5 ? void finalizarCadastro() : next())}
+                disabled={!canNext() || salvando}
+                size="lg"
+                className="gap-2"
+              >
+                {salvando ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : step === 5 ? (
+                  <Receipt className="h-4 w-4" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
+                {salvando ? "Salvando..." : step === 5 ? "Confirmar e gerar pagamento" : "Continuar"}
               </Button>
             ) : (
               <Button onClick={() => handleClose(false)} size="lg" className="gap-2">
@@ -2404,6 +2534,27 @@ export function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpe
           </footer>
         </div>
       </DialogContent>
+
+      {pagamentoGerado && form.pagamento === "pix" && pagamentoGerado.qrcodeText && (
+        <PixPaymentModal
+          open={pixModalOpen}
+          onOpenChange={setPixModalOpen}
+          client={form.razaoSocial}
+          documento={form.cnpj}
+          pixData={{
+            qrcodeText: pagamentoGerado.qrcodeText,
+            qrcodeImage: pagamentoGerado.qrcodeImage || "",
+            valor: pagamentoGerado.valor,
+            protocolo: pagamentoGerado.protocolo || "",
+            txid: pagamentoGerado.txid || "",
+            pagamentoId: pagamentoGerado.pagamentoId,
+          }}
+          onPaymentConfirmed={() => {
+            onEmpresaCriada?.();
+            toast.success("Pagamento PIX confirmado!");
+          }}
+        />
+      )}
     </Dialog>
   );
 }
