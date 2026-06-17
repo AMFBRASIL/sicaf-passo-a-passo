@@ -41,7 +41,13 @@ export const PASSOS_SITUACAO_FORNECEDOR = [
   },
 ] as const;
 
-export function AjudaSituacaoFornecedorSlider({ className }: { className?: string }) {
+export function AjudaSituacaoFornecedorSlider({
+  className,
+  showHeader = false,
+}: {
+  className?: string;
+  showHeader?: boolean;
+}) {
   const [api, setApi] = useState<CarouselApi>();
   const [passoAtual, setPassoAtual] = useState(0);
 
@@ -61,17 +67,19 @@ export function AjudaSituacaoFornecedorSlider({ className }: { className?: strin
 
   return (
     <div className={cn("space-y-4", className)}>
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <FileText className="h-5 w-5" />
+      {showHeader && (
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <FileText className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold">Como colocar a Situação Fornecedor</h3>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Passo a passo visual para enviar o PDF da Situação do Fornecedor e atualizar os níveis SICAF.
+            </p>
+          </div>
         </div>
-        <div>
-          <h3 className="text-base font-semibold">Como colocar a Situação Fornecedor</h3>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Passo a passo visual para enviar o PDF da Situação do Fornecedor e atualizar os níveis SICAF.
-          </p>
-        </div>
-      </div>
+      )}
 
       <Carousel setApi={setApi} opts={{ loop: false }} className="w-full">
         <CarouselContent>

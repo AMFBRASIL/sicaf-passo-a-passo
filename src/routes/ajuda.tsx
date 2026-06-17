@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { HelpCircle, Search, PlayCircle, Bot, Sparkles, Loader2 } from "lucide-react";
+import { HelpCircle, Search, PlayCircle, Bot, Sparkles, Loader2, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader, PageContainer } from "@/components/page-header";
-import { AjudaSituacaoFornecedorSlider } from "@/components/ajuda-situacao-fornecedor-slider";
+import { AjudaSituacaoFornecedorSlider, PASSOS_SITUACAO_FORNECEDOR } from "@/components/ajuda-situacao-fornecedor-slider";
 import { useRef, useState } from "react";
 import { perguntarAjuda } from "@/lib/ajuda-api";
 import { toast } from "sonner";
@@ -77,6 +77,7 @@ function HelpPage() {
   const [loading, setLoading] = useState(false);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [videoAtivo, setVideoAtivo] = useState<VideoAjuda | null>(null);
+  const [situacaoModalOpen, setSituacaoModalOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   function abrirVideo(v: VideoAjuda) {
@@ -139,7 +140,13 @@ function HelpPage() {
             {sugestoes.map((s) => (
               <button
                 key={s}
-                onClick={() => ask(s)}
+                onClick={() => {
+                  if (s === "Como colocar situação Fornecedor") {
+                    setSituacaoModalOpen(true);
+                    return;
+                  }
+                  ask(s);
+                }}
                 className="rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition hover:border-primary/40 hover:bg-primary/5"
               >
                 {s}
@@ -170,17 +177,29 @@ function HelpPage() {
       )}
 
       <Card className="mt-6">
-        <CardContent className="p-5 sm:p-6">
-          <AjudaSituacaoFornecedorSlider />
-        </CardContent>
-      </Card>
-
-      <Card className="mt-6">
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Vídeos explicativos</CardTitle>
+          <CardTitle className="text-base font-semibold">Guias e vídeos explicativos</CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="grid gap-2 sm:grid-cols-2">
+            <li className="sm:col-span-2">
+              <button
+                type="button"
+                onClick={() => setSituacaoModalOpen(true)}
+                className={cn(
+                  "group flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition",
+                  "hover:border-primary/40 hover:bg-primary/5 hover:shadow-soft cursor-pointer",
+                )}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium leading-snug">Como colocar a Situação Fornecedor</p>
+                  <p className="text-xs text-muted-foreground">Clique para ver o passo a passo com imagens</p>
+                </div>
+              </button>
+            </li>
             {videos.map((v) => {
               const clicavel = Boolean(v.src || v.youtubeId);
               return (
@@ -212,6 +231,22 @@ function HelpPage() {
           </ul>
         </CardContent>
       </Card>
+
+      <Dialog open={situacaoModalOpen} onOpenChange={setSituacaoModalOpen}>
+        <DialogContent className="flex max-h-[90vh] w-[min(92vw,900px)] max-w-[92vw] flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl">
+          <DialogHeader className="shrink-0 border-b px-5 py-4 text-left">
+            <DialogTitle className="pr-8 text-base leading-snug sm:text-lg">
+              Como colocar a Situação Fornecedor
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              Passo a passo visual — {PASSOS_SITUACAO_FORNECEDOR.length} etapas
+            </p>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+            {situacaoModalOpen && <AjudaSituacaoFornecedorSlider key="situacao-fornecedor-slider" />}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={videoModalOpen} onOpenChange={onVideoModalChange}>
         <DialogContent className="flex h-[80vh] w-[80vw] max-h-[80vh] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl">
