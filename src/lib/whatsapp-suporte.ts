@@ -24,3 +24,38 @@ export function getWhatsAppMensagemPorPath(pathname: string): string {
 export function buildWhatsAppSuporteUrl(texto: string): string {
   return `https://wa.me/${WHATSAPP_SUPORTE_NUMERO}?text=${encodeURIComponent(texto)}`;
 }
+
+type LicitacaoWhatsAppContext = {
+  id: string;
+  orgao: string;
+  objeto: string;
+  modalidade: string;
+  uf: string;
+  numero_processo?: string | null;
+  numero_controle_pncp?: string | null;
+};
+
+/** Mensagem ao falar com consultor na etapa "Participar" de uma licitação. */
+export function buildWhatsAppMensagemLicitacaoParticipar(
+  licitacao: LicitacaoWhatsAppContext,
+): string {
+  const identificador =
+    licitacao.numero_controle_pncp?.trim() ||
+    licitacao.numero_processo?.trim() ||
+    licitacao.id;
+
+  return [
+    "Olá! Estou no Portal CADBRASIL, na tela de Licitações (/licitacoes), na etapa *Participar* de uma licitação.",
+    "",
+    "Gostaria de falar com um consultor para me acompanhar nesta participação.",
+    "",
+    `• Órgão: ${licitacao.orgao}`,
+    `• Objeto: ${licitacao.objeto}`,
+    `• Modalidade: ${licitacao.modalidade} · ${licitacao.uf}`,
+    `• Identificador: ${identificador}`,
+  ].join("\n");
+}
+
+export function buildWhatsAppConsultorLicitacaoUrl(licitacao: LicitacaoWhatsAppContext): string {
+  return buildWhatsAppSuporteUrl(buildWhatsAppMensagemLicitacaoParticipar(licitacao));
+}

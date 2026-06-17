@@ -53,10 +53,12 @@ import {
   mapApiToDisplay,
   resolveLicitacaoPncpUrl,
   toggleLicitacaoMira,
+  confirmarLicitacaoParticipacao,
   type LicitacaoDisplay,
   type LicitacaoPersonalKpis,
   type LicitacoesFilterOptions,
 } from "@/lib/licitacoes-api";
+import { buildWhatsAppConsultorLicitacaoUrl } from "@/lib/whatsapp-suporte";
 
 export const Route = createFileRoute("/licitacoes")({
   head: () => ({
@@ -251,6 +253,23 @@ function LicitacoesPage() {
     void loadStats();
   };
 
+  const handleParticipacaoConfirmada = (idNum: number) => {
+    const patch = (item: Licitacao): Licitacao => ({
+      ...item,
+      vaiParticipar: true,
+      pipelineStatus: "vai_participar",
+      na_mira: true,
+      destaque: true,
+    });
+    setLista((prev) => {
+      const wasInMira = prev.find((l) => l.idNum === idNum)?.na_mira;
+      if (!wasInMira) setMiraCount((c) => c + 1);
+      return prev.map((l) => (l.idNum === idNum ? patch(l) : l));
+    });
+    setDetalhe((prev) => (prev?.idNum === idNum ? patch(prev) : prev));
+    void loadStats();
+  };
+
   return (
     <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 sm:py-10">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -433,7 +452,7 @@ function LicitacoesPage() {
         {!listLoading && filtradas.map((l) => (
           <Card
             key={l.id}
-            className={l.destaque ? "border-primary/40 ring-1 ring-primary/20" : ""}
+            className={l.vaiParticipar ? "border-success/40 ring-1 ring-success/20" : l.destaque ? "border-primary/40 ring-1 ring-primary/20" : ""}
           >
             <CardContent className="p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -450,6 +469,12 @@ function LicitacoesPage() {
                     {l.na_mira && (
                       <span className="text-[11px] font-medium text-rose-600">
                         ❤️ Na sua mira
+                      </span>
+                    )}
+                    {l.vaiParticipar && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Vai participar
                       </span>
                     )}
                   </div>
@@ -544,6 +569,7 @@ function LicitacoesPage() {
       <DetalheDialog
         licitacao={detalhe}
         onClose={() => setDetalhe(null)}
+        onParticipacaoConfirmada={handleParticipacaoConfirmada}
       />
 
       <LicitacoesRadarModal
@@ -781,20 +807,45 @@ const steps: Step[] = [
 function DetalheDialog({
   licitacao,
   onClose,
+  onParticipacaoConfirmada,
 }: {
   licitacao: Licitacao | null;
   onClose: () => void;
+  onParticipacaoConfirmada: (idNum: number) => void;
 }) {
   const [step, setStep] = useState("resumo");
+  const [confirmando, setConfirmando] = useState(false);
+  const [participando, setParticipando] = useState(false);
 
-  const confirmarParticipacao = () => {
+  useEffect(() => {
+    setStep("resumo");
+    setParticipando(!!licitacao?.vaiParticipar);
+  }, [licitacao?.id, licitacao?.vaiParticipar]);
+
+  const confirmarParticipacao = async () => {
     if (!licitacao) return;
     const url = resolveLicitacaoPncpUrl(licitacao);
     if (!url) {
       toast.error("Link PNCP não disponível para esta licitação.");
       return;
     }
-    window.open(url, "_blank", "noopener,noreferrer");
+
+    setConfirmando(true);
+    try {
+      const res = await confirmarLicitacaoParticipacao(licitacao.idNum);
+      if (!res.ok) {
+        toast.error(res.error || "Erro ao confirmar participação");
+        return;
+      }
+      setParticipando(true);
+      onParticipacaoConfirmada(licitacao.idNum);
+      toast.success(res.message || "Participação confirmada!");
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      toast.error("Falha ao confirmar participação");
+    } finally {
+      setConfirmando(false);
+    }
   };
 
   if (!licitacao) return null;
@@ -836,6 +887,13 @@ function DetalheDialog({
               <p className="mt-1.5 text-[11px] text-white/70">
                 {licitacao.uf} · {licitacao.segmento} · Nº {licitacao.id}
               </p>
+
+              {participando && (
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-300/40 bg-emerald-500/20 px-3 py-2 text-xs font-medium text-white">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  Você confirmou que vai participar
+                </div>
+              )}
 
               <div className="mt-4 rounded-xl bg-white/10 p-3 backdrop-blur">
                 <p className="text-[10px] uppercase tracking-wide text-white/70">
@@ -912,7 +970,7 @@ function DetalheDialog({
                 {step === "documentos" && <StepDocumentos />}
                 {step === "concorrentes" && <StepConcorrentes />}
                 {step === "ia" && <StepIA l={licitacao} />}
-                {step === "participar" && <StepParticipar l={licitacao} />}
+                {step === "participar" && <StepParticipar l={licitacao} participando={participando} />}
               </div>
             </ScrollArea>
 
@@ -929,10 +987,34 @@ function DetalheDialog({
                 Voltar
               </Button>
               {step === steps[steps.length - 1].id ? (
-                <Button onClick={confirmarParticipacao}>
-                  <Rocket className="mr-2 h-4 w-4" />
-                  Confirmar participação
-                </Button>
+                participando ? (
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Participação confirmada
+                    </span>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const url = resolveLicitacaoPncpUrl(licitacao);
+                        if (url) window.open(url, "_blank", "noopener,noreferrer");
+                        else toast.error("Link PNCP não disponível.");
+                      }}
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Abrir no PNCP
+                    </Button>
+                  </div>
+                ) : (
+                  <Button onClick={() => void confirmarParticipacao()} disabled={confirmando}>
+                    {confirmando ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Rocket className="mr-2 h-4 w-4" />
+                    )}
+                    Confirmar participação
+                  </Button>
+                )
               ) : (
                 <Button
                   onClick={() => {
@@ -1293,16 +1375,32 @@ function StepIA({ l }: { l: Licitacao }) {
   );
 }
 
-function StepParticipar({ l }: { l: Licitacao }) {
+function StepParticipar({ l, participando }: { l: Licitacao; participando: boolean }) {
+  const whatsappConsultorUrl = buildWhatsAppConsultorLicitacaoUrl(l);
   const checklist = [
     { item: "Documentação completa", ok: false },
     { item: "Proposta comercial preparada", ok: false },
     { item: "Análise de viabilidade concluída", ok: true },
     { item: "Cadastro no Compras.gov.br ativo", ok: true },
+    { item: "Participação confirmada no CadBrasil", ok: participando },
   ];
 
   return (
     <div className="space-y-6">
+      {participando && (
+        <Card className="border-success/40 bg-success/10">
+          <CardContent className="flex items-center gap-3 p-5">
+            <CheckCircle2 className="h-8 w-8 shrink-0 text-success" />
+            <div>
+              <p className="font-semibold text-success">Você já confirmou participação nesta licitação</p>
+              <p className="text-sm text-muted-foreground">
+                Ela ficará marcada na sua lista com o selo &quot;Vai participar&quot;.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div>
         <h3 className="flex items-center gap-2 text-xl font-bold">
           <Rocket className="h-5 w-5 text-primary" />
@@ -1351,7 +1449,11 @@ function StepParticipar({ l }: { l: Licitacao }) {
               Consultor especialista revisa sua proposta antes do envio.
             </p>
           </div>
-          <Button variant="outline">Falar com consultor</Button>
+          <Button variant="outline" asChild>
+            <a href={whatsappConsultorUrl} target="_blank" rel="noopener noreferrer">
+              Falar com consultor
+            </a>
+          </Button>
         </CardContent>
       </Card>
     </div>

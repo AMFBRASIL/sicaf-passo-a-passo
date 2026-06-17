@@ -414,6 +414,34 @@ export class LicitacoesRepository {
     return rows.map((r) => r.licitacao_id);
   }
 
+  async confirmParticipacao(
+    usuarioId: number,
+    licitacaoId: number,
+  ): Promise<{ pipeline_status: string }> {
+    const pool = getWritePool();
+    const existing = await queryOne<RowDataPacket & { id: number }>(
+      pool,
+      `SELECT id FROM licitacoes_mira WHERE usuario_id = :usuarioId AND licitacao_id = :licitacaoId`,
+      { usuarioId, licitacaoId },
+    );
+
+    if (existing) {
+      await execute(
+        pool,
+        `UPDATE licitacoes_mira SET pipeline_status = 'vai_participar' WHERE id = :id`,
+        { id: existing.id },
+      );
+      return { pipeline_status: "vai_participar" };
+    }
+
+    await execute(
+      pool,
+      `INSERT INTO licitacoes_mira (usuario_id, licitacao_id, pipeline_status) VALUES (:usuarioId, :licitacaoId, 'vai_participar')`,
+      { usuarioId, licitacaoId },
+    );
+    return { pipeline_status: "vai_participar" };
+  }
+
   async toggleMira(usuarioId: number, licitacaoId: number): Promise<{ na_mira: boolean }> {
     const pool = getWritePool();
     const existing = await queryOne<RowDataPacket & { id: number }>(

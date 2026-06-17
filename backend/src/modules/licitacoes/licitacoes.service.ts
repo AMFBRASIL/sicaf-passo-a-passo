@@ -159,6 +159,17 @@ export class LicitacoesService {
     };
   }
 
+  async confirmParticipacao(usuarioId: number, licitacaoId: number) {
+    const row = await licitacoesRepository.findById(licitacaoId);
+    if (!row) throw notFound("Licitação não encontrada");
+    const result = await licitacoesRepository.confirmParticipacao(usuarioId, licitacaoId);
+    return {
+      pipelineStatus: result.pipeline_status,
+      na_mira: true,
+      message: "Participação confirmada — você marcou que vai participar desta licitação",
+    };
+  }
+
   async getMiraIds(usuarioId: number) {
     const ids = await licitacoesRepository.getMiraIds(usuarioId);
     return { ids, total: ids.length };

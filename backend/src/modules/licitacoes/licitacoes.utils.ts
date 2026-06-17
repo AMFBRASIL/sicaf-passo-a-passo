@@ -1,3 +1,14 @@
+export const PIPELINE_STATUSES = [
+  "na_mira",
+  "em_analise",
+  "vai_participar",
+  "proposta_enviada",
+  "ganhou",
+  "perdeu",
+] as const;
+
+export type PipelineStatus = (typeof PIPELINE_STATUSES)[number];
+
 export type PrazoInfo = {
   label: string;
   urgency: "none" | "past" | "critical" | "urgent" | "soon" | "ok";

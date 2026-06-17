@@ -35,7 +35,12 @@ export type ApiLicitacao = {
   link_edital: string | null;
   link_portal: string | null;
   na_mira?: boolean;
-  mira_meta?: unknown;
+  mira_meta?: {
+    pipelineStatus?: string;
+    notas?: string;
+    clienteId?: number | null;
+    alertasAtivos?: boolean;
+  } | null;
   prazo?: PrazoInfo;
 };
 
@@ -106,6 +111,8 @@ export type LicitacaoDisplay = {
   segmento: string;
   descricao: string;
   na_mira?: boolean;
+  pipelineStatus?: string | null;
+  vaiParticipar?: boolean;
   status?: string | null;
   numero_processo?: string | null;
   numero_controle_pncp?: string | null;
@@ -207,9 +214,14 @@ export function resolveLicitacaoPncpUrl(item: LicitacaoLinkSource): string | nul
   return null;
 }
 
+export function isVaiParticipar(pipelineStatus?: string | null): boolean {
+  return pipelineStatus === "vai_participar";
+}
+
 export function mapApiToDisplay(item: ApiLicitacao): LicitacaoDisplay {
   const valorNum = Number(item.valor_estimado) || 0;
   const orgao = [item.nome_orgao, item.municipio, item.uf].filter(Boolean).join(" / ") || "—";
+  const pipelineStatus = item.mira_meta?.pipelineStatus ?? null;
   return {
     id: String(item.id),
     idNum: item.id,
@@ -227,6 +239,8 @@ export function mapApiToDisplay(item: ApiLicitacao): LicitacaoDisplay {
     segmento: item.esfera || item.modalidade || "—",
     descricao: item.objeto || item.objeto_resumido || "—",
     na_mira: item.na_mira,
+    pipelineStatus,
+    vaiParticipar: isVaiParticipar(pipelineStatus),
     status: item.status,
     numero_processo: item.numero_processo,
     numero_controle_pncp: item.numero_controle_pncp,
@@ -294,6 +308,17 @@ export async function fetchLicitacaoDetail(id: number) {
 export async function toggleLicitacaoMira(id: number) {
   const res = await apiFetch(`/api/licitacoes/${id}/mira`, { method: "POST" });
   return res.json();
+}
+
+export async function confirmarLicitacaoParticipacao(id: number) {
+  const res = await apiFetch(`/api/licitacoes/${id}/participacao`, { method: "POST" });
+  return res.json() as Promise<{
+    ok: boolean;
+    pipelineStatus?: string;
+    na_mira?: boolean;
+    message?: string;
+    error?: string;
+  }>;
 }
 
 export async function fetchMiraIds(): Promise<{ ok: boolean; ids?: number[]; total?: number }> {
