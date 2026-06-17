@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { format, addDays } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   ShieldCheck,
@@ -19,6 +19,7 @@ import {
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -54,6 +55,15 @@ function getSicafDueDateIso() {
   return d.toISOString().slice(0, 10);
 }
 
+function getTodayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseIsoLocal(iso: string) {
+  const [y, m, day] = iso.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, day || 1);
+}
+
 function formatDateBR(iso: string) {
   const [y, m, day] = iso.split("-");
   if (!y || !m || !day) return iso;
@@ -66,6 +76,7 @@ export function PagamentoSicafModal({
   empresa,
   onGerado,
   onPago,
+  permiteEscolherVencimentoBoleto = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -73,6 +84,8 @@ export function PagamentoSicafModal({
   /** Disparado assim que boleto ou PIX é gerado (antes do pagamento ser confirmado). */
   onGerado?: () => void;
   onPago?: () => void;
+  /** Admin /admin/clientes — permite escolher data de vencimento do boleto. */
+  permiteEscolherVencimentoBoleto?: boolean;
 }) {
   const [step, setStep] = useState<Step>("plano");
   const [planoCodigo, setPlanoCodigo] = useState<string | null>(null);
@@ -93,6 +106,7 @@ export function PagamentoSicafModal({
     txid: string;
     pagamentoId?: number;
   } | null>(null);
+  const [dataVencimentoBoleto, setDataVencimentoBoleto] = useState(getSicafDueDateIso);
 
   const planos = useMemo(
     () =>
@@ -109,8 +123,10 @@ export function PagamentoSicafModal({
     [planosDb],
   );
 
-  const vencimentoBoletoIso = getSicafDueDateIso();
-  const vencimentoDisplay = addDays(new Date(), 1);
+  const vencimentoBoletoIso = permiteEscolherVencimentoBoleto
+    ? dataVencimentoBoleto
+    : getSicafDueDateIso();
+  const vencimentoDisplay = parseIsoLocal(vencimentoBoletoIso);
   const planoSel = planos.find((p) => p.codigo === planoCodigo) ?? null;
 
   useEffect(() => {
@@ -122,6 +138,7 @@ export function PagamentoSicafModal({
       setPlanosError("");
       setBoletoData(null);
       setPixData(null);
+      setDataVencimentoBoleto(getSicafDueDateIso());
 
       setLoadingPlanos(true);
       fetchSicafPlanos()
@@ -155,6 +172,7 @@ export function PagamentoSicafModal({
       formaPagamento: pagamento,
       planoCodigo,
       dataVencimento: pagamento === "boleto" ? vencimentoBoletoIso : undefined,
+      allowCustomDueDate: permiteEscolherVencimentoBoleto && pagamento === "boleto",
     });
 
     setProcessing(false);
@@ -467,18 +485,41 @@ export function PagamentoSicafModal({
                               <p className="font-semibold text-sm">
                                 Data de vencimento (boleto)
                               </p>
-                              <Badge variant="outline" className="text-[10px] gap-1">
-                                <Lock className="h-3 w-3" /> Fixo
-                              </Badge>
+                              {permiteEscolherVencimentoBoleto ? (
+                                <Badge variant="outline" className="text-[10px]">
+                                  Admin
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[10px] gap-1">
+                                  <Lock className="h-3 w-3" /> Fixo
+                                </Badge>
+                              )}
                             </div>
-                            <p className="text-base font-bold mt-1">
-                              {format(vencimentoDisplay, "dd 'de' MMMM 'de' yyyy", {
-                                locale: ptBR,
-                              })}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Vencimento no dia seguinte à emissão, conforme regra SICAF.
-                            </p>
+                            {permiteEscolherVencimentoBoleto ? (
+                              <>
+                                <Input
+                                  type="date"
+                                  value={dataVencimentoBoleto}
+                                  min={getTodayIso()}
+                                  onChange={(e) => setDataVencimentoBoleto(e.target.value)}
+                                  className="mt-2 max-w-[220px] font-semibold"
+                                />
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  Escolha o vencimento do boleto para este cliente (a partir de hoje).
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-base font-bold mt-1">
+                                  {format(vencimentoDisplay, "dd 'de' MMMM 'de' yyyy", {
+                                    locale: ptBR,
+                                  })}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Vencimento no dia seguinte à emissão, conforme regra SICAF.
+                                </p>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -617,7 +658,17 @@ export function PagamentoSicafModal({
                   )}
                   {step === "pagamento" && (
                     <Button
-                      onClick={() => setStep("confirmar")}
+                      onClick={() => {
+                        if (
+                          pagamento === "boleto" &&
+                          permiteEscolherVencimentoBoleto &&
+                          dataVencimentoBoleto < getTodayIso()
+                        ) {
+                          toast.error("A data de vencimento não pode ser anterior a hoje.");
+                          return;
+                        }
+                        setStep("confirmar");
+                      }}
                       disabled={!pagamento}
                       className="gap-2"
                     >

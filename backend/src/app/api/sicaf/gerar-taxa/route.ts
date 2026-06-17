@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireLegacyUserId } from "@/lib/auth/legacy-auth";
+import { requireLegacyAuth } from "@/lib/auth/legacy-auth";
 import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
@@ -16,10 +16,17 @@ type SicafTaxaService = {
   }) => Promise<{ ok: boolean; error?: string; dados?: unknown }>;
 };
 
+type ClientAccessModule = {
+  checkUsuarioIsStaff: (usuarioId: number, jwtTipo?: string) => Promise<boolean>;
+};
+
 export async function POST(request: Request) {
   try {
-    const usuarioId = await requireLegacyUserId(request);
+    const auth = await requireLegacyAuth(request);
     const data = await request.json();
+    const access = await getSicafAgentModule<ClientAccessModule>("services/client-access.service");
+    const isStaff = await access.checkUsuarioIsStaff(auth.usuarioId, auth.tipo);
+
     const svc = await getSicafAgentModule<SicafTaxaService>("services/sicaf-taxa.service");
 
     const result = await svc.gerarTaxa({
@@ -27,8 +34,8 @@ export async function POST(request: Request) {
       ano: data.ano || new Date().getFullYear(),
       formaPagamento: data.formaPagamento,
       dataVencimento: data.dataVencimento || null,
-      allowCustomDueDate: false,
-      geradoPor: usuarioId,
+      allowCustomDueDate: isStaff && !!data.allowCustomDueDate,
+      geradoPor: auth.usuarioId,
       planoCodigo: data.planoCodigo || null,
     });
 

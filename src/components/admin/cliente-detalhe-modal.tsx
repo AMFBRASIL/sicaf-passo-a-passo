@@ -471,6 +471,7 @@ export function ClienteDetalheModal({
       <PagamentoSicafModal
         open={renovarPagOpen}
         onOpenChange={setRenovarPagOpen}
+        permiteEscolherVencimentoBoleto
         empresa={{
           nome: exibicao.razao,
           cnpj: exibicao.cnpj,

@@ -221,6 +221,8 @@ export type GerarTaxaPayload = {
   planoCodigo: string;
   ano?: number;
   dataVencimento?: string;
+  /** Somente equipe admin — o backend valida permissão antes de aceitar. */
+  allowCustomDueDate?: boolean;
 };
 
 export type RegistrarEmpresaPayload = {
@@ -406,6 +408,7 @@ export async function gerarTaxaSicaf(payload: GerarTaxaPayload): Promise<{
       formaPagamento: payload.formaPagamento,
       dataVencimento: payload.dataVencimento,
       planoCodigo: payload.planoCodigo,
+      allowCustomDueDate: payload.allowCustomDueDate,
     }),
   });
   const result = await res.json();

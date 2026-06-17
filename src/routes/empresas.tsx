@@ -88,6 +88,13 @@ export const Route = createFileRoute("/empresas")({
 type Filtro = "todas" | SicafStatus;
 type ViewMode = "cards" | "lista";
 const VIEW_MODE_KEY = "cadbrasil-empresas-view-v2";
+const EMPRESA_NOME_LISTA_MAX = 40;
+
+function formatEmpresaNomeLista(nome: string, max = EMPRESA_NOME_LISTA_MAX): string {
+  const text = nome.trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1)}…`;
+}
 
 function readViewMode(): ViewMode {
   try {
@@ -726,7 +733,12 @@ function EmpresaListRow({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="truncate text-sm font-semibold">{empresa.nome}</h3>
+                <h3
+                  className="text-sm font-semibold"
+                  title={empresa.nome.length > EMPRESA_NOME_LISTA_MAX ? empresa.nome : undefined}
+                >
+                  {formatEmpresaNomeLista(empresa.nome)}
+                </h3>
                 <SituacaoAptoIndicador situacao={situacao} variant="pill" />
                 <StatusPill status={meta.status}>{meta.label}</StatusPill>
               </div>
