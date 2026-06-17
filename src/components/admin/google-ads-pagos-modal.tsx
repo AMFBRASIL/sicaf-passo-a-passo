@@ -86,7 +86,7 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="z-[100] max-w-5xl w-[95vw] p-0 gap-0 overflow-hidden sm:rounded-2xl border-0 shadow-2xl [&>button:last-child]:hidden">
+      <DialogContent className="z-[100] flex max-h-[92vh] max-w-5xl w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl border-0 shadow-2xl [&>button:last-child]:hidden">
         <DialogTitle className="sr-only">
           Pagos validados — {palavra?.palavra || "palavra-chave"}
         </DialogTitle>
@@ -97,7 +97,7 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
         {!palavra ? null : (
           <>
         <div
-          className="relative overflow-hidden px-6 py-5 text-white"
+          className="relative shrink-0 overflow-hidden px-6 py-5 text-white"
           style={{
             background:
               "linear-gradient(135deg, hsl(160 84% 28%) 0%, hsl(200 70% 32%) 50%, hsl(262 55% 38%) 100%)",
@@ -148,7 +148,7 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
           )}
         </div>
 
-        <div className="bg-muted/30">
+        <div className="min-h-0 flex-1 overflow-hidden bg-muted/30">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-20 text-sm text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -160,7 +160,7 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
               <p className="mt-3 text-sm font-medium">Nenhum pagamento validado nesta palavra no período.</p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[min(70vh,640px)]">
+            <ScrollArea className="h-full">
               <div className="space-y-3 p-4 sm:p-5">
                 {clientes.map((c) => (
                   <div
