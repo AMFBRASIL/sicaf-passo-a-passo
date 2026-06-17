@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader, PageContainer } from "@/components/page-header";
+import { AjudaSituacaoFornecedorSlider } from "@/components/ajuda-situacao-fornecedor-slider";
 import { useRef, useState } from "react";
 import { perguntarAjuda } from "@/lib/ajuda-api";
 import { toast } from "sonner";
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/ajuda")({
 
 const sugestoes = [
   "Como atualizar SICAF",
+  "Como colocar situação Fornecedor",
   "Não tenho certificado digital",
   "Onde envio documentos",
   "Como emitir certidão estadual",
@@ -166,6 +168,12 @@ function HelpPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card className="mt-6">
+        <CardContent className="p-5 sm:p-6">
+          <AjudaSituacaoFornecedorSlider />
+        </CardContent>
+      </Card>
 
       <Card className="mt-6">
         <CardHeader>
