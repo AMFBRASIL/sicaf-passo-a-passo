@@ -4,6 +4,11 @@
  */
 const { getDb } = require('../database/connection');
 const clientsService = require('./clients.service');
+const {
+  calcDaysRemaining,
+  resolveFinancialReleased,
+  resolveSicafDisplayStatus,
+} = require('../utils/sicaf-status');
 
 const MANUTENCAO_ATIVA = ['Ativo', 'ativo', 'A Vencer', 'a vencer', 'Vencendo', 'vencendo'];
 
@@ -35,19 +40,30 @@ function formatDateBr(d) {
 }
 
 function diasAteValidadeSicaf(sicafValidade) {
-  if (!sicafValidade) return null;
-  const val = new Date(sicafValidade);
-  if (Number.isNaN(val.getTime())) return null;
-  const now = new Date();
-  const nowUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  const valUtc = Date.UTC(val.getUTCFullYear(), val.getUTCMonth(), val.getUTCDate());
-  return Math.ceil((valUtc - nowUtc) / 86_400_000);
+  return calcDaysRemaining(sicafValidade);
 }
 
-function isCredencialVigente(sicafValidade, sicafStatus) {
-  if (sicafStatus === 'Vencido') return false;
+function isCredencialVigente(sicafValidade, sicafStatus, hasSicaf = true) {
+  if (!hasSicaf) return false;
+  const display = resolveSicafDisplayStatus(sicafStatus, sicafValidade, hasSicaf);
+  if (display === 'Vencido') return false;
   const dias = diasAteValidadeSicaf(sicafValidade);
   return dias !== null && dias > 0;
+}
+
+/** Mesma regra de /empresas e /sicaf — taxa paga OU licença SICAF vigente. */
+function isClienteSicafFinanceiroLiberado({
+  hasSicaf,
+  sicafStatus,
+  sicafValidade,
+  taxaReleased,
+}) {
+  return resolveFinancialReleased({
+    hasSicaf,
+    sicafStatus,
+    dataValidade: sicafValidade,
+    taxaReleased,
+  });
 }
 
 /** Mesma regra do card "Pagamento SICAF" no modal de detalhe (Resumo). */
@@ -56,9 +72,18 @@ function derivePagamentoSicafResumo({
   sicafValidade,
   temTaxaAberta,
   temPagamentoPendente,
+  hasSicaf = true,
+  taxaReleased = false,
 }) {
+  const displayStatus = resolveSicafDisplayStatus(sicafStatus, sicafValidade, hasSicaf);
+  const financialReleased = isClienteSicafFinanceiroLiberado({
+    hasSicaf,
+    sicafStatus,
+    sicafValidade,
+    taxaReleased,
+  });
   const temAberto = temTaxaAberta || temPagamentoPendente;
-  const vigente = isCredencialVigente(sicafValidade, sicafStatus);
+  const vigente = isCredencialVigente(sicafValidade, sicafStatus, hasSicaf);
   const dias = diasAteValidadeSicaf(sicafValidade);
   const validadeFmt = formatDateBr(sicafValidade);
 
@@ -82,7 +107,7 @@ function derivePagamentoSicafResumo({
 
   if (dias !== null && dias <= 0) {
     return {
-      pagou: false,
+      pagou: financialReleased,
       pagamentoSicafStatus: 'Vencido',
       pagamentoSicafDetalhe: validadeFmt
         ? `Validade expirada em ${validadeFmt}`
@@ -98,11 +123,19 @@ function derivePagamentoSicafResumo({
     };
   }
 
-  if (sicafStatus === 'Vencido') {
+  if (displayStatus === 'Vencido') {
     return {
-      pagou: false,
+      pagou: financialReleased,
       pagamentoSicafStatus: 'Vencido',
       pagamentoSicafDetalhe: 'SICAF vencido',
+    };
+  }
+
+  if (financialReleased) {
+    return {
+      pagou: true,
+      pagamentoSicafStatus: 'Pago',
+      pagamentoSicafDetalhe: 'Taxa SICAF quitada',
     };
   }
 
@@ -244,12 +277,24 @@ async function enrichClients(clients) {
     const mrr = manut ? parseFloat(manut.valor) || 0 : 0;
     const temTaxaAberta = !!taxaAbertaMap[c.id];
     const temPagamentoSicafPendente = !!pendenteSicafMap[c.id];
-    const sicafPago = !!sicafPagoMap[c.id];
+    const hasSicaf = !!c.sicafId;
+    const taxaReleased = !!sicafPagoMap[c.id];
+    const displayStatus = hasSicaf
+      ? resolveSicafDisplayStatus(c.sicafStatus, c.sicafValidade, true)
+      : c.sicafStatus;
+    const financialReleased = isClienteSicafFinanceiroLiberado({
+      hasSicaf,
+      sicafStatus: c.sicafStatus,
+      sicafValidade: c.sicafValidade,
+      taxaReleased,
+    });
     const pagamento = derivePagamentoSicafResumo({
       sicafStatus: c.sicafStatus,
       sicafValidade: c.sicafValidade,
       temTaxaAberta,
       temPagamentoPendente: temPagamentoSicafPendente,
+      hasSicaf,
+      taxaReleased,
     });
     const novo = c.createdAt
       ? Date.now() - new Date(c.createdAt).getTime() < 30 * 24 * 60 * 60 * 1000
@@ -257,17 +302,18 @@ async function enrichClients(clients) {
 
     return {
       ...c,
+      sicafStatus: displayStatus,
       usuarioNome: usuario?.nome || c.name,
       usuarioEmail: usuario?.email || c.email,
       usuarioTelefone: usuario?.telefone || c.phone,
       usuarioDesde: usuario?.created_at || c.createdAt,
       mrr,
       manutencaoAtiva: !!manut,
-      pagou: pagamento.pagou,
+      pagou: financialReleased,
       pagamentoSicafStatus: pagamento.pagamentoSicafStatus,
       pagamentoSicafDetalhe: pagamento.pagamentoSicafDetalhe,
-      sicafPago,
-      sicafAtivo: c.sicafStatus === 'Ativo' || c.sicafStatus === 'Vencendo',
+      sicafPago: financialReleased,
+      sicafAtivo: displayStatus === 'Ativo' || displayStatus === 'Vencendo',
       novo,
       plano: manut ? 'Manutenção SICAF' : c.sicafId ? 'SICAF' : 'Onboarding',
     };
@@ -305,7 +351,7 @@ function buildGroups(enriched) {
 
 function buildStats(enriched, groups) {
   const totalMrr = enriched.reduce((s, c) => s + (c.mrr || 0), 0);
-  const emRisco = enriched.filter((c) => c.sicafStatus === 'Vencido' || !c.pagou).length;
+  const emRisco = enriched.filter((c) => c.sicafStatus === 'Vencido' || !(c.pagou ?? c.sicafPago)).length;
   return {
     totalClientes: groups.length,
     totalCnpjs: enriched.length,

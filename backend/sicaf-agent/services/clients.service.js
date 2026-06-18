@@ -89,6 +89,10 @@ function formatCpfFromDigits(d) {
 const MANUTENCAO_ATIVA_LIST = ['Ativo', 'ativo', 'A Vencer', 'a vencer', 'Vencendo', 'vencendo'];
 const TAXA_SICAF_PAGA_TS_WHERE =
   "(LOWER(TRIM(CAST(ts.status AS CHAR))) IN ('pago','paga','aprovado','aprovada') OR ts.status IN ('Pago','Paga','pago','paga','Aprovado','Aprovada','aprovado','aprovada'))";
+
+/** Licença SICAF com validade futura — mesma regra de resolveFinancialReleased / isSicafLicencaVigente */
+const SICAF_LICENCA_VIGENTE_SQL =
+  '(s.id IS NOT NULL AND s.data_validade IS NOT NULL AND DATEDIFF(DATE(s.data_validade), CURDATE()) > 0)';
 const NIVEL_APTO_SQL = `sn.habilitado = 1 AND (
   LOWER(CAST(sn.status AS CHAR)) LIKE '%valid%'
   OR LOWER(CAST(sn.status AS CHAR)) LIKE '%habilit%'
@@ -114,20 +118,24 @@ function applyAdminFiltro(query, db, filtro) {
   }
 
   if (f === 'pagou') {
-    return query.whereExists(function () {
-      this.select(db.raw('1'))
-        .from('taxas_sicaf as ts')
-        .whereRaw('ts.cliente_id = c.id')
-        .whereRaw(TAXA_SICAF_PAGA_TS_WHERE);
+    return query.where(function () {
+      this.whereExists(function () {
+        this.select(db.raw('1'))
+          .from('taxas_sicaf as ts')
+          .whereRaw('ts.cliente_id = c.id')
+          .whereRaw(TAXA_SICAF_PAGA_TS_WHERE);
+      }).orWhereRaw(SICAF_LICENCA_VIGENTE_SQL);
     });
   }
 
   if (f === 'nao_pagou') {
-    return query.whereNotExists(function () {
-      this.select(db.raw('1'))
-        .from('taxas_sicaf as ts')
-        .whereRaw('ts.cliente_id = c.id')
-        .whereRaw(TAXA_SICAF_PAGA_TS_WHERE);
+    return query.where(function () {
+      this.whereNotExists(function () {
+        this.select(db.raw('1'))
+          .from('taxas_sicaf as ts')
+          .whereRaw('ts.cliente_id = c.id')
+          .whereRaw(TAXA_SICAF_PAGA_TS_WHERE);
+      }).whereRaw(`NOT (${SICAF_LICENCA_VIGENTE_SQL})`);
     });
   }
 
@@ -1538,32 +1546,8 @@ async function consultPendingBoletosByCnpj(cnpj) {
       .orderBy('t.ano_referencia', 'desc')
       .orderBy('t.created_at', 'desc');
 
-    const taxaIds = taxasSicaf.map((t) => t.id);
-    let pagamentosSicaf = [];
-    if (taxaIds.length > 0) {
-      pagamentosSicaf = await db('pagamentos_gerencianet as p')
-        .where('p.cliente_id', cliente.id)
-        .where('p.origem', 'sicaf')
-        .where('p.tipo', 'boleto')
-        .whereIn('p.origem_id', taxaIds)
-        .select(
-          'p.id',
-          'p.origem_id',
-          'p.status',
-          'p.valor',
-          'p.protocolo',
-          'p.data_vencimento',
-          'p.gn_charge_id',
-          'p.gn_barcode',
-          'p.gn_link',
-          'p.gn_pdf',
-          'p.created_at'
-        )
-        .orderBy('p.created_at', 'desc');
-    }
-
     // Manutenção: fonte principal deve ser manutencao_boletos (nem todo boleto possui
-    // registro em pagamentos_gerencianet).
+    // registro em pagamentos).
     const boletosManutencao = await db('manutencao_boletos as mb')
       .leftJoin('manutencoes as m', 'm.id', 'mb.manutencao_id')
       .where('m.cliente_id', cliente.id)
@@ -1583,30 +1567,31 @@ async function consultPendingBoletosByCnpj(cnpj) {
       .orderBy('mb.data_vencimento', 'asc')
       .orderBy('mb.created_at', 'desc');
 
+    const taxaIds = taxasSicaf.map((t) => t.id);
     const manutencaoBoletoIds = boletosManutencao.map((b) => b.id);
-    let pagamentosManutencao = [];
-    if (manutencaoBoletoIds.length > 0) {
-      pagamentosManutencao = await db('pagamentos_gerencianet as p')
-        .where('p.cliente_id', cliente.id)
-        .where('p.origem', 'manutencao')
-        .where('p.tipo', 'boleto')
-        .whereIn('p.origem_id', manutencaoBoletoIds)
-        .whereIn('p.status', pendingStatuses)
-        .select(
-          'p.id',
-          'p.origem_id',
-          'p.status',
-          'p.valor',
-          'p.protocolo',
-          'p.data_vencimento',
-          'p.gn_charge_id',
-          'p.gn_barcode',
-          'p.gn_link',
-          'p.gn_pdf',
-          'p.created_at'
+
+    // v2 usa `pagamentos`; legado usava `pagamentos_gerencianet` — unificar via helper existente.
+    const allPagamentos = await loadAllPagamentosList(db, cliente.id);
+    const pendingStatusSet = new Set(pendingStatuses.map((s) => String(s).toLowerCase()));
+
+    const pagamentosSicaf = taxaIds.length
+      ? allPagamentos.filter(
+          (p) =>
+            p.origem === 'sicaf' &&
+            String(p.tipo || 'boleto').toLowerCase() === 'boleto' &&
+            taxaIds.includes(p.origem_id),
         )
-        .orderBy('p.created_at', 'desc');
-    }
+      : [];
+
+    const pagamentosManutencao = manutencaoBoletoIds.length
+      ? allPagamentos.filter(
+          (p) =>
+            p.origem === 'manutencao' &&
+            String(p.tipo || 'boleto').toLowerCase() === 'boleto' &&
+            manutencaoBoletoIds.includes(p.origem_id) &&
+            pendingStatusSet.has(String(p.status || '').toLowerCase()),
+        )
+      : [];
 
     const pagamentoSicafByTaxaId = {};
     for (const row of pagamentosSicaf) {
@@ -1650,7 +1635,7 @@ async function consultPendingBoletosByCnpj(cnpj) {
         valor,
         protocolo: pg?.protocolo || null,
         dataVencimento,
-        chargeId: pg?.gn_charge_id || null,
+        chargeId: pg?.provider_charge_id || pg?.gn_charge_id || null,
         codigoBarras: pg?.gn_barcode || taxa.codigo_barras || null,
         linkBoleto: pg?.gn_link || null,
         pdfBoleto: pg?.gn_pdf || null,
@@ -1701,7 +1686,7 @@ async function consultPendingBoletosByCnpj(cnpj) {
         valor,
         protocolo: pg?.protocolo || null,
         dataVencimento,
-        chargeId: pg?.gn_charge_id || boleto.numero_boleto || null,
+        chargeId: pg?.provider_charge_id || pg?.gn_charge_id || boleto.numero_boleto || null,
         codigoBarras: pg?.gn_barcode || boleto.codigo_barras || null,
         linkBoleto: pg?.gn_link || null,
         pdfBoleto: pg?.gn_pdf || null,

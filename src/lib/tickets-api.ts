@@ -19,6 +19,20 @@ export type TicketMensagem = {
   senderName: string;
   message: string;
   date: string;
+  anexos?: TicketAnexo[];
+};
+
+export type TicketAnexo = {
+  id: number;
+  nomeOriginal: string;
+  url: string;
+  tamanho: number;
+  mimetype?: string;
+};
+
+export type TicketDetalhe = TicketResumo & {
+  messages: TicketMensagem[];
+  anexos?: TicketAnexo[];
 };
 
 export async function fetchTickets(search = "", status = "todos") {
@@ -33,7 +47,7 @@ export async function fetchTicket(id: string) {
   const res = await apiFetch(`/api/tickets/${encodeURIComponent(id)}`);
   return res.json() as Promise<{
     ok: boolean;
-    ticket?: TicketResumo & { messages: TicketMensagem[] };
+    ticket?: TicketDetalhe;
     error?: string;
   }>;
 }
@@ -49,7 +63,25 @@ export async function criarTicket(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return res.json() as Promise<{ ok: boolean; codigo?: string; error?: string; message?: string }>;
+  return res.json() as Promise<{ ok: boolean; codigo?: string; id?: number; error?: string; message?: string }>;
+}
+
+export async function uploadTicketAnexo(
+  ticketId: string,
+  file: File,
+  mensagemId?: number,
+): Promise<{ ok: boolean; error?: string; anexo?: TicketAnexo }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (mensagemId != null) {
+    formData.append("mensagemId", String(mensagemId));
+  }
+
+  const res = await apiFetch(`/api/tickets/${encodeURIComponent(ticketId)}/anexos`, {
+    method: "POST",
+    body: formData,
+  });
+  return res.json() as Promise<{ ok: boolean; error?: string; anexo?: TicketAnexo }>;
 }
 
 export async function responderTicket(id: string, mensagem: string) {

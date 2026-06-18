@@ -55,6 +55,8 @@ import { Route as AdminAutomacoesRouteImport } from './routes/admin.automacoes'
 import { Route as AdminAuditoriaRouteImport } from './routes/admin.auditoria'
 import { Route as AdminAtendimentoRouteImport } from './routes/admin.atendimento'
 import { Route as AdminAlertasRouteImport } from './routes/admin.alertas'
+import { Route as AdminSuporteIndexRouteImport } from './routes/admin.suporte.index'
+import { Route as AdminSuporteTicketIdRouteImport } from './routes/admin.suporte.$ticketId'
 
 const SuporteRoute = SuporteRouteImport.update({
   id: '/suporte',
@@ -286,6 +288,16 @@ const AdminAlertasRoute = AdminAlertasRouteImport.update({
   path: '/alertas',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminSuporteIndexRoute = AdminSuporteIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminSuporteRoute,
+} as any)
+const AdminSuporteTicketIdRoute = AdminSuporteTicketIdRouteImport.update({
+  id: '/$ticketId',
+  path: '/$ticketId',
+  getParentRoute: () => AdminSuporteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -330,10 +342,12 @@ export interface FileRoutesByFullPath {
   '/admin/processos': typeof AdminProcessosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
-  '/admin/suporte': typeof AdminSuporteRoute
+  '/admin/suporte': typeof AdminSuporteRouteWithChildren
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/': typeof AuthIndexRoute
+  '/admin/suporte/$ticketId': typeof AdminSuporteTicketIdRoute
+  '/admin/suporte/': typeof AdminSuporteIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -376,10 +390,11 @@ export interface FileRoutesByTo {
   '/admin/processos': typeof AdminProcessosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
-  '/admin/suporte': typeof AdminSuporteRoute
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
   '/admin': typeof AdminIndexRoute
   '/auth': typeof AuthIndexRoute
+  '/admin/suporte/$ticketId': typeof AdminSuporteTicketIdRoute
+  '/admin/suporte': typeof AdminSuporteIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -425,10 +440,12 @@ export interface FileRoutesById {
   '/admin/processos': typeof AdminProcessosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
-  '/admin/suporte': typeof AdminSuporteRoute
+  '/admin/suporte': typeof AdminSuporteRouteWithChildren
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/': typeof AuthIndexRoute
+  '/admin/suporte/$ticketId': typeof AdminSuporteTicketIdRoute
+  '/admin/suporte/': typeof AdminSuporteIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -479,6 +496,8 @@ export interface FileRouteTypes {
     | '/auth/recuperar-senha'
     | '/admin/'
     | '/auth/'
+    | '/admin/suporte/$ticketId'
+    | '/admin/suporte/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -521,10 +540,11 @@ export interface FileRouteTypes {
     | '/admin/processos'
     | '/admin/relatorios'
     | '/admin/sicaf'
-    | '/admin/suporte'
     | '/auth/recuperar-senha'
     | '/admin'
     | '/auth'
+    | '/admin/suporte/$ticketId'
+    | '/admin/suporte'
   id:
     | '__root__'
     | '/'
@@ -573,6 +593,8 @@ export interface FileRouteTypes {
     | '/auth/recuperar-senha'
     | '/admin/'
     | '/auth/'
+    | '/admin/suporte/$ticketId'
+    | '/admin/suporte/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -928,8 +950,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAlertasRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/suporte/': {
+      id: '/admin/suporte/'
+      path: '/'
+      fullPath: '/admin/suporte/'
+      preLoaderRoute: typeof AdminSuporteIndexRouteImport
+      parentRoute: typeof AdminSuporteRoute
+    }
+    '/admin/suporte/$ticketId': {
+      id: '/admin/suporte/$ticketId'
+      path: '/$ticketId'
+      fullPath: '/admin/suporte/$ticketId'
+      preLoaderRoute: typeof AdminSuporteTicketIdRouteImport
+      parentRoute: typeof AdminSuporteRoute
+    }
   }
 }
+
+interface AdminSuporteRouteChildren {
+  AdminSuporteTicketIdRoute: typeof AdminSuporteTicketIdRoute
+  AdminSuporteIndexRoute: typeof AdminSuporteIndexRoute
+}
+
+const AdminSuporteRouteChildren: AdminSuporteRouteChildren = {
+  AdminSuporteTicketIdRoute: AdminSuporteTicketIdRoute,
+  AdminSuporteIndexRoute: AdminSuporteIndexRoute,
+}
+
+const AdminSuporteRouteWithChildren = AdminSuporteRoute._addFileChildren(
+  AdminSuporteRouteChildren,
+)
 
 interface AdminRouteChildren {
   AdminAlertasRoute: typeof AdminAlertasRoute
@@ -948,7 +998,7 @@ interface AdminRouteChildren {
   AdminProcessosRoute: typeof AdminProcessosRoute
   AdminRelatoriosRoute: typeof AdminRelatoriosRoute
   AdminSicafRoute: typeof AdminSicafRoute
-  AdminSuporteRoute: typeof AdminSuporteRoute
+  AdminSuporteRoute: typeof AdminSuporteRouteWithChildren
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -969,7 +1019,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminProcessosRoute: AdminProcessosRoute,
   AdminRelatoriosRoute: AdminRelatoriosRoute,
   AdminSicafRoute: AdminSicafRoute,
-  AdminSuporteRoute: AdminSuporteRoute,
+  AdminSuporteRoute: AdminSuporteRouteWithChildren,
   AdminIndexRoute: AdminIndexRoute,
 }
 

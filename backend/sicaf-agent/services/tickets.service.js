@@ -673,8 +673,15 @@ async function responderTicket(ticketId, usuarioId, dados) {
       mensagem: mensagemSalva,
     });
 
-    // Atualizar updated_at do ticket
-    await db('tickets').where('id', ticket.id).update({ updated_at: db.fn.now() });
+    const novoStatus =
+      ticket.status === 'aguardando_cliente' || ticket.status === 'aberto'
+        ? 'em_andamento'
+        : ticket.status;
+
+    await db('tickets').where('id', ticket.id).update({
+      status: novoStatus,
+      updated_at: db.fn.now(),
+    });
 
     console.log(`[Tickets] Resposta enviada: ticket=${ticket.codigo}, msgId=${msgId}`);
     return {
@@ -870,8 +877,9 @@ async function listarTicketsAdmin(opts = {}) {
       }
     }
 
-    // Última mensagem de cada ticket (aguardando resposta do suporte)
+    // Última mensagem de cada ticket + se já houve mensagem do cliente
     let lastMsgByTicket = {};
+    let hasClientMsgByTicket = {};
     if (ticketIds.length > 0) {
       const lastMsgIds = await db('ticket_mensagens')
         .whereIn('ticket_id', ticketIds)
@@ -886,6 +894,15 @@ async function listarTicketsAdmin(opts = {}) {
           lastMsgByTicket[m.ticket_id] = m.remetente_tipo;
         }
       }
+
+      const clientMsgTickets = await db('ticket_mensagens')
+        .whereIn('ticket_id', ticketIds)
+        .where('remetente_tipo', 'client')
+        .groupBy('ticket_id')
+        .select('ticket_id');
+      for (const row of clientMsgTickets) {
+        hasClientMsgByTicket[row.ticket_id] = true;
+      }
     }
 
     // Calcular SLA em tempo real
@@ -897,11 +914,13 @@ async function listarTicketsAdmin(opts = {}) {
         slaMinutes = t.sla_minutos_restantes || 0;
       }
 
-      // Ticket aguarda resposta se a última mensagem foi do cliente
+      // Aguardando cliente: suporte respondeu por último (após mensagem do cliente)
       const ultimoRemetente = lastMsgByTicket[t.id] || null;
+      const temMsgCliente = !!hasClientMsgByTicket[t.id];
       const aguardandoResposta =
-        t.status === 'aguardando_cliente' ||
-        (ultimoRemetente === 'client' && (t.status === 'aberto' || t.status === 'em_andamento'));
+        !['resolvido', 'fechado'].includes(t.status) &&
+        ultimoRemetente === 'support' &&
+        temMsgCliente;
 
       return {
         id: t.codigo || `TK-${String(t.id).padStart(3, '0')}`,
@@ -1064,8 +1083,8 @@ async function responderTicketAdmin(ticketId, usuarioId, dados) {
       statusAposResposta = _normalizeStatusDb(dados.status);
     } else if (dados.marcarResolvido === true || dados.marcarResolvido === 'true') {
       statusAposResposta = 'resolvido';
-    } else if (ticket.status === 'aberto') {
-      statusAposResposta = 'em_andamento';
+    } else if (!['resolvido', 'fechado'].includes(ticket.status)) {
+      statusAposResposta = 'aguardando_cliente';
     }
 
     await db('tickets').where('id', ticket.id).update({

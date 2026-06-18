@@ -129,12 +129,12 @@ function ClienteBadges({
       <Badge
         variant="outline"
         className={`rounded-full text-[10px] ${
-          c.sicafPago
+          c.pagou ?? c.sicafPago
             ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20"
             : "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/20"
         }`}
       >
-        {c.sicafPago ? "Pago" : "Não pago"}
+        {c.pagou ?? c.sicafPago ? "Pago" : "Não pago"}
       </Badge>
       <Badge
         variant="outline"
@@ -584,12 +584,12 @@ function ClientesPage() {
                         <Badge
                           variant="outline"
                           className={`rounded-full px-1.5 py-0 text-[9px] ${
-                            c.sicafPago
+                            c.pagou ?? c.sicafPago
                               ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                               : "bg-rose-500/10 text-rose-700 dark:text-rose-300"
                           }`}
                         >
-                          {c.sicafPago ? "Sim" : "Não"}
+                          {c.pagou ?? c.sicafPago ? "Sim" : "Não"}
                         </Badge>
                       </td>
                       <td className="px-1 py-2.5 text-center">

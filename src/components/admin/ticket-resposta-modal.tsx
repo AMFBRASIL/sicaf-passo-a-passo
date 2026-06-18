@@ -1,33 +1,43 @@
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useEffect, useMemo, useState } from "react";
-import {
-  Ticket,
-  MessageSquare,
-  Paperclip,
-  Send,
+  Building2,
+  Calendar,
   CheckCircle2,
   Clock,
-  User,
-  Sparkles,
+  Download,
+  File as FileIcon,
   FileText,
-  ChevronRight,
+  Headphones,
+  Image as ImageIcon,
   Loader2,
+  Paperclip,
+  Reply,
+  Send,
+  Tag,
+  Upload,
+  User,
+  X,
+  Zap,
 } from "lucide-react";
-import wizardBg from "@/assets/wizard-bg.jpg";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { StatusBadge } from "@/components/page-header";
+import {
+  type AdminTicketAnexo,
+  type AdminTicketDetalhe,
+  type AdminTicketMensagem,
+  colunaDoTicketDetalhe,
+  coletarTodosAnexos,
+  fetchAdminTicketDetalhe,
+  formatSlaUi,
+  formatTamanhoArquivo,
+  prioridadeParaUi,
+  responderTicketAdmin,
+} from "@/lib/admin-suporte-api";
 
 export interface TicketItem {
   id: string;
@@ -37,60 +47,361 @@ export interface TicketItem {
   data: string;
 }
 
-/** Situações do kanban em /admin/suporte */
-export const TICKET_SITUACOES = [
-  "Novo",
-  "Triagem",
-  "Em andamento",
-  "Aguardando Cliente",
-  "Aguardando Governo",
-  "Resolvido",
-  "Fechado",
-] as const;
-
-export type TicketSituacao = (typeof TICKET_SITUACOES)[number];
-export type ModoSituacaoTicket = "padrao" | "manual";
-
-export type TicketRespostaOptions = {
-  modoSituacao: ModoSituacaoTicket;
-  /** Definida apenas quando modoSituacao === "manual" */
-  situacaoManual?: TicketSituacao;
-  /** Apenas no modo padrão: mover para Resolvido após envio */
-  marcarResolvido?: boolean;
-};
-
-type MensagemHistorico = {
-  autor: string;
-  tipo: "cliente" | "agente";
-  data: string;
-  texto: string;
-};
-
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  ticket: TicketItem | null;
-  cliente?: { razao: string; responsavel: string };
-  descricao?: string;
-  mensagensHistorico?: MensagemHistorico[];
-  slaLabel?: string;
-  carregandoDetalhe?: boolean;
-  enviando?: boolean;
-  onEnviar?: (
-    ticketId: string,
-    mensagem: string,
-    opcoes: TicketRespostaOptions,
-  ) => void | Promise<void>;
+  ticketId: string | null;
+  onRespondido?: () => void;
 }
 
-type StepKey = "contexto" | "mensagens" | "resposta" | "finalizar";
+type ReplyAnexo = { id: string; name: string; size: number; type: string };
 
-const steps: { key: StepKey; label: string; desc: string; icon: any }[] = [
-  { key: "contexto", label: "Contexto", desc: "Detalhes do ticket", icon: FileText },
-  { key: "mensagens", label: "Conversa", desc: "Histórico de mensagens", icon: MessageSquare },
-  { key: "resposta", label: "Resposta", desc: "Escreva sua resposta", icon: Send },
-  { key: "finalizar", label: "Finalizar", desc: "Revisar e enviar", icon: CheckCircle2 },
-];
+function formatBytes(b: number) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function TicketRespostaModal({ open, onOpenChange, ticketId, onRespondido }: Props) {
+  const [responderOpen, setResponderOpen] = useState(false);
+  const [ticket, setTicket] = useState<AdminTicketDetalhe | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const carregar = useCallback(async () => {
+    if (!ticketId) {
+      setTicket(null);
+      return;
+    }
+    setLoading(true);
+    const res = await fetchAdminTicketDetalhe(ticketId);
+    setLoading(false);
+    if (!res.ok || !res.ticket) {
+      toast.error(res.error || "Erro ao carregar ticket");
+      setTicket(null);
+      return;
+    }
+    setTicket(res.ticket);
+  }, [ticketId]);
+
+  useEffect(() => {
+    if (open && ticketId) {
+      void carregar();
+    }
+    if (!open) {
+      setTicket(null);
+      setResponderOpen(false);
+    }
+  }, [open, ticketId, carregar]);
+
+  if (!ticketId) return null;
+
+  const coluna = ticket ? colunaDoTicketDetalhe(ticket) : "Novo";
+  const prio = ticket ? prioridadeParaUi(ticket.priority) : "Média";
+  const prioCor =
+    prio === "Alta"
+      ? "bg-destructive/15 text-destructive"
+      : prio === "Média"
+        ? "bg-warning/15 text-warning-foreground"
+        : "bg-success/15 text-success";
+
+  const statusTom: "ok" | "warn" | "danger" =
+    coluna === "Resolvido" || coluna === "Fechado"
+      ? "ok"
+      : coluna === "Novo" || coluna === "Triagem"
+        ? "warn"
+        : "warn";
+
+  const sla = ticket ? formatSlaUi(ticket.slaMinutes, ticket.status) : { restante: "—", tom: "ok" as const };
+  const mensagens: AdminTicketMensagem[] = ticket?.messages || [];
+  const anexos: AdminTicketAnexo[] = ticket ? coletarTodosAnexos(ticket) : [];
+  const ultimaMsg = mensagens[mensagens.length - 1];
+  const assignee = ticket?.assignee && ticket.assignee !== "Não atribuído" ? ticket.assignee : "Você";
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="overflow-hidden p-0 sm:max-w-[1100px] lg:max-w-[1200px]">
+          <DialogTitle className="sr-only">Ticket {ticketId}</DialogTitle>
+          {loading && !ticket ? (
+            <div className="flex h-[50vh] items-center justify-center text-muted-foreground">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Carregando ticket...
+            </div>
+          ) : !ticket ? (
+            <div className="flex h-[40vh] items-center justify-center text-sm text-muted-foreground">
+              Ticket não encontrado.
+            </div>
+          ) : (
+            <div className="grid h-[90vh] max-h-[820px] grid-cols-1 lg:grid-cols-[1fr_360px]">
+              <div className="flex h-full min-h-0 flex-col border-r">
+                <header className="border-b bg-gradient-to-br from-primary/10 via-card to-card px-7 py-5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-0.5 font-mono text-[11px] font-bold text-primary-foreground">
+                      #{ticket.id}
+                    </span>
+                    <StatusBadge status={statusTom}>{coluna}</StatusBadge>
+                    <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold", prioCor)}>
+                      <Zap className="h-3 w-3" />
+                      Prioridade {prio}
+                    </span>
+                  </div>
+                  <h3 className="mt-3 text-2xl font-bold tracking-tight">{ticket.title}</h3>
+                  <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5" />
+                      Aberto <strong className="text-foreground">{ticket.createdAt}</strong>
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5",
+                        sla.tom === "bad" && "text-destructive",
+                        sla.tom === "warn" && "text-warning-foreground",
+                        sla.tom === "ok" && "text-success",
+                      )}
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                      SLA {sla.restante}
+                    </span>
+                  </div>
+                </header>
+
+                <div className="flex-1 space-y-5 overflow-y-auto bg-muted/20 px-7 py-6">
+                  {mensagens.length === 0 && (
+                    <p className="text-center text-sm text-muted-foreground py-8">
+                      Nenhuma mensagem ainda. A descrição inicial do ticket está nos detalhes.
+                    </p>
+                  )}
+                  {mensagens.map((m) => {
+                    const agente = m.sender === "support";
+                    return (
+                      <div key={m.id} className={cn("flex gap-3", agente && "flex-row-reverse")}>
+                        <div
+                          className={cn(
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-2 ring-background",
+                            agente ? "bg-primary text-primary-foreground" : "bg-success text-success-foreground",
+                          )}
+                        >
+                          {agente ? <Headphones className="h-4 w-4" /> : <User className="h-4 w-4" />}
+                        </div>
+                        <div className={cn("max-w-[82%] min-w-0", agente && "items-end")}>
+                          <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", agente && "justify-end")}>
+                            <span className="font-semibold text-foreground">{m.senderName}</span>
+                            <span>•</span>
+                            <span>{m.date}</span>
+                          </div>
+                          <div
+                            className={cn(
+                              "mt-1 rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-sm whitespace-pre-wrap",
+                              agente
+                                ? "rounded-tr-sm border-primary/20 bg-primary/10"
+                                : "rounded-tl-sm border-border bg-card",
+                            )}
+                          >
+                            {m.message}
+                          </div>
+                          {(m.anexos || []).length > 0 && (
+                            <ul className="mt-2 space-y-1">
+                              {(m.anexos || []).map((a) => (
+                                <li key={a.id}>
+                                  <a
+                                    href={a.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                                  >
+                                    <Paperclip className="h-3 w-3" />
+                                    {a.nomeOriginal}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <footer className="flex items-center justify-between gap-3 border-t bg-card px-7 py-4">
+                  <p className="text-xs text-muted-foreground">
+                    {ultimaMsg ? (
+                      <>
+                        Última mensagem por <strong className="text-foreground">{ultimaMsg.senderName}</strong> em{" "}
+                        {ultimaMsg.date}
+                      </>
+                    ) : (
+                      "Aguardando primeira resposta"
+                    )}
+                  </p>
+                  <Button size="lg" onClick={() => setResponderOpen(true)} className="gap-2">
+                    <Reply className="h-4 w-4" />
+                    Responder
+                  </Button>
+                </footer>
+              </div>
+
+              <aside className="hidden h-full min-h-0 flex-col bg-muted/30 lg:flex">
+                <div className="flex-1 overflow-y-auto p-6">
+                  <SectionTitle>Envolvidos</SectionTitle>
+                  <div className="mt-3 space-y-3">
+                    <PersonRow
+                      color="primary"
+                      icon={<User className="h-4 w-4" />}
+                      role="Cliente"
+                      name={ticket.client || "—"}
+                      meta={ticket.clientDocumento || "Cliente"}
+                    />
+                    <PersonRow
+                      color="success"
+                      icon={<Headphones className="h-4 w-4" />}
+                      role="Atendente"
+                      name={assignee}
+                      meta="Equipe Suporte CADBRASIL"
+                    />
+                  </div>
+
+                  <SectionTitle className="mt-7">Detalhes</SectionTitle>
+                  <dl className="mt-3 space-y-2.5 rounded-xl border bg-card p-4 text-xs">
+                    <DetailRow icon={<Building2 className="h-3.5 w-3.5" />} label="Cliente" value={ticket.client || "—"} />
+                    <DetailRow icon={<Tag className="h-3.5 w-3.5" />} label="Categoria" value={ticket.category || "—"} />
+                    <DetailRow icon={<Tag className="h-3.5 w-3.5" />} label="Status" value={coluna} />
+                    <DetailRow icon={<Zap className="h-3.5 w-3.5" />} label="Prioridade" value={prio} />
+                    <DetailRow icon={<Calendar className="h-3.5 w-3.5" />} label="Abertura" value={ticket.createdAt} />
+                  </dl>
+
+                  <SectionTitle className="mt-7">
+                    Anexos
+                    <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                      {anexos.length}
+                    </span>
+                  </SectionTitle>
+                  <ul className="mt-3 space-y-2">
+                    {anexos.length === 0 && (
+                      <p className="text-[11px] text-muted-foreground">Nenhum anexo.</p>
+                    )}
+                    {anexos.map((a) => {
+                      const isImg = (a.mimetype || "").startsWith("image/");
+                      const isPdf =
+                        a.mimetype === "application/pdf" || a.nomeOriginal.toLowerCase().endsWith(".pdf");
+                      return (
+                        <li
+                          key={a.id}
+                          className="group flex items-center gap-3 rounded-xl border bg-card p-3 transition hover:border-primary/40 hover:shadow-sm"
+                        >
+                          <div
+                            className={cn(
+                              "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                              isPdf && "bg-destructive/10 text-destructive",
+                              isImg && "bg-primary/10 text-primary",
+                              !isPdf && !isImg && "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            {isImg ? <ImageIcon className="h-5 w-5" /> : isPdf ? <FileText className="h-5 w-5" /> : <FileIcon className="h-5 w-5" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold">{a.nomeOriginal}</p>
+                            <p className="truncate text-[11px] text-muted-foreground">{formatTamanhoArquivo(a.tamanho)}</p>
+                          </div>
+                          <a
+                            href={a.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                            aria-label="Baixar"
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </aside>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {ticket && (
+        <ResponderModal
+          open={responderOpen}
+          onOpenChange={setResponderOpen}
+          ticket={ticket}
+          onEnviar={async (msg, fechar) => {
+            const res = await responderTicketAdmin(ticket.id, {
+              mensagem: msg,
+              marcarResolvido: fechar,
+            });
+            if (!res.ok) {
+              toast.error(res.error || "Erro ao enviar resposta");
+              return;
+            }
+            toast.success(fechar ? "Resposta enviada e ticket marcado como resolvido" : "Resposta enviada ao cliente");
+            setResponderOpen(false);
+            await carregar();
+            onRespondido?.();
+            if (fechar) onOpenChange(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function SectionTitle({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <h4 className={cn("flex items-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground", className)}>
+      {children}
+    </h4>
+  );
+}
+
+function PersonRow({
+  color,
+  icon,
+  role,
+  name,
+  meta,
+}: {
+  color: "primary" | "success";
+  icon: React.ReactNode;
+  role: string;
+  name: string;
+  meta: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
+      <div
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+          color === "primary" && "bg-primary/15 text-primary",
+          color === "success" && "bg-success/15 text-success",
+        )}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{role}</p>
+        <p className="truncate text-sm font-semibold">{name}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{meta}</p>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="inline-flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        {label}
+      </dt>
+      <dd className="min-w-0 max-w-[60%] truncate text-right font-semibold text-foreground" title={value}>
+        {value}
+      </dd>
+    </div>
+  );
+}
 
 const respostasRapidas = [
   "Olá! Recebemos sua solicitação e já estamos trabalhando nela.",
@@ -99,423 +410,198 @@ const respostasRapidas = [
   "Estamos aguardando a liberação do órgão, retornamos em breve.",
 ];
 
-export function situacaoPadraoAposEnvio(statusAtual: string, marcarResolvido: boolean): TicketSituacao {
-  if (marcarResolvido) return "Resolvido";
-  if (statusAtual === "Novo") return "Em andamento";
-  return (TICKET_SITUACOES.includes(statusAtual as TicketSituacao)
-    ? statusAtual
-    : "Em andamento") as TicketSituacao;
-}
-
-function descricaoSituacaoPadrao(statusAtual: string, marcarResolvido: boolean): string {
-  if (marcarResolvido) return "O ticket será movido para Resolvido.";
-  if (statusAtual === "Novo") return "Primeira resposta: o ticket irá para Em andamento.";
-  return `A situação permanece em «${statusAtual}».`;
-}
-
-export function TicketRespostaModal({
+function ResponderModal({
   open,
   onOpenChange,
   ticket,
-  cliente,
-  descricao,
-  mensagensHistorico,
-  slaLabel,
-  carregandoDetalhe,
-  enviando,
   onEnviar,
-}: Props) {
-  const [step, setStep] = useState<StepKey>("contexto");
-  const [mensagem, setMensagem] = useState("");
-  const [modoSituacao, setModoSituacao] = useState<ModoSituacaoTicket>("padrao");
-  const [situacaoManual, setSituacaoManual] = useState<TicketSituacao>("Em andamento");
-  const [marcarResolvido, setMarcarResolvido] = useState(false);
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  ticket: AdminTicketDetalhe;
+  onEnviar: (mensagem: string, fechar: boolean) => Promise<void>;
+}) {
+  const [resposta, setResposta] = useState("");
+  const [anexos, setAnexos] = useState<ReplyAnexo[]>([]);
+  const [fechar, setFechar] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!open || !ticket) return;
-    setStep("contexto");
-    setMensagem("");
-    setModoSituacao("padrao");
-    setMarcarResolvido(false);
-    const atual = TICKET_SITUACOES.includes(ticket.status as TicketSituacao)
-      ? (ticket.status as TicketSituacao)
-      : "Em andamento";
-    setSituacaoManual(atual);
-  }, [open, ticket?.id, ticket?.status]);
-
-  const situacaoPrevista = useMemo((): TicketSituacao => {
-    if (!ticket) return "Em andamento";
-    if (modoSituacao === "manual") return situacaoManual;
-    return situacaoPadraoAposEnvio(ticket.status, marcarResolvido);
-  }, [ticket, modoSituacao, situacaoManual, marcarResolvido]);
-
-  if (!ticket) return null;
+  const addFiles = (files: FileList | null) => {
+    if (!files) return;
+    setAnexos((prev) => [
+      ...prev,
+      ...Array.from(files).map((f) => ({
+        id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2, 7)}`,
+        name: f.name,
+        size: f.size,
+        type: f.type,
+      })),
+    ]);
+  };
 
   const enviar = async () => {
-    if (!mensagem.trim()) {
+    if (resposta.trim().length < 2) {
       toast.error("Escreva uma mensagem antes de enviar");
       return;
     }
-    const opcoes: TicketRespostaOptions = {
-      modoSituacao,
-      situacaoManual: modoSituacao === "manual" ? situacaoManual : undefined,
-      marcarResolvido: modoSituacao === "padrao" ? marcarResolvido : undefined,
-    };
+    if (anexos.length > 0) {
+      toast.info("Upload de anexos na resposta do admin em breve — enviando só a mensagem.");
+    }
+    setEnviando(true);
     try {
-      await onEnviar?.(ticket.id, mensagem, opcoes);
-      const msgSucesso =
-        situacaoPrevista === "Fechado"
-          ? "Resposta enviada e ticket fechado"
-          : situacaoPrevista !== ticket.status
-            ? `Resposta enviada · situação: ${situacaoPrevista}`
-            : "Resposta enviada ao cliente";
-      toast.success(msgSucesso);
-      setMensagem("");
-      setModoSituacao("padrao");
-      setMarcarResolvido(false);
-      setStep("contexto");
-      onOpenChange(false);
-    } catch {
-      // Erro tratado pelo chamador
+      await onEnviar(resposta.trim(), fechar);
+      setResposta("");
+      setAnexos([]);
+      setFechar(false);
+    } finally {
+      setEnviando(false);
     }
   };
 
-  const mensagens: MensagemHistorico[] =
-    mensagensHistorico && mensagensHistorico.length > 0
-      ? mensagensHistorico
-      : carregandoDetalhe
-        ? []
-        : [
-            {
-              autor: cliente?.responsavel || "Cliente",
-              tipo: "cliente",
-              data: ticket.data,
-              texto: descricao || `Solicitação: ${ticket.titulo}`,
-            },
-          ];
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl p-0 overflow-hidden gap-0">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) {
+          setResposta("");
+          setAnexos([]);
+          setFechar(false);
+        }
+      }}
+    >
+      <DialogContent className="overflow-hidden p-0 sm:max-w-[820px]">
         <DialogTitle className="sr-only">Responder ticket {ticket.id}</DialogTitle>
-        <div className="grid grid-cols-[280px_1fr] min-h-[600px]">
-          {/* Sidebar com imagem de fundo */}
-          <div
-            className="relative p-6 text-white flex flex-col"
-            style={{
-              backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.85), rgba(15,23,42,0.95)), url(${wizardBg})`,
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <div className="rounded-lg bg-white/15 p-2 backdrop-blur">
-                <Ticket className="h-4 w-4" />
-              </div>
-              <span className="text-xs font-mono opacity-80">{ticket.id}</span>
+        <div className="flex h-[88vh] max-h-[760px] flex-col">
+          <header className="border-b bg-gradient-to-br from-primary/10 via-card to-card px-7 py-5">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
+              <Reply className="h-4 w-4" />
+              Responder ao cliente
             </div>
-            <h2 className="text-lg font-semibold leading-tight">{ticket.titulo}</h2>
-            <p className="mt-1 text-xs text-white/70">{cliente?.razao}</p>
+            <h3 className="mt-2 text-xl font-bold tracking-tight">{ticket.title}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              <span className="font-mono font-semibold text-primary">#{ticket.id}</span>
+              {" • "}Para: <strong className="text-foreground">{ticket.client || "Cliente"}</strong>
+            </p>
+          </header>
 
-            <div className="mt-6 space-y-1">
-              {steps.map((s, i) => {
-                const Icon = s.icon;
-                const active = s.key === step;
-                const idxAtual = steps.findIndex((x) => x.key === step);
-                const done = i < idxAtual;
-                return (
+          <div className="flex-1 space-y-5 overflow-y-auto px-7 py-6">
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Respostas rápidas
+              </Label>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {respostasRapidas.map((r) => (
                   <button
-                    key={s.key}
-                    onClick={() => setStep(s.key)}
-                    className={`w-full text-left rounded-lg px-3 py-2.5 flex items-start gap-3 transition ${
-                      active ? "bg-white/15 backdrop-blur" : "hover:bg-white/5"
-                    }`}
+                    key={r}
+                    type="button"
+                    onClick={() => setResposta(r)}
+                    className="rounded-full border bg-card px-3 py-1 text-[11px] transition hover:border-primary hover:bg-primary/5"
                   >
-                    <div
-                      className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
-                        active ? "bg-white text-slate-900" : done ? "bg-emerald-500/80 text-white" : "bg-white/10"
-                      }`}
-                    >
-                      {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium">{s.label}</div>
-                      <div className="text-[11px] text-white/60 truncate">{s.desc}</div>
-                    </div>
+                    {r.slice(0, 48)}...
                   </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-auto pt-6 text-[11px] text-white/60">
-              <div className="flex items-center gap-1.5">
-                <Clock className="h-3 w-3" /> SLA: {slaLabel || "—"}
-              </div>
-              <div className="mt-1 flex items-center gap-1.5">
-                <User className="h-3 w-3" /> Atribuído a você
-              </div>
-            </div>
-          </div>
-
-          {/* Conteúdo */}
-          <div className="flex flex-col bg-background">
-            <div className="flex items-center justify-between border-b px-6 py-4">
-              <div>
-                <div className="text-xs text-muted-foreground">Etapa</div>
-                <div className="text-base font-semibold">{steps.find((s) => s.key === step)?.label}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant={ticket.prio === "alta" ? "destructive" : "secondary"} className="text-[10px]">
-                  prioridade {ticket.prio}
-                </Badge>
-                <Badge variant="outline" className="text-[10px]">
-                  {ticket.status}
-                </Badge>
+                ))}
               </div>
             </div>
 
-            <ScrollArea className="flex-1 max-h-[460px]">
-              <div className="px-6 py-5">
-                {step === "contexto" && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      <InfoCard label="Cliente" value={cliente?.razao || "—"} />
-                      <InfoCard label="Responsável" value={cliente?.responsavel || "—"} />
-                      <InfoCard label="Abertura" value={ticket.data} />
-                      <InfoCard label="Status" value={ticket.status} />
-                    </div>
-                    <Separator />
-                    <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1.5">Descrição</div>
-                      {carregandoDetalhe ? (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Carregando...
-                        </div>
-                      ) : (
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {descricao || ticket.titulo}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
+            <div className="space-y-2">
+              <Label htmlFor="resposta-admin" className="text-sm font-semibold">
+                Sua mensagem <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="resposta-admin"
+                placeholder="Escreva sua resposta..."
+                value={resposta}
+                onChange={(e) => setResposta(e.target.value)}
+                className="min-h-[200px] resize-none text-base leading-relaxed"
+                autoFocus
+              />
+              <p className="text-right text-xs text-muted-foreground">{resposta.length} caracteres</p>
+            </div>
 
-                {step === "mensagens" && (
-                  <div className="space-y-3">
-                    {carregandoDetalhe && (
-                      <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Carregando mensagens...
-                      </div>
-                    )}
-                    {!carregandoDetalhe && mensagens.length === 0 && (
-                      <div className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
-                        Nenhuma mensagem ainda
-                      </div>
-                    )}
-                    {mensagens.map((m, i) => (
-                      <div
-                        key={i}
-                        className={`rounded-lg border p-3 ${
-                          m.tipo === "agente" ? "bg-primary/5 border-primary/20" : "bg-card"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold">{m.autor}</span>
-                          <span className="text-[11px] text-muted-foreground">{m.data}</span>
-                        </div>
-                        <p className="text-sm">{m.texto}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {step === "resposta" && (
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                        <Sparkles className="h-3 w-3" /> Respostas rápidas
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {respostasRapidas.map((r) => (
-                          <button
-                            key={r}
-                            onClick={() => setMensagem(r)}
-                            className="text-[11px] rounded-full border bg-card px-2.5 py-1 hover:bg-accent"
-                          >
-                            {r.slice(0, 40)}...
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <Textarea
-                      value={mensagem}
-                      onChange={(e) => setMensagem(e.target.value)}
-                      placeholder="Escreva sua resposta para o cliente..."
-                      rows={8}
-                    />
-                    <div className="flex items-center justify-between">
-                      <Button variant="outline" size="sm" className="gap-1.5">
-                        <Paperclip className="h-3.5 w-3.5" /> Anexar
-                      </Button>
-                    </div>
-
-                    <Separator />
-
-                    <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Situação do ticket
-                        </div>
-                        <p className="mt-1 text-[11px] text-muted-foreground">
-                          Atual: <span className="font-medium text-foreground">{ticket.status}</span>
-                          {situacaoPrevista !== ticket.status && (
-                            <>
-                              {" "}
-                              → <span className="font-medium text-primary">{situacaoPrevista}</span>
-                            </>
-                          )}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={modoSituacao === "padrao" ? "default" : "outline"}
-                          className="h-8 text-xs"
-                          onClick={() => setModoSituacao("padrao")}
-                        >
-                          Padrão (automático)
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={modoSituacao === "manual" ? "default" : "outline"}
-                          className="h-8 text-xs"
-                          onClick={() => setModoSituacao("manual")}
-                        >
-                          Definir manualmente
-                        </Button>
-                      </div>
-
-                      {modoSituacao === "padrao" ? (
-                        <div className="space-y-2">
-                          <p className="text-xs text-muted-foreground">
-                            {descricaoSituacaoPadrao(ticket.status, marcarResolvido)}
-                          </p>
-                          <label className="flex items-center gap-2 text-xs cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={marcarResolvido}
-                              onChange={(e) => setMarcarResolvido(e.target.checked)}
-                              className="h-3.5 w-3.5"
-                            />
-                            Marcar como resolvido após envio
-                          </label>
-                        </div>
-                      ) : (
-                        <div className="space-y-1.5">
-                          <Label htmlFor="situacao-manual" className="text-xs">
-                            Nova situação
-                          </Label>
-                          <Select
-                            value={situacaoManual}
-                            onValueChange={(v) => setSituacaoManual(v as TicketSituacao)}
-                          >
-                            <SelectTrigger id="situacao-manual" className="h-9 text-sm">
-                              <SelectValue placeholder="Selecione a situação" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TICKET_SITUACOES.map((s) => (
-                                <SelectItem key={s} value={s}>
-                                  {s}
-                                  {s === ticket.status ? " (atual)" : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-[11px] text-muted-foreground">
-                            Use para reabrir, aguardar cliente/governo ou fechar o chamado.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {step === "finalizar" && (
-                  <div className="space-y-4">
-                    <div className="rounded-lg border bg-card p-4">
-                      <div className="text-xs font-medium text-muted-foreground mb-2">Sua resposta</div>
-                      <p className="text-sm whitespace-pre-wrap">
-                        {mensagem || <span className="text-muted-foreground italic">Nenhuma mensagem escrita ainda.</span>}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <InfoCard label="Destinatário" value={cliente?.responsavel || "Cliente"} />
-                      <InfoCard
-                        label="Situação após envio"
-                        value={
-                          situacaoPrevista === ticket.status
-                            ? `Manter em ${ticket.status}`
-                            : `${ticket.status} → ${situacaoPrevista}`
-                        }
-                      />
-                      <InfoCard
-                        label="Modo"
-                        value={modoSituacao === "padrao" ? "Padrão (automático)" : "Manual"}
-                      />
-                      <InfoCard label="Ação" value="Enviar resposta ao cliente" />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-
-            <div className="border-t px-6 py-3 flex items-center justify-between bg-card/50">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  const idx = steps.findIndex((s) => s.key === step);
-                  if (idx > 0) setStep(steps[idx - 1].key);
-                  else onOpenChange(false);
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Anexar arquivos</Label>
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDrag(true);
                 }}
+                onDragLeave={() => setDrag(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDrag(false);
+                  addFiles(e.dataTransfer.files);
+                }}
+                onClick={() => fileRef.current?.click()}
+                className={cn(
+                  "flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all",
+                  drag
+                    ? "border-primary bg-primary/10"
+                    : "border-border bg-muted/30 hover:border-primary/50 hover:bg-primary/5",
+                )}
               >
-                {step === "contexto" ? "Cancelar" : "Voltar"}
-              </Button>
-              {step !== "finalizar" ? (
-                <Button
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => {
-                    const idx = steps.findIndex((s) => s.key === step);
-                    setStep(steps[idx + 1].key);
-                  }}
-                >
-                  Continuar <ChevronRight className="h-3.5 w-3.5" />
-                </Button>
-              ) : (
-                <Button size="sm" className="gap-1.5" onClick={() => void enviar()} disabled={enviando}>
-                  {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                  {enviando ? "Enviando..." : "Enviar resposta"}
-                </Button>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Upload className="h-5 w-5" />
+                </div>
+                <p className="mt-3 text-sm font-semibold">
+                  Arraste ou <span className="text-primary underline-offset-4 hover:underline">clique para selecionar</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">PDF, PNG, JPG, DOCX — até 20 MB cada</p>
+                <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+              </div>
+              {anexos.length > 0 && (
+                <ul className="mt-2 space-y-2">
+                  {anexos.map((a) => (
+                    <li key={a.id} className="flex items-center gap-3 rounded-xl border bg-card p-2.5">
+                      <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">{a.name}</p>
+                        <p className="text-[11px] text-muted-foreground">{formatBytes(a.size)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAnexos((p) => p.filter((x) => x.id !== a.id))}
+                        className="rounded-lg p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        aria-label="Remover"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
+
+            <label className="flex items-center gap-2 rounded-xl border bg-card p-3 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={fechar}
+                onChange={(e) => setFechar(e.target.checked)}
+                className="h-4 w-4 accent-primary"
+              />
+              <CheckCircle2 className="h-4 w-4 text-success" />
+              Marcar ticket como <strong>resolvido</strong> após envio
+            </label>
           </div>
+
+          <footer className="flex items-center justify-between gap-3 border-t bg-muted/30 px-7 py-4">
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={enviando}>
+              Cancelar
+            </Button>
+            <Button
+              size="lg"
+              onClick={() => void enviar()}
+              disabled={resposta.trim().length < 2 || enviando}
+              className="gap-2"
+            >
+              {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {fechar ? "Enviar e resolver" : "Enviar resposta"}
+            </Button>
+          </footer>
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function InfoCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className="text-sm font-medium mt-0.5 truncate">{value}</div>
-    </div>
   );
 }

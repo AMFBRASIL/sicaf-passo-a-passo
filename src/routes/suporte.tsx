@@ -6,6 +6,9 @@ import {
   fetchTickets,
   mapTicketStatusUi,
   responderTicket,
+  uploadTicketAnexo,
+  type TicketAnexo as ApiTicketAnexo,
+  type TicketDetalhe,
   type TicketMensagem,
   type TicketResumo,
 } from "@/lib/tickets-api";
@@ -13,6 +16,14 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Building2,
+  Calendar,
+  Clock,
+  Download,
+  Mail,
+  Reply,
+  Tag,
+  User,
   CheckCircle2,
   CreditCard,
   File as FileIcon,
@@ -44,24 +55,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { PageHeader, StatusBadge, PageContainer } from "@/components/page-header";
+import { PageHeader, StatusBadge } from "@/components/page-header";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import wizardBg from "@/assets/wizard-bg.jpg";
-
-/** WhatsApp suporte — DDD 11 + 2122-0202 */
-const WHATSAPP_SUPORTE_NUMERO = "5511121220202";
-
-function buildWhatsAppSuporteUrl(nomeUsuario?: string | null): string {
-  const texto = nomeUsuario?.trim()
-    ? `Olá! Meu nome é ${nomeUsuario.trim()}. Estou na página de Suporte do portal CADBRASIL e preciso de ajuda.`
-    : "Olá! Estou na página de Suporte do portal CADBRASIL e preciso de ajuda.";
-  return `https://wa.me/${WHATSAPP_SUPORTE_NUMERO}?text=${encodeURIComponent(texto)}`;
-}
-
-const WHATSAPP_BUTTON_CLASS =
-  "mt-3 gap-2 bg-[#25D366] text-white shadow-sm hover:bg-[#20BD5A] hover:text-white";
 
 export const Route = createFileRoute("/suporte")({
   head: () => ({
@@ -78,6 +76,17 @@ type ChamadoMsg = {
   nome: string;
   data: string;
   texto: string;
+  anexos?: TicketAnexo[];
+};
+
+type TicketAnexo = {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  enviadoPor: string;
+  data: string;
+  url?: string;
 };
 
 type Chamado = {
@@ -89,8 +98,48 @@ type Chamado = {
   categoria: string;
   prioridade: "Baixa" | "Média" | "Alta";
   responsavel: string;
+  abertoPor: string;
+  email: string;
+  empresa: string;
+  ultimaAtualizacao: string;
+  sla: string;
+  anexos: TicketAnexo[];
   mensagens: ChamadoMsg[];
 };
+
+const CATEGORIA_DB_LABELS: Record<string, string> = {
+  sicaf: "SICAF / Cadastro",
+  suporte: "Documentos & Certidões",
+  financeiro: "Pagamentos & Faturas",
+  bug: "Problema técnico",
+  melhoria: "Serviços com IA",
+  outro: "Outro assunto",
+};
+
+function categoriaExibicao(idOuEnum: string): string {
+  const cat = categorias.find((c) => c.id === idOuEnum);
+  if (cat) return cat.titulo;
+  return CATEGORIA_DB_LABELS[idOuEnum] || idOuEnum;
+}
+
+function prioridadeExibicao(p: string): Chamado["prioridade"] {
+  const s = String(p || "").toLowerCase();
+  if (s === "alta" || s === "urgente") return "Alta";
+  if (s === "baixa") return "Baixa";
+  return "Média";
+}
+
+function mapAnexoApi(a: ApiTicketAnexo, enviadoPor = "Anexo"): TicketAnexo {
+  return {
+    id: String(a.id),
+    name: a.nomeOriginal,
+    size: a.tamanho || 0,
+    type: a.mimetype || "",
+    enviadoPor,
+    data: "",
+    url: a.url,
+  };
+}
 
 function mapMensagens(msgs: TicketMensagem[]): ChamadoMsg[] {
   return msgs.map((m) => ({
@@ -98,12 +147,20 @@ function mapMensagens(msgs: TicketMensagem[]): ChamadoMsg[] {
     nome: m.senderName,
     data: m.date,
     texto: m.message,
+    anexos: (m.anexos || []).map((a) =>
+      mapAnexoApi(a, m.sender === "client" ? "Você" : m.senderName || "Suporte"),
+    ),
   }));
 }
 
-function mapTicketResumo(t: TicketResumo, msgs: TicketMensagem[] = []): Chamado {
+function mapTicketDetalheToChamado(t: TicketDetalhe, usuarioNome?: string): Chamado {
   const ui = mapTicketStatusUi(t.status);
-  const pri = t.priority ? t.priority.charAt(0).toUpperCase() + t.priority.slice(1) : "Média";
+  const msgs = mapMensagens(t.messages || []);
+  const anexosTicket = (t.anexos || []).map((a) => mapAnexoApi(a, "Você"));
+  const anexosMsgs = msgs.flatMap((m) => m.anexos || []);
+  const anexos = [...anexosTicket, ...anexosMsgs];
+  const ultima = msgs[msgs.length - 1];
+
   return {
     codigo: t.id,
     titulo: t.title,
@@ -111,11 +168,40 @@ function mapTicketResumo(t: TicketResumo, msgs: TicketMensagem[] = []): Chamado 
     status: ui.status,
     label: ui.label,
     categoria: categoriaExibicao(t.category),
-    prioridade: pri as Chamado["prioridade"],
+    prioridade: prioridadeExibicao(t.priority),
     responsavel: t.assignee || "Suporte CADBRASIL",
-    mensagens: mapMensagens(msgs),
+    abertoPor: usuarioNome || "Você",
+    email: "",
+    empresa: "",
+    ultimaAtualizacao: ultima?.data || t.createdAt,
+    sla: "Resposta em até 1h útil",
+    anexos,
+    mensagens: msgs,
   };
 }
+
+function mapTicketResumoToChamado(t: TicketResumo, usuarioNome?: string): Chamado {
+  const ui = mapTicketStatusUi(t.status);
+  return {
+    codigo: t.id,
+    titulo: t.title,
+    data: t.createdAt?.split(" ")[0] || t.createdAt,
+    status: ui.status,
+    label: ui.label,
+    categoria: categoriaExibicao(t.category),
+    prioridade: prioridadeExibicao(t.priority),
+    responsavel: t.assignee || "Suporte CADBRASIL",
+    abertoPor: usuarioNome || "Você",
+    email: "",
+    empresa: "",
+    ultimaAtualizacao: t.createdAt,
+    sla: "Resposta em até 1h útil",
+    anexos: [],
+    mensagens: [],
+  };
+}
+
+const MAX_ANEXO_BYTES = 20 * 1024 * 1024;
 
 type Categoria = {
   id: string;
@@ -134,28 +220,13 @@ const categorias: Categoria[] = [
   { id: "outro", titulo: "Outro assunto", descricao: "Não encontrei minha categoria", icon: HelpCircle, cor: "text-muted-foreground" },
 ];
 
-const CATEGORIA_DB_LABELS: Record<string, string> = {
-  sicaf: "SICAF / Cadastro",
-  suporte: "Documentos & Certidões",
-  financeiro: "Pagamentos & Faturas",
-  bug: "Problema técnico",
-  melhoria: "Serviços com IA",
-  outro: "Outro assunto",
-};
-
-function categoriaExibicao(idOuEnum: string): string {
-  const cat = categorias.find((c) => c.id === idOuEnum);
-  if (cat) return cat.titulo;
-  return CATEGORIA_DB_LABELS[idOuEnum] || idOuEnum;
-}
-
 const prioridades = [
   { id: "baixa", label: "Baixa", desc: "Posso esperar", cor: "border-border" },
   { id: "media", label: "Média", desc: "Preciso resolver em breve", cor: "border-warning/40" },
   { id: "alta", label: "Alta", desc: "Está me impedindo de trabalhar", cor: "border-destructive/40" },
 ];
 
-type Anexo = { id: string; name: string; size: number; type: string };
+type Anexo = { id: string; file: File; name: string; size: number; type: string };
 
 const steps = [
   { id: 1, title: "Categoria", desc: "Sobre o que é o chamado?" },
@@ -174,6 +245,7 @@ function NovoChamadoDialog({ onCreated }: { onCreated?: () => void }) {
   const [mensagem, setMensagem] = useState("");
   const [anexos, setAnexos] = useState<Anexo[]>([]);
   const [drag, setDrag] = useState(false);
+  const [enviando, setEnviando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const total = steps.length;
@@ -194,31 +266,61 @@ function NovoChamadoDialog({ onCreated }: { onCreated?: () => void }) {
   };
 
   const enviar = async () => {
-    const res = await criarTicket({
-      titulo: assunto.trim(),
-      descricao: mensagem.trim(),
-      categoria: categoria || "outro",
-      prioridade: prioridade || "media",
-    });
-    if (!res.ok) {
-      toast.error(res.error || "Erro ao abrir chamado");
-      return;
+    setEnviando(true);
+    try {
+      const res = await criarTicket({
+        titulo: assunto.trim(),
+        descricao: mensagem.trim(),
+        categoria: categoria || "outro",
+        prioridade: prioridade || "media",
+      });
+      if (!res.ok) {
+        toast.error(res.error || "Erro ao abrir chamado");
+        return;
+      }
+
+      const ticketRef = res.codigo || (res.id != null ? String(res.id) : "");
+      if (ticketRef && anexos.length > 0) {
+        let falhas = 0;
+        for (const anexo of anexos) {
+          const up = await uploadTicketAnexo(ticketRef, anexo.file);
+          if (!up.ok) falhas += 1;
+        }
+        if (falhas > 0) {
+          toast.warning(
+            falhas === anexos.length
+              ? "Chamado aberto, mas os anexos não foram enviados."
+              : `Chamado aberto, mas ${falhas} anexo(s) falharam.`,
+          );
+        }
+      }
+
+      toast.success(res.message || `Chamado ${res.codigo || ""} aberto!`);
+      reset();
+      setOpen(false);
+      onCreated?.();
+    } finally {
+      setEnviando(false);
     }
-    toast.success(res.message || `Chamado ${res.codigo || ""} aberto!`);
-    reset();
-    setOpen(false);
-    onCreated?.();
   };
 
   const addFiles = (files: FileList | null) => {
     if (!files) return;
-    const novos: Anexo[] = Array.from(files).map((f) => ({
-      id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2, 7)}`,
-      name: f.name,
-      size: f.size,
-      type: f.type,
-    }));
-    setAnexos((prev) => [...prev, ...novos]);
+    const novos: Anexo[] = [];
+    for (const f of Array.from(files)) {
+      if (f.size > MAX_ANEXO_BYTES) {
+        toast.error(`${f.name} excede o limite de 20 MB`);
+        continue;
+      }
+      novos.push({
+        id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2, 7)}`,
+        file: f,
+        name: f.name,
+        size: f.size,
+        type: f.type,
+      });
+    }
+    if (novos.length > 0) setAnexos((prev) => [...prev, ...novos]);
   };
 
   const catSel = categorias.find((c) => c.id === categoria);
@@ -407,9 +509,9 @@ function NovoChamadoDialog({ onCreated }: { onCreated?: () => void }) {
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button size="lg" onClick={enviar} className="gap-2">
-                  <Send className="h-4 w-4" />
-                  Enviar chamado
+                <Button size="lg" onClick={() => void enviar()} disabled={enviando} className="gap-2">
+                  {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {enviando ? "Enviando..." : "Enviar chamado"}
                 </Button>
               )}
             </footer>
@@ -731,60 +833,69 @@ function formatBytes(b: number) {
 
 function SupportPage() {
   const { user } = useAuth();
-  const whatsappUrl = buildWhatsAppSuporteUrl(user?.nome);
+  const usuarioNome = user?.nome || "Você";
   const [chamados, setChamados] = useState<Chamado[]>([]);
-  const [aberto, setAberto] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detalheLoading, setDetalheLoading] = useState(false);
+  const [aberto, setAberto] = useState<string | null>(null);
   const ticket = chamados.find((c) => c.codigo === aberto) ?? null;
 
   const carregar = useCallback(async () => {
     setLoading(true);
     const res = await fetchTickets();
-    if (res.ok && res.tickets) {
-      setChamados(res.tickets.map((t) => mapTicketResumo(t)));
-    } else if (!res.ok) {
-      toast.error(res.error || "Erro ao carregar chamados");
-    }
     setLoading(false);
-  }, []);
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao carregar chamados");
+      return;
+    }
+    setChamados((res.tickets || []).map((t) => mapTicketResumoToChamado(t, usuarioNome)));
+  }, [usuarioNome]);
 
   useEffect(() => {
     void carregar();
   }, [carregar]);
 
-  useEffect(() => {
-    if (!aberto) return;
-    void (async () => {
-      const det = await fetchTicket(aberto);
-      if (det.ok && det.ticket) {
-        setChamados((prev) =>
-          prev.map((c) =>
-            c.codigo === aberto
-              ? mapTicketResumo(det.ticket!, det.ticket!.messages)
-              : c,
-          ),
-        );
-      }
-    })();
-  }, [aberto]);
+  const abrirTicket = async (codigo: string) => {
+    setAberto(codigo);
+    setDetalheLoading(true);
+    const det = await fetchTicket(codigo);
+    setDetalheLoading(false);
+    if (!det.ok || !det.ticket) {
+      toast.error(det.error || "Erro ao carregar chamado");
+      return;
+    }
+    setChamados((prev) =>
+      prev.map((c) => (c.codigo === codigo ? mapTicketDetalheToChamado(det.ticket!, usuarioNome) : c)),
+    );
+  };
 
-  const responder = async (codigo: string, texto: string) => {
+  const responder = async (codigo: string, texto: string, arquivos: File[] = []) => {
     const res = await responderTicket(codigo, texto);
     if (!res.ok) {
       toast.error(res.error || "Erro ao enviar resposta");
       return;
     }
+
+    if (arquivos.length > 0) {
+      let falhas = 0;
+      for (const file of arquivos) {
+        const up = await uploadTicketAnexo(codigo, file);
+        if (!up.ok) falhas += 1;
+      }
+      if (falhas > 0) toast.warning(`${falhas} anexo(s) não foram enviados.`);
+    }
+
     const det = await fetchTicket(codigo);
     if (det.ok && det.ticket) {
       setChamados((prev) =>
-        prev.map((c) => (c.codigo === codigo ? mapTicketResumo(det.ticket!, det.ticket!.messages) : c)),
+        prev.map((c) => (c.codigo === codigo ? mapTicketDetalheToChamado(det.ticket!, usuarioNome) : c)),
       );
     }
     toast.success("Resposta enviada!");
   };
 
   return (
-    <PageContainer>
+    <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
       <PageHeader
         icon={<Headphones className="h-5 w-5" />}
         title="Suporte"
@@ -795,19 +906,11 @@ function SupportPage() {
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <Card className="border-primary/20">
           <CardContent className="flex items-start gap-3 p-5">
-            <MessageCircle className="mt-0.5 h-6 w-6 text-[#25D366]" />
-            <div className="min-w-0 flex-1">
+            <MessageCircle className="mt-0.5 h-6 w-6 text-success" />
+            <div>
               <p className="font-semibold">WhatsApp</p>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Resposta em até 5 minutos no horário comercial.
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">(11) 2122-0202</p>
-              <Button asChild size="sm" className={WHATSAPP_BUTTON_CLASS}>
-                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
-                  <MessageCircle className="h-4 w-4" />
-                  Iniciar conversa no WhatsApp
-                </a>
-              </Button>
+              <p className="mt-0.5 text-sm text-muted-foreground">Resposta em até 5 minutos no horário comercial.</p>
+              <Button variant="link" className="mt-1 h-auto p-0">Iniciar conversa →</Button>
             </div>
           </CardContent>
         </Card>
@@ -827,23 +930,22 @@ function SupportPage() {
           <CardTitle className="text-base font-semibold">Seus chamados</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading && (
-            <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-muted-foreground">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
               Carregando chamados...
             </div>
-          )}
-          {!loading && chamados.length === 0 && (
+          ) : chamados.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Nenhum chamado aberto. Clique em &quot;Novo chamado&quot; para falar com o suporte.
+              Nenhum chamado ainda. Clique em &quot;Abrir chamado&quot; para falar com o suporte.
             </p>
-          )}
+          ) : (
           <ul className="divide-y divide-border">
-            {!loading && chamados.map((c) => (
+            {chamados.map((c) => (
               <li key={c.codigo}>
                 <button
                   type="button"
-                  onClick={() => setAberto(c.codigo)}
+                  onClick={() => void abrirTicket(c.codigo)}
                   className="group flex w-full items-center justify-between gap-3 py-3 text-left transition hover:bg-muted/40 rounded-lg px-2 -mx-2"
                 >
                   <div className="min-w-0 flex-1">
@@ -854,10 +956,16 @@ function SupportPage() {
                       <p className="font-medium truncate">{c.titulo}</p>
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Aberto em {c.data} • {c.categoria}
+                      Aberto em {c.data} • {c.categoria} • por {c.abertoPor}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
+                    {c.anexos.length > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        <Paperclip className="h-3 w-3" />
+                        {c.anexos.length}
+                      </span>
+                    )}
                     <StatusBadge status={c.status}>{c.label}</StatusBadge>
                     <ArrowRight className="h-4 w-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-primary" />
                   </div>
@@ -865,39 +973,37 @@ function SupportPage() {
               </li>
             ))}
           </ul>
+          )}
         </CardContent>
       </Card>
 
       <TicketDetalheDialog
         ticket={ticket}
         open={!!ticket}
+        carregando={detalheLoading}
         onOpenChange={(v) => !v && setAberto(null)}
         onResponder={responder}
       />
-    </PageContainer>
+    </div>
   );
 }
 
 function TicketDetalheDialog({
   ticket,
   open,
+  carregando,
   onOpenChange,
   onResponder,
 }: {
   ticket: Chamado | null;
   open: boolean;
+  carregando?: boolean;
   onOpenChange: (v: boolean) => void;
-  onResponder: (codigo: string, texto: string) => void;
+  onResponder: (codigo: string, texto: string, arquivos?: File[]) => void | Promise<void>;
 }) {
-  const [resposta, setResposta] = useState("");
+  const [responderOpen, setResponderOpen] = useState(false);
 
   if (!ticket) return null;
-
-  const enviar = () => {
-    if (resposta.trim().length < 2) return;
-    onResponder(ticket.codigo, resposta.trim());
-    setResposta("");
-  };
 
   const prioCor =
     ticket.prioridade === "Alta"
@@ -906,15 +1012,17 @@ function TicketDetalheDialog({
         ? "bg-warning/15 text-warning-foreground"
         : "bg-success/15 text-success";
 
+  const ultimaMsg = ticket.mensagens[ticket.mensagens.length - 1];
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden p-0 sm:max-w-[760px]">
-        <DialogTitle className="sr-only">Chamado {ticket.codigo}</DialogTitle>
-        <div className="flex h-[88vh] max-h-[760px] flex-col">
-          {/* Header */}
-          <header className="border-b bg-gradient-to-br from-primary/10 via-card to-card px-6 py-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="overflow-hidden p-0 sm:max-w-[1100px] lg:max-w-[1200px]">
+          <DialogTitle className="sr-only">Chamado {ticket.codigo}</DialogTitle>
+          <div className="grid h-[90vh] max-h-[820px] grid-cols-1 lg:grid-cols-[1fr_360px]">
+            {/* MAIN COLUMN */}
+            <div className="flex h-full min-h-0 flex-col border-r">
+              <header className="border-b bg-gradient-to-br from-primary/10 via-card to-card px-7 py-5">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-0.5 font-mono text-[11px] font-bold text-primary-foreground">
                     #{ticket.codigo}
@@ -922,79 +1030,403 @@ function TicketDetalheDialog({
                   <StatusBadge status={ticket.status}>{ticket.label}</StatusBadge>
                   <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold", prioCor)}>
                     <Zap className="h-3 w-3" />
-                    {ticket.prioridade}
+                    Prioridade {ticket.prioridade}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                    <Tag className="h-3 w-3" />
+                    {ticket.categoria}
                   </span>
                 </div>
-                <h3 className="mt-2 text-xl font-bold tracking-tight">{ticket.titulo}</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {ticket.categoria} • Aberto em {ticket.data} • Responsável: <strong className="text-foreground">{ticket.responsavel}</strong>
-                </p>
+                <h3 className="mt-3 text-2xl font-bold tracking-tight">{ticket.titulo}</h3>
+                <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5" />
+                    Aberto em <strong className="text-foreground">{ticket.data}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    Atualizado <strong className="text-foreground">{ticket.ultimaAtualizacao}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-success">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {ticket.sla}
+                  </span>
+                </div>
+              </header>
+
+              <div className="flex-1 space-y-5 overflow-y-auto bg-muted/20 px-7 py-6">
+                {carregando && (
+                  <div className="flex items-center justify-center py-16 text-muted-foreground">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Carregando conversa...
+                  </div>
+                )}
+                {!carregando && ticket.mensagens.length === 0 && (
+                  <p className="py-12 text-center text-sm text-muted-foreground">Nenhuma mensagem ainda.</p>
+                )}
+                {!carregando &&
+                  ticket.mensagens.map((m, i) => {
+                  const eu = m.autor === "voce";
+                  return (
+                    <div key={i} className={cn("flex gap-3", eu && "flex-row-reverse")}>
+                      <div
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-2 ring-background",
+                          eu ? "bg-primary text-primary-foreground" : "bg-success text-success-foreground",
+                        )}
+                      >
+                        {eu ? "EU" : <Headphones className="h-4 w-4" />}
+                      </div>
+                      <div className={cn("max-w-[82%] min-w-0", eu && "items-end")}>
+                        <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", eu && "justify-end")}>
+                          <span className="font-semibold text-foreground">{m.nome}</span>
+                          <span>•</span>
+                          <span>{m.data}</span>
+                        </div>
+                        <div
+                          className={cn(
+                            "mt-1 rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-sm",
+                            eu
+                              ? "rounded-tr-sm border-primary/20 bg-primary/10"
+                              : "rounded-tl-sm border-border bg-card",
+                          )}
+                        >
+                          {m.texto}
+                        </div>
+                        {(m.anexos || []).length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {(m.anexos || []).map((a) => (
+                              <li key={a.id}>
+                                <a
+                                  href={a.url || "#"}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => !a.url && e.preventDefault()}
+                                  className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2 py-1 text-xs hover:border-primary/40"
+                                >
+                                  <Paperclip className="h-3 w-3" />
+                                  {a.name}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+
+              <footer className="flex items-center justify-between gap-3 border-t bg-card px-7 py-4">
+                <p className="text-xs text-muted-foreground">
+                  {ultimaMsg && (
+                    <>Última mensagem por <strong className="text-foreground">{ultimaMsg.nome}</strong> em {ultimaMsg.data}</>
+                  )}
+                </p>
+                <Button size="lg" onClick={() => setResponderOpen(true)} className="gap-2">
+                  <Reply className="h-4 w-4" />
+                  Responder
+                </Button>
+              </footer>
             </div>
+
+            {/* SIDEBAR */}
+            <aside className="hidden h-full min-h-0 flex-col bg-muted/30 lg:flex">
+              <div className="flex-1 overflow-y-auto p-6">
+                <SectionTitle>Envolvidos</SectionTitle>
+                <div className="mt-3 space-y-3">
+                  <PersonRow
+                    color="primary"
+                    icon={<User className="h-4 w-4" />}
+                    role="Aberto por"
+                    name={ticket.abertoPor}
+                    meta={ticket.email}
+                  />
+                  <PersonRow
+                    color="success"
+                    icon={<Headphones className="h-4 w-4" />}
+                    role="Atendente"
+                    name={ticket.responsavel}
+                    meta="Especialista CADBRASIL"
+                  />
+                </div>
+
+                <SectionTitle className="mt-7">Detalhes</SectionTitle>
+                <dl className="mt-3 space-y-2.5 rounded-xl border bg-card p-4 text-xs">
+                  <DetailRow icon={<Building2 className="h-3.5 w-3.5" />} label="Empresa" value={ticket.empresa} />
+                  <DetailRow icon={<Mail className="h-3.5 w-3.5" />} label="E-mail" value={ticket.email} />
+                  <DetailRow icon={<Tag className="h-3.5 w-3.5" />} label="Categoria" value={ticket.categoria} />
+                  <DetailRow icon={<Zap className="h-3.5 w-3.5" />} label="Prioridade" value={ticket.prioridade} />
+                  <DetailRow icon={<Calendar className="h-3.5 w-3.5" />} label="Abertura" value={ticket.data} />
+                  <DetailRow icon={<Clock className="h-3.5 w-3.5" />} label="Atualizado" value={ticket.ultimaAtualizacao} />
+                </dl>
+
+                <SectionTitle className="mt-7">
+                  Anexos
+                  <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                    {ticket.anexos.length}
+                  </span>
+                </SectionTitle>
+                {ticket.anexos.length === 0 ? (
+                  <p className="mt-3 rounded-xl border border-dashed bg-card p-4 text-center text-xs text-muted-foreground">
+                    Nenhum anexo neste chamado.
+                  </p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {ticket.anexos.map((a) => {
+                      const isImg = a.type.startsWith("image/");
+                      const isPdf = a.type === "application/pdf" || a.name.toLowerCase().endsWith(".pdf");
+                      return (
+                        <li
+                          key={a.id}
+                          className="group flex items-center gap-3 rounded-xl border bg-card p-3 transition hover:border-primary/40 hover:shadow-sm"
+                        >
+                          <div
+                            className={cn(
+                              "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                              isPdf && "bg-destructive/10 text-destructive",
+                              isImg && "bg-primary/10 text-primary",
+                              !isPdf && !isImg && "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            {isImg ? <ImageIcon className="h-5 w-5" /> : isPdf ? <FileText className="h-5 w-5" /> : <FileIcon className="h-5 w-5" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold">{a.name}</p>
+                            <p className="truncate text-[11px] text-muted-foreground">
+                              {formatBytes(a.size)} • {a.enviadoPor}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (a.url) window.open(a.url, "_blank", "noopener,noreferrer");
+                              else toast.error("Arquivo indisponível");
+                            }}
+                            className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                            aria-label="Baixar"
+                          >
+                            <Download className="h-4 w-4" />
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </aside>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ResponderModal
+        open={responderOpen}
+        onOpenChange={setResponderOpen}
+        ticket={ticket}
+        onEnviar={(texto, arquivos) => {
+          void onResponder(ticket.codigo, texto, arquivos).then(() => setResponderOpen(false));
+        }}
+      />
+    </>
+  );
+}
+
+function SectionTitle({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <h4 className={cn("flex items-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground", className)}>
+      {children}
+    </h4>
+  );
+}
+
+function PersonRow({
+  color, icon, role, name, meta,
+}: {
+  color: "primary" | "success";
+  icon: React.ReactNode;
+  role: string;
+  name: string;
+  meta: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
+      <div
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+          color === "primary" && "bg-primary/15 text-primary",
+          color === "success" && "bg-success/15 text-success",
+        )}
+      >
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{role}</p>
+        <p className="truncate text-sm font-semibold">{name}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{meta}</p>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="inline-flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        {label}
+      </dt>
+      <dd className="min-w-0 max-w-[60%] truncate text-right font-semibold text-foreground" title={value}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function ResponderModal({
+  open, onOpenChange, ticket, onEnviar,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  ticket: Chamado;
+  onEnviar: (texto: string, arquivos: File[]) => void;
+}) {
+  const [resposta, setResposta] = useState("");
+  const [anexos, setAnexos] = useState<Anexo[]>([]);
+  const [drag, setDrag] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = (files: FileList | null) => {
+    if (!files) return;
+    const novos: Anexo[] = [];
+    for (const f of Array.from(files)) {
+      if (f.size > MAX_ANEXO_BYTES) {
+        toast.error(`${f.name} excede o limite de 20 MB`);
+        continue;
+      }
+      novos.push({
+        id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2, 7)}`,
+        file: f,
+        name: f.name,
+        size: f.size,
+        type: f.type,
+      });
+    }
+    if (novos.length > 0) setAnexos((prev) => [...prev, ...novos]);
+  };
+
+  const enviar = async () => {
+    if (resposta.trim().length < 2) return;
+    setEnviando(true);
+    try {
+      onEnviar(
+        resposta.trim(),
+        anexos.map((a) => a.file),
+      );
+      setResposta("");
+      setAnexos([]);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setResposta(""); setAnexos([]); } }}>
+      <DialogContent className="overflow-hidden p-0 sm:max-w-[820px]">
+        <DialogTitle className="sr-only">Responder chamado {ticket.codigo}</DialogTitle>
+        <div className="flex h-[88vh] max-h-[760px] flex-col">
+          <header className="border-b bg-gradient-to-br from-primary/10 via-card to-card px-7 py-5">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
+              <Reply className="h-4 w-4" />
+              Responder chamado
+            </div>
+            <h3 className="mt-2 text-xl font-bold tracking-tight">{ticket.titulo}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              <span className="font-mono font-semibold text-primary">#{ticket.codigo}</span> • {ticket.categoria} • Para: <strong className="text-foreground">{ticket.responsavel}</strong>
+            </p>
           </header>
 
-          {/* Thread */}
-          <div className="flex-1 space-y-4 overflow-y-auto bg-muted/20 px-6 py-6">
-            {ticket.mensagens.map((m, i) => {
-              const eu = m.autor === "voce";
-              return (
-                <div key={i} className={cn("flex gap-3", eu && "flex-row-reverse")}>
-                  <div
-                    className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-                      eu ? "bg-primary text-primary-foreground" : "bg-success/15 text-success",
-                    )}
-                  >
-                    {eu ? "EU" : <Headphones className="h-4 w-4" />}
-                  </div>
-                  <div className={cn("max-w-[78%] min-w-0", eu && "items-end")}>
-                    <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", eu && "justify-end")}>
-                      <span className="font-semibold text-foreground">{m.nome}</span>
-                      <span>•</span>
-                      <span>{m.data}</span>
-                    </div>
-                    <div
-                      className={cn(
-                        "mt-1 rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-sm",
-                        eu
-                          ? "rounded-tr-sm border-primary/20 bg-primary/10"
-                          : "rounded-tl-sm border-border bg-card",
-                      )}
-                    >
-                      {m.texto}
-                    </div>
-                  </div>
+          <div className="flex-1 space-y-5 overflow-y-auto px-7 py-6">
+            <div className="space-y-2">
+              <Label htmlFor="resposta-full" className="text-sm font-semibold">
+                Sua mensagem <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="resposta-full"
+                placeholder="Escreva sua resposta com o máximo de detalhes possível..."
+                value={resposta}
+                onChange={(e) => setResposta(e.target.value)}
+                className="min-h-[220px] resize-none text-base leading-relaxed"
+                autoFocus
+              />
+              <p className="text-right text-xs text-muted-foreground">{resposta.length} caracteres</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Anexar arquivos</Label>
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+                onDragLeave={() => setDrag(false)}
+                onDrop={(e) => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
+                onClick={() => fileRef.current?.click()}
+                className={cn(
+                  "flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all",
+                  drag
+                    ? "border-primary bg-primary/10"
+                    : "border-border bg-muted/30 hover:border-primary/50 hover:bg-primary/5",
+                )}
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Upload className="h-5 w-5" />
                 </div>
-              );
-            })}
+                <p className="mt-3 text-sm font-semibold">
+                  Arraste arquivos ou <span className="text-primary underline-offset-4 hover:underline">clique para selecionar</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">PDF, PNG, JPG, DOCX — até 20 MB cada</p>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.doc,.xls"
+                  className="hidden"
+                  onChange={(e) => addFiles(e.target.files)}
+                />
+              </div>
+              {anexos.length > 0 && (
+                <ul className="mt-2 space-y-2">
+                  {anexos.map((a) => (
+                    <li key={a.id} className="flex items-center gap-3 rounded-xl border bg-card p-2.5">
+                      <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">{a.name}</p>
+                        <p className="text-[11px] text-muted-foreground">{formatBytes(a.size)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAnexos((p) => p.filter((x) => x.id !== a.id))}
+                        className="rounded-lg p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        aria-label="Remover"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
-          {/* Reply box */}
-          <footer className="border-t bg-card px-6 py-4">
-            <Label htmlFor="resposta" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Sua resposta
-            </Label>
-            <Textarea
-              id="resposta"
-              placeholder="Digite sua resposta..."
-              value={resposta}
-              onChange={(e) => setResposta(e.target.value)}
-              className="mt-2 min-h-[88px] resize-none text-sm"
-            />
-            <div className="mt-3 flex items-center justify-between">
-              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
-                <Paperclip className="h-4 w-4" />
-                Anexar
-              </Button>
-              <Button onClick={enviar} disabled={resposta.trim().length < 2} className="gap-2">
-                <Send className="h-4 w-4" />
-                Enviar resposta
-              </Button>
-            </div>
+          <footer className="flex items-center justify-between gap-3 border-t bg-muted/30 px-7 py-4">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button size="lg" onClick={() => void enviar()} disabled={resposta.trim().length < 2 || enviando} className="gap-2">
+              {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {enviando ? "Enviando..." : "Enviar resposta"}
+            </Button>
           </footer>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
-

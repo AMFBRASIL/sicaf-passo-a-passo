@@ -1540,10 +1540,10 @@ function DocumentoCard({ doc, onDownload }: { doc: DocumentoUi; onDownload: () =
 
 function SuporteTab({ cliente, tickets = [] }: { cliente: ClienteDetalhe; tickets?: TicketItem[] }) {
   const [ticketOpen, setTicketOpen] = useState(false);
-  const [ticketSel, setTicketSel] = useState<TicketItem | null>(null);
+  const [ticketIdSel, setTicketIdSel] = useState<string | null>(null);
 
   const abrirTicket = (t: TicketItem) => {
-    setTicketSel(t);
+    setTicketIdSel(t.id);
     setTicketOpen(true);
   };
 
@@ -1582,9 +1582,11 @@ function SuporteTab({ cliente, tickets = [] }: { cliente: ClienteDetalhe; ticket
       </div>
       <TicketRespostaModal
         open={ticketOpen}
-        onOpenChange={setTicketOpen}
-        ticket={ticketSel}
-        cliente={{ razao: cliente.razao, responsavel: cliente.responsavel }}
+        onOpenChange={(open) => {
+          setTicketOpen(open);
+          if (!open) setTicketIdSel(null);
+        }}
+        ticketId={ticketIdSel}
       />
     </Card>
   );
