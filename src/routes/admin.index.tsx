@@ -138,13 +138,17 @@ function Kpi({ title, value, delta, trend = "flat", icon: Icon, tone, hint, spar
 function DashboardExecutivo() {
   const [loading, setLoading] = useState(true);
   const [exec, setExec] = useState<AdminDashboardExecutive | null>(null);
+  const [todayLabel, setTodayLabel] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const data = await fetchAdminDashboard();
-        if (!cancelled && data.executive) setExec(data.executive);
+        if (!cancelled && data.executive) {
+          setExec(data.executive);
+          setTodayLabel(data.todayLabel || "");
+        }
       } catch (e) {
         if (!cancelled) toast.error(e instanceof Error ? e.message : "Erro ao carregar dashboard");
       } finally {
@@ -186,7 +190,8 @@ function DashboardExecutivo() {
           </div>
           <h1 className="mt-2 text-2xl font-bold tracking-tight lg:text-3xl">Dashboard Executivo</h1>
           <p className="text-sm text-muted-foreground">
-            Visão consolidada da operação CADBRASIL — dados reais do banco.
+            Visão consolidada da operação CADBRASIL — dados reais do banco
+            {todayLabel ? ` · ${todayLabel}` : ""}.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -223,13 +228,13 @@ function DashboardExecutivo() {
         />
         <Kpi
           loading={loading}
-          title="Novos Clientes"
-          value={String(novos?.mes ?? 0)}
-          delta={novos?.hoje ? `+${novos.hoje} hoje` : undefined}
-          trend={novos?.hoje ? "up" : "flat"}
+          title="Cadastros Hoje"
+          value={String(novos?.hoje ?? 0)}
+          delta={novos ? formatDeltaPct(novos.changeHoje, "vs ontem") : undefined}
+          trend={novos ? trendFromChange(novos.changeHoje) : "flat"}
           icon={Users}
           tone="blue"
-          hint={novos ? `${novos.pagos} pagaram • ${novos.pendentes} pendentes` : undefined}
+          hint={novos ? `${novos.mes} no mês · ${novos.pagos} pagaram · ${novos.pendentes} pendentes` : undefined}
           spark={novosSpark}
         />
         <Kpi

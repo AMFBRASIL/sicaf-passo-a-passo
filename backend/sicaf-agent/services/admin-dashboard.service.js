@@ -191,6 +191,7 @@ async function loadAdminDashboardData() {
     sicafNiveisAmarelo,
     sicafNiveisVermelho,
     novosClientesHoje,
+    novosClientesOntem,
     novosClientesMes,
     novosClientesPagos,
     visitasSite,
@@ -422,6 +423,8 @@ async function loadAdminDashboardData() {
     scalarWhen(hasNiveis, () =>
       db('sicaf_niveis').whereRaw("LOWER(COALESCE(status,'')) LIKE '%vencido%'").count({ total: '*' }).first()),
     scalarWhen(hasClientes, () => db('clientes').whereRaw('DATE(created_at) = CURDATE()').count({ total: '*' }).first()),
+    scalarWhen(hasClientes, () =>
+      db('clientes').whereRaw('DATE(created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)').count({ total: '*' }).first()),
     scalarWhen(hasClientes, () =>
       db('clientes').whereRaw("created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')").count({ total: '*' }).first()),
     scalarWhen(hasClientes && hasTaxas, () =>
@@ -792,9 +795,11 @@ async function loadAdminDashboardData() {
       },
       novosClientes: {
         hoje: novosClientesHoje,
+        ontem: novosClientesOntem,
         mes: novosClientesMes,
         pagos: novosClientesPagos,
         pendentes: Math.max(0, novosClientesMes - novosClientesPagos),
+        changeHoje: calcChangePercent(novosClientesHoje, novosClientesOntem),
       },
       sicaf: {
         atualizados: sicafAtivos,

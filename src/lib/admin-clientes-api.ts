@@ -611,6 +611,85 @@ export async function criarAdminClienteNota(
   return data;
 }
 
+export type ClienteTrackingResumo = {
+  totalSessoes: number;
+  primeiraVisita: string;
+  ultimaVisita: string;
+  canalPrincipal: string;
+  origem: string | null;
+  midia: string | null;
+  campanha: string | null;
+  palavraChave: string | null;
+  palavraConvertida: string | null;
+  gclid: string | null;
+  googleAds: boolean;
+  sessoesGoogleAds: number;
+  convertido: boolean;
+  tipoConversao: string | null;
+  valorConversao: number | null;
+  conversaoEm: string;
+  landingPage: string | null;
+  referrer: string | null;
+};
+
+export type ClienteTrackingSessao = {
+  id: number;
+  sessionId: string;
+  primeiraVisita: string;
+  ultimaAtividade: string;
+  criadoEm: string;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmTerm: string | null;
+  utmContent: string | null;
+  gclid: string | null;
+  gbraid: string | null;
+  wbraid: string | null;
+  gadSource: string | null;
+  gadCampaignId: string | null;
+  fbclid: string | null;
+  msclkid: string | null;
+  landingPage: string | null;
+  referrer: string | null;
+  exitPage: string | null;
+  deviceType: string | null;
+  browser: string | null;
+  os: string | null;
+  geoCountry: string | null;
+  geoState: string | null;
+  geoCity: string | null;
+  ipAddress: string | null;
+  pagesViewed: number;
+  sessionDuration: number;
+  bounce: boolean;
+  scrollDepthMax: number;
+  converted: boolean;
+  conversionType: string | null;
+  conversionValue: number | null;
+  conversionAt: string;
+  funnelStep: string | null;
+  canal: string;
+  googleAds: boolean;
+};
+
+export async function fetchAdminClienteTracking(clienteId: number): Promise<{
+  ok: boolean;
+  resumo?: ClienteTrackingResumo | null;
+  sessoes?: ClienteTrackingSessao[];
+  message?: string;
+  error?: string;
+}> {
+  const res = await apiFetch(`/api/admin/clients/${clienteId}/tracking`);
+  return res.json() as Promise<{
+    ok: boolean;
+    resumo?: ClienteTrackingResumo | null;
+    sessoes?: ClienteTrackingSessao[];
+    message?: string;
+    error?: string;
+  }>;
+}
+
 export type AtualizacoesGratuitasUi = {
   usadas: number;
   limite: number;

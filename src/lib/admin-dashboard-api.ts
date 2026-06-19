@@ -20,9 +20,11 @@ export type AdminDashboardExecutive = {
   };
   novosClientes: {
     hoje: number;
+    ontem: number;
     mes: number;
     pagos: number;
     pendentes: number;
+    changeHoje: number;
   };
   sicaf: {
     atualizados: number;

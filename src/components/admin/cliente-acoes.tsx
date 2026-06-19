@@ -34,6 +34,7 @@ import {
   RefreshCw,
   StickyNote,
   Gift,
+  Target,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { readAuthToken } from "@/lib/auth-cookie";
@@ -49,6 +50,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AvisosEmailModal } from "@/components/admin/avisos-email-modal";
 import { ContratosModal } from "@/components/admin/contratos-modal";
+import { GoogleTrackingModal } from "@/components/admin/google-tracking-modal";
 import {
   fetchAdminClienteNotas,
   criarAdminClienteNota,
@@ -63,6 +65,7 @@ type AcaoKey =
   | "contratos"
   | "sicaf-manual"
   | "cota-gratuita"
+  | "google-tracking"
   | "relatorio"
   | "historico"
   | "notas";
@@ -114,6 +117,14 @@ const ACOES: {
     icon: Gift,
     tone: "bg-sky-50 dark:bg-sky-950/20 ring-sky-200/60 dark:ring-sky-900/40",
     iconBg: "bg-sky-500 text-white",
+  },
+  {
+    key: "google-tracking",
+    titulo: "Google Tracking",
+    desc: "Origem, campanha, palavra-chave convertida e histórico de sessões",
+    icon: Target,
+    tone: "bg-red-50 dark:bg-red-950/20 ring-red-200/60 dark:ring-red-900/40",
+    iconBg: "bg-gradient-to-br from-red-500 to-amber-500 text-white",
   },
   {
     key: "relatorio",
@@ -190,6 +201,12 @@ export function AcoesTab({ cliente, clienteId }: { cliente: ClienteDetalhe; clie
       <SicafManualModal open={aberta === "sicaf-manual"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} clienteId={clienteId} />
       <CotaGratuitaModal
         open={aberta === "cota-gratuita"}
+        onOpenChange={(v) => !v && setAberta(null)}
+        cliente={cliente}
+        clienteId={clienteId}
+      />
+      <GoogleTrackingModal
+        open={aberta === "google-tracking"}
         onOpenChange={(v) => !v && setAberta(null)}
         cliente={cliente}
         clienteId={clienteId}
