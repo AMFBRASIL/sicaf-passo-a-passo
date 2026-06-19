@@ -300,6 +300,7 @@ async function confirmarPagamento(taxaId, usuarioId, extra = {}) {
           formaPagamento: extra.formaPagamento || taxa.forma_pagamento,
           observacoes: extra.observacoes,
           usuarioId,
+          autorizacaoManual: Boolean(extra.autorizacaoManual),
         });
         if (emailNotificacao.enviado) {
           console.log(`[Taxa SICAF] E-mail processo iniciado enviado para cliente ${taxa.cliente_id}`);

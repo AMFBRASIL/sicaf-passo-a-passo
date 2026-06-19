@@ -1101,7 +1101,7 @@ function FinanceiroTab({
           ? "E-mail registrado (SMTP não configurado — modo simulação)"
           : `E-mail enviado para ${res.emailNotificacao.para || cliente.email || "o cliente"}`,
         {
-          description: "Cliente informado que o processo foi iniciado e pode enviar a documentação.",
+          description: "Cliente informado sobre o início do processo, instalação do Assistente e atualização do SICAF.",
         },
       );
     } else if (res.emailNotificacao && !res.emailNotificacao.enviado) {

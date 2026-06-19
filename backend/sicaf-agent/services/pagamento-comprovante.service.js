@@ -46,6 +46,7 @@ async function autorizarComComprovante({
   const confirm = await sicafTaxaService.confirmarPagamento(taxaId, autorizadoPor, {
     formaPagamento,
     observacoes,
+    autorizacaoManual: true,
   });
   if (!confirm.ok) return confirm;
 

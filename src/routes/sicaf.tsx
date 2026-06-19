@@ -41,7 +41,6 @@ import { PagamentosPendentesWizard } from "@/components/pagamentos-pendentes-wiz
 import { detectarFluxoPagamentoSicaf } from "@/lib/cliente-financeiro-api";
 import { CertificadoDigitalCard } from "@/components/certificado-digital-card";
 import {
-  calcSaudeDocumentalFromDocs,
   SaudeDocumentalCard,
 } from "@/components/saude-documental-card";
 import { fetchDocumentosChecklist, type DocChecklistItem } from "@/lib/documentos-api";
@@ -56,10 +55,13 @@ import {
 import { uploadDocumentoEmpresa } from "@/lib/documentos-api";
 import type { EmpresaGerenciarPainel } from "@/lib/empresas-api";
 import {
+  calcSaudeDocumentalSicaf,
   deriveEtapaAtual,
   loadSicafPageData,
   pagamentoSicafConfirmado,
   reloadSicafPainel,
+  sicafNiveisIIIEmOrdem,
+  todosNiveisValidados,
   type SicafPageCliente,
 } from "@/lib/sicaf-page-api";
 import { toast } from "sonner";
@@ -670,13 +672,13 @@ function SicafPage() {
   }, []);
 
   const saudeStats = useMemo(() => {
-    const base = calcSaudeDocumentalFromDocs(docsSaude);
+    const base = calcSaudeDocumentalSicaf(docsSaude, painel?.niveisDetail);
     return {
       ...base,
       ultimaVerificacao,
       labelMonitorado: `${base.total} documento${base.total === 1 ? "" : "s"} do SICAF monitorados`,
     };
-  }, [docsSaude, ultimaVerificacao]);
+  }, [docsSaude, ultimaVerificacao, painel?.niveisDetail]);
 
   const aplicarDados = useCallback(
     (
@@ -762,6 +764,10 @@ function SicafPage() {
   };
 
   const tudoConcluido = etapaAtual > total;
+  const niveisEssenciaisOk = sicafNiveisIIIEmOrdem(painel?.niveisDetail);
+  const sicafCompleto = todosNiveisValidados(painel?.niveisDetail);
+  const sicafEmOrdem =
+    niveisEssenciaisOk && cliente?.estado !== "vencido" && !renovando;
   const pagamentoConfirmado = pagamentoSicafConfirmado(painel);
   const sicafJaAtivo =
     painel?.sicaf?.status === "Ativo" || painel?.sicaf?.status === "Vencendo";
@@ -1049,6 +1055,46 @@ function SicafPage() {
             </div>
           </CardContent>
         </Card>
+      ) : sicafEmOrdem && !sicafCompleto ? (
+        <Card className="mt-6 border-success/40 bg-gradient-to-br from-success/10 via-success/5 to-transparent shadow-lift overflow-hidden">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-4 flex-wrap">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <div className="flex-1 min-w-[240px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-success px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success-foreground">
+                    SICAF em ordem
+                  </span>
+                  <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" />
+                    Níveis I, II e III cadastrados
+                  </span>
+                </div>
+                <p className="mt-2 font-semibold">Seu SICAF está em ordem.</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Os níveis essenciais já estão cadastrados. Acesse o Assistente para ver todos os níveis e manter tudo monitorado.
+                </p>
+              </div>
+              {pagamentoConfirmado ? (
+                <Button asChild size="lg" className="gap-2 shadow-lift uppercase tracking-wide">
+                  <Link to="/assistente" search={{ cnpj: cliente.cnpj }}>
+                    <Bot className="h-4 w-4" />
+                    Acessar meu SICAF
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button size="lg" className="gap-2 shadow-lift uppercase tracking-wide" onClick={bloquearAssistente}>
+                  <Bot className="h-4 w-4" />
+                  Acessar meu SICAF
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       ) : (
         <Card className="mt-6 border-success/40 bg-gradient-to-br from-success/10 via-success/5 to-transparent shadow-lift overflow-hidden">
           <CardContent className="p-5">
@@ -1076,17 +1122,17 @@ function SicafPage() {
                 </p>
               </div>
               {pagamentoConfirmado ? (
-                <Button asChild size="lg" className="gap-2 shadow-lift">
+                <Button asChild size="lg" className="gap-2 shadow-lift uppercase tracking-wide">
                   <Link to="/assistente" search={{ cnpj: cliente.cnpj }}>
                     <Bot className="h-4 w-4" />
-                    Atualizar meu SICAF agora
+                    Acessar meu SICAF
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               ) : (
-                <Button size="lg" className="gap-2 shadow-lift" onClick={bloquearAssistente}>
+                <Button size="lg" className="gap-2 shadow-lift uppercase tracking-wide" onClick={bloquearAssistente}>
                   <Bot className="h-4 w-4" />
-                  Atualizar meu SICAF agora
+                  Acessar meu SICAF
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               )}
@@ -1244,10 +1290,10 @@ function SicafPage() {
               <AlertTriangle className="h-4 w-4" />
               SICAF Vencido · Renovar
             </button>
-          ) : cliente.estado === "completo" ? (
+          ) : sicafEmOrdem || cliente.estado === "completo" ? (
             <div className="flex items-center gap-2 rounded-full bg-success px-4 py-2 text-sm font-medium text-success-foreground shadow-lift">
               <Send className="h-4 w-4" />
-              SICAF ativo
+              SICAF em ordem
             </div>
           ) : null}
         </div>

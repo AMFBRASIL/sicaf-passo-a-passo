@@ -13,6 +13,10 @@ import {
   needsSicafTaxaPaymentFromPainel,
   sicafTaxaLiberada,
 } from "@/lib/sicaf-access-rules";
+import {
+  calcSaudeDocumentalFromDocs,
+  type SaudeDocumentalStats,
+} from "@/components/saude-documental-card";
 
 export type EstadoSicaf = "novo" | "vencido" | "completo";
 
@@ -50,12 +54,49 @@ function formatCnpj(doc: string): string {
 
 const NIVEIS_SICAF_TOTAL = 6;
 
+const NUM_TO_ROMAN: Record<number, string> = {
+  1: "I",
+  2: "II",
+  3: "III",
+  4: "IV",
+  5: "V",
+  6: "VI",
+};
+
+function getNivelDetail(
+  niveisDetail: EmpresaGerenciarPainel["niveisDetail"],
+  n: number,
+) {
+  if (!niveisDetail) return undefined;
+  const roman = NUM_TO_ROMAN[n];
+  return niveisDetail[roman] ?? niveisDetail[String(n)];
+}
+
 function nivelValidado(
   niveisDetail: EmpresaGerenciarPainel["niveisDetail"],
   n: number,
 ): boolean {
-  const item = niveisDetail?.[String(n)] || niveisDetail?.[n as unknown as string];
-  return item?.status === "validado";
+  return getNivelDetail(niveisDetail, n)?.status === "validado";
+}
+
+function nivelCadastrado(
+  niveisDetail: EmpresaGerenciarPainel["niveisDetail"],
+  n: number,
+): boolean {
+  const status = getNivelDetail(niveisDetail, n)?.status;
+  return !!status && status !== "nao_cadastrado";
+}
+
+/** Níveis I, II e III cadastrados no Compras.gov.br (habilitados com situação informada). */
+export function sicafNiveisIIIEmOrdem(
+  niveisDetail: EmpresaGerenciarPainel["niveisDetail"] | null | undefined,
+): boolean {
+  if (!niveisDetail) return false;
+  return (
+    nivelCadastrado(niveisDetail, 1) &&
+    nivelCadastrado(niveisDetail, 2) &&
+    nivelCadastrado(niveisDetail, 3)
+  );
 }
 
 function countNiveisValidados(niveisDetail: EmpresaGerenciarPainel["niveisDetail"]): number {
@@ -66,8 +107,35 @@ function countNiveisValidados(niveisDetail: EmpresaGerenciarPainel["niveisDetail
   return count;
 }
 
-function todosNiveisValidados(niveisDetail: EmpresaGerenciarPainel["niveisDetail"]): boolean {
+export function todosNiveisValidados(niveisDetail: EmpresaGerenciarPainel["niveisDetail"]): boolean {
   return countNiveisValidados(niveisDetail) >= NIVEIS_SICAF_TOTAL;
+}
+
+/** Pelo menos um nível SICAF (I–VI) habilitado no cadastro do cliente. */
+export function temAlgumNivelSicafHabilitado(
+  niveisDetail: EmpresaGerenciarPainel["niveisDetail"] | null | undefined,
+): boolean {
+  if (!niveisDetail) return false;
+  for (let n = 1; n <= NIVEIS_SICAF_TOTAL; n++) {
+    if (nivelCadastrado(niveisDetail, n)) return true;
+  }
+  return false;
+}
+
+/**
+ * Saúde documental na página /sicaf:
+ * - Nenhum nível habilitado → % real pelos documentos inseridos (válidos / total).
+ * - Com qualquer nível I–VI habilitado → exibe 50% (apenas visual; contadores vêm dos documentos).
+ */
+export function calcSaudeDocumentalSicaf(
+  docs: { status: string }[],
+  niveisDetail?: EmpresaGerenciarPainel["niveisDetail"] | null,
+): SaudeDocumentalStats {
+  const fromDocs = calcSaudeDocumentalFromDocs(docs);
+  if (!temAlgumNivelSicafHabilitado(niveisDetail)) {
+    return fromDocs;
+  }
+  return { ...fromDocs, score: 50 };
 }
 
 /** Estado exibido nos banners — não confundir com status "Ativo" só pela data de validade. */
@@ -105,6 +173,11 @@ export function deriveEtapaAtual(
     return total + 1;
   }
 
+  // Níveis I–III cadastrados: processo essencial concluído — acompanhar no Assistente
+  if (!renovando && sicafNiveisIIIEmOrdem(painel.niveisDetail)) {
+    return total + 1;
+  }
+
   // Fluxo passo a passo — certificado digital é opcional (Assistente / configurações)
   if (needsSicafTaxaPaymentFromPainel(painel)) return 1;
   if (!hasRequiredDocumentos(painel)) return 2;
@@ -119,10 +192,11 @@ export function deriveEtapaAtual(
 function mapPainelToCliente(painel: EmpresaGerenciarPainel): SicafPageCliente {
   const c = painel.cliente;
   const estado = mapSicafEstado(painel);
+  const ROMAN_TO_NUM: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
   const niveis = Object.entries(painel.niveisDetail || {})
     .filter(([, v]) => v.status === "validado")
-    .map(([k]) => Number(k))
-    .filter((n) => Number.isFinite(n));
+    .map(([k]) => ROMAN_TO_NUM[k] ?? Number(k))
+    .filter((n) => Number.isFinite(n) && n >= 1 && n <= 6);
 
   return {
     clienteId: c.id,
