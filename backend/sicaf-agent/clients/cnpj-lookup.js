@@ -2,11 +2,93 @@
  * Consulta CNPJ e cliente por documento — banco legado (cadbrasilsys).
  */
 const { getDb } = require("../database/connection");
+const { consultCnpjWs } = require("./cnpj-ws");
 const {
   resolveSicafDisplayStatus,
   isSicafDisplayValid,
   calcDaysRemaining,
 } = require("../utils/sicaf-status");
+
+const URL_CADASTRO_CADBRASIL =
+  process.env.CADASTRO_PORTAL_URL || "https://cadastro.cadbrasil.com.br";
+
+async function buildRespostaCnpjNaoCadastrado(cnpjDigits) {
+  const receita = await consultCnpjWs(cnpjDigits);
+
+  const base = {
+    ok: true,
+    cnpj: cnpjDigits,
+    possuiCadastro: false,
+    cadastroConcluido: false,
+    cadastroValido: false,
+    sicafValido: false,
+    possuiRenovacao: false,
+    possuiManutencao: false,
+    razaoSocial: null,
+    cliente: null,
+    sicaf: null,
+    renovacao: null,
+    manutencao: null,
+    urlCadastro: URL_CADASTRO_CADBRASIL,
+    podeConcluirCadastro: true,
+  };
+
+  if (receita.success && receita.data) {
+    const d = receita.data;
+    const razao = d.razaoSocial || null;
+    const situacao = d.situacao || null;
+
+    return {
+      ...base,
+      razaoSocial: razao,
+      encontradoNaReceitaFederal: true,
+      situacaoReceitaFederal: situacao,
+      receitaFederal: {
+        cnpj: d.cnpj || cnpjDigits,
+        razaoSocial: razao,
+        nomeFantasia: d.nomeFantasia || null,
+        situacaoCadastral: situacao,
+        atividadePrincipal: d.atividadePrincipal || null,
+        email: d.email || null,
+        telefone: d.telefone || null,
+        logradouro: d.logradouro || null,
+        numero: d.numero || null,
+        complemento: d.complemento || null,
+        bairro: d.bairro || null,
+        cidade: d.cidade || null,
+        estado: d.estado || null,
+        cep: d.cep || null,
+        porte: d.porte || null,
+        naturezaJuridica: d.naturezaJuridica || null,
+      },
+      message:
+        "CNPJ localizado na Receita Federal, porém o cadastro na CADBRASIL ainda não foi concluído.",
+      orientacaoUsuario: `Para concluir o cadastro e dar sequência ao processo, acesse: ${URL_CADASTRO_CADBRASIL}`,
+      orientacaoIA: [
+        `O CNPJ ${cnpjDigits} corresponde a ${razao || "empresa identificada na Receita Federal"}`,
+        situacao ? `(situação cadastral: ${situacao})` : "",
+        "mas NÃO possui cadastro concluído na plataforma CADBRASIL.",
+        `Informe ao cliente que ele pode finalizar o cadastro em ${URL_CADASTRO_CADBRASIL} para continuar o processo SICAF.`,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    };
+  }
+
+  return {
+    ...base,
+    encontradoNaReceitaFederal: false,
+    receitaFederal: null,
+    message: "CNPJ não encontrado na base de clientes CADBRASIL.",
+    orientacaoUsuario: `Caso a empresa ainda não tenha se cadastrado, acesse ${URL_CADASTRO_CADBRASIL} para concluir o cadastro.`,
+    orientacaoIA: [
+      `O CNPJ ${cnpjDigits} não foi encontrado na base CADBRASIL.`,
+      receita.error ? `Consulta à Receita Federal: ${receita.error}.` : "Não foi possível confirmar os dados na Receita Federal.",
+      `Oriente o cliente a verificar o número informado ou concluir o cadastro em ${URL_CADASTRO_CADBRASIL}.`,
+    ].join(" "),
+    erroReceitaFederal: receita.error || null,
+  };
+}
 
 async function consultClientByCnpj(cnpj) {
   const db = getDb();
@@ -37,21 +119,7 @@ async function consultClientByCnpj(cnpj) {
       .first();
 
     if (!row) {
-      return {
-        ok: true,
-        cnpj: cnpjDigits,
-        possuiCadastro: false,
-        cadastroValido: false,
-        sicafValido: false,
-        possuiRenovacao: false,
-        possuiManutencao: false,
-        razaoSocial: null,
-        cliente: null,
-        sicaf: null,
-        renovacao: null,
-        manutencao: null,
-        message: "CNPJ não encontrado na base de clientes.",
-      };
+      return buildRespostaCnpjNaoCadastrado(cnpjDigits);
     }
 
     let ultimaRenovacao = null;
@@ -92,6 +160,7 @@ async function consultClientByCnpj(cnpj) {
       ok: true,
       cnpj: cnpjDigits,
       possuiCadastro: true,
+      cadastroConcluido: true,
       cadastroValido,
       sicafValido,
       possuiRenovacao,
