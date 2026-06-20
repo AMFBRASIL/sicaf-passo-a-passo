@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +26,6 @@ import type { EmpresaData } from "@/lib/empresas-shared";
 import { cn } from "@/lib/utils";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import {
-  ArrowRight,
   Building2,
   CheckCircle2,
   ChevronRight,
@@ -39,8 +37,6 @@ import {
   Sparkles,
   Trophy,
 } from "lucide-react";
-
-const SESSION_KEY = "cadbrasil-processo-modal-visto";
 
 const ETAPA_VISUAL: Record<
   ProcessoEtapa["id"],
@@ -191,20 +187,6 @@ export function ProcessoClienteModal({
 
   if (!empresa || !processo) return null;
 
-  const cnpjDigits = empresa.cnpj.replace(/\D/g, "");
-  const ctaTo = processo.processoConcluido
-    ? "/sicaf"
-    : processo.proximaEtapa?.id === "ativacao" || empresa.taxaPendente
-      ? "/empresas"
-      : "/sicaf";
-  const ctaSearch = ctaTo === "/sicaf" ? { cnpj: cnpjDigits } : undefined;
-
-  const ctaLabel = processo.processoConcluido
-    ? "Ver meu SICAF"
-    : processo.proximoEtapa?.id === "ativacao"
-      ? "Ativar SICAF"
-      : "Continuar no SICAF";
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -243,7 +225,10 @@ export function ProcessoClienteModal({
               </div>
 
               {empresas.length > 1 && (
-                <div className="w-full sm:w-64">
+                <div className="w-full sm:w-72">
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-white/90">
+                    Trocar de empresa
+                  </p>
                   <Select value={cnpjSelecionado} onValueChange={setCnpjSelecionado}>
                     <SelectTrigger className="border-white/20 bg-white/10 text-white backdrop-blur-sm">
                       <SelectValue placeholder="Selecione a empresa" />
@@ -345,18 +330,8 @@ export function ProcessoClienteModal({
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Fechar
-            </Button>
-            <Button asChild className="gap-2">
-              <Link
-                to={ctaTo}
-                search={ctaSearch}
-                onClick={() => onOpenChange(false)}
-              >
-                {ctaLabel}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
+            <Button onClick={() => onOpenChange(false)}>
+              Continuar processo
             </Button>
           </div>
         </div>
@@ -365,20 +340,14 @@ export function ProcessoClienteModal({
   );
 }
 
-/** Abre o modal uma vez por sessão ao entrar na home (se houver empresas). */
+/** Abre o modal ao entrar na home (se houver empresas). */
 export function useProcessoModalAutoOpen(empresas: EmpresaData[], loading: boolean) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (loading || empresas.length === 0) return;
-    try {
-      if (sessionStorage.getItem(SESSION_KEY) === "1") return;
-      sessionStorage.setItem(SESSION_KEY, "1");
-      const t = window.setTimeout(() => setOpen(true), 600);
-      return () => window.clearTimeout(t);
-    } catch {
-      setOpen(true);
-    }
+    const t = window.setTimeout(() => setOpen(true), 300);
+    return () => window.clearTimeout(t);
   }, [loading, empresas.length]);
 
   return { open, setOpen };

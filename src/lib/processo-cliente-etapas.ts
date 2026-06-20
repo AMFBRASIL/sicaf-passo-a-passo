@@ -26,6 +26,25 @@ function nivelStatus(empresa: EmpresaData, num: number): NivelStatus {
   return empresa.detalhesNiveis?.[num]?.status ?? "nao_cadastrado";
 }
 
+/** Empresa com Nível III (ou superior) habilitado no Compras.gov.br. */
+function atingiuPeloMenosNivelIII(empresa: EmpresaData): boolean {
+  if (nivelStatus(empresa, 3) !== "nao_cadastrado") return true;
+  return (empresa.niveis ?? []).some((n) => n >= 3);
+}
+
+function forcarEtapasConcluidas(etapas: ProcessoEtapa[]): ProcessoEtapa[] {
+  return etapas.map((etapa) => ({
+    ...etapa,
+    estado: "concluida" as const,
+    detalhe:
+      etapa.id === "licitacoes_federais"
+        ? "Nível III habilitado no Compras.gov.br — processo essencial concluído para licitações federais."
+        : etapa.id === "juridica"
+          ? "Habilitação jurídica concluída (Nível II)."
+          : "Ativação SICAF concluída na CADBRASIL.",
+  }));
+}
+
 function etapaFromNivel(status: NivelStatus): Pick<ProcessoEtapa, "estado" | "detalhe"> {
   if (status === "validado") {
     return { estado: "concluida", detalhe: "Nível validado na Situação do Fornecedor." };
@@ -118,7 +137,14 @@ function etapaLicitacoesFederais(empresa: EmpresaData): ProcessoEtapa {
 
 /** Três marcos do processo do cliente na CADBRASIL. */
 export function buildProcessoClienteEtapas(empresa: EmpresaData): ProcessoClienteResumo {
-  const etapas = [etapaAtivacao(empresa), etapaJuridica(empresa), etapaLicitacoesFederais(empresa)];
+  const etapasBrutas = [
+    etapaAtivacao(empresa),
+    etapaJuridica(empresa),
+    etapaLicitacoesFederais(empresa),
+  ];
+  const etapas = atingiuPeloMenosNivelIII(empresa)
+    ? forcarEtapasConcluidas(etapasBrutas)
+    : etapasBrutas;
   const concluidas = etapas.filter((e) => e.estado === "concluida").length;
   const total = etapas.length;
   const proximaEtapa = etapas.find((e) => e.estado !== "concluida") ?? null;
