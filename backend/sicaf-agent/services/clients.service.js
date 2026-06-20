@@ -1718,6 +1718,255 @@ async function consultPendingBoletosByCnpj(cnpj) {
   }
 }
 
+function isBoletoSicafReutilizavel(pg, taxa) {
+  if (!pg) return false;
+  if (String(pg.tipo || '').toLowerCase() !== 'boleto') return false;
+  if (isPaidFinanceStatus(pg.status) || isPaidFinanceStatus(taxa?.status)) return false;
+  const pdf = pg.gn_pdf || null;
+  if (!pdf) return false;
+  if (isOverdueFinance(pg.status, pg.data_vencimento)) return false;
+  return true;
+}
+
+async function resolvePendenciaPagamentoSicaf(db, clienteId) {
+  const anoAtual = new Date().getFullYear();
+  let taxas = [];
+  try {
+    taxas = await db('taxas_sicaf')
+      .where('cliente_id', clienteId)
+      .orderBy('ano_referencia', 'desc')
+      .orderBy('created_at', 'desc');
+  } catch (_) {}
+
+  const cancelados = new Set(['cancelado', 'cancelada', 'removido', 'estornado']);
+  const pendentes = taxas.filter((t) => {
+    const s = normPayStatus(t.status);
+    return isPendingFinanceStatus(t.status) && !cancelados.has(s);
+  });
+
+  if (pendentes.length) {
+    return { pendente: true, taxasPendentes: pendentes, anoReferencia: pendentes[0].ano_referencia || anoAtual };
+  }
+
+  const pagoAnoAtual = taxas.some(
+    (t) => Number(t.ano_referencia) === anoAtual && isPaidFinanceStatus(t.status),
+  );
+  if (pagoAnoAtual) {
+    return { pendente: false, taxasPendentes: [], anoReferencia: anoAtual };
+  }
+
+  let sicaf = null;
+  try {
+    sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
+  } catch (_) {}
+
+  if (!sicaf) {
+    return { pendente: true, taxasPendentes: [], anoReferencia: anoAtual, motivo: 'sem_sicaf' };
+  }
+
+  const sicafStatus = normPayStatus(sicaf.status);
+  if (sicafStatus === 'pendente' || !pagoAnoAtual) {
+    return { pendente: true, taxasPendentes: [], anoReferencia: anoAtual, motivo: 'taxa_nao_paga' };
+  }
+
+  return { pendente: false, taxasPendentes: [], anoReferencia: anoAtual };
+}
+
+function pickBoletoSicafValido(pagamentos, taxasPendentes) {
+  const taxaIds = new Set(taxasPendentes.map((t) => t.id));
+  const taxaById = Object.fromEntries(taxasPendentes.map((t) => [t.id, t]));
+
+  const candidatos = pagamentos
+    .filter((p) => p.origem === 'sicaf' && taxaIds.has(p.origem_id))
+    .sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+
+  for (const pg of candidatos) {
+    const taxa = taxaById[pg.origem_id];
+    if (isBoletoSicafReutilizavel(pg, taxa)) {
+      return { pagamento: pg, taxa };
+    }
+  }
+  return null;
+}
+
+function mapBoletoSicafResposta({
+  cliente,
+  cnpjDigits,
+  taxa,
+  pagamento,
+  valor,
+  reutilizado,
+  geradoAgora,
+  pendentePagamento,
+  message,
+}) {
+  const pg = pagamento || {};
+  const valorNum = valor != null ? Number(valor) : pg.valor != null ? Number(pg.valor) : null;
+  return {
+    ok: true,
+    possuiCadastro: true,
+    clienteId: cliente.id,
+    cnpj: cnpjDigits,
+    razaoSocial: cliente.razao_social || cliente.nome_fantasia || null,
+    pendentePagamento: pendentePagamento !== false,
+    valor: valorNum,
+    valorFormatado:
+      valorNum != null
+        ? valorNum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        : null,
+    linkPdf: pg.gn_pdf || pg.link_pdf || null,
+    linkBoleto: pg.gn_link || pg.link_boleto || null,
+    codigoBarras: pg.gn_barcode || pg.barcode || null,
+    protocolo: pg.protocolo || null,
+    dataVencimento: pg.data_vencimento || null,
+    taxaId: taxa?.id || pg.origem_id || null,
+    pagamentoId: pg.id || null,
+    boletoReutilizado: !!reutilizado,
+    geradoAgora: !!geradoAgora,
+    message: message || null,
+  };
+}
+
+/**
+ * Por CNPJ: valida cadastro, confirma pendência de pagamento SICAF e retorna link PDF do boleto.
+ * Reutiliza boleto vigente (não vencido) ou gera novo de R$ 985,00 (valor configurado no plano).
+ */
+async function gerarOuObterBoletoSicafByCnpj(cnpj) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const cnpjDigits = String(cnpj || '').replace(/\D/g, '');
+  if (cnpjDigits.length !== 14) {
+    return { ok: false, error: 'CNPJ inválido. Informe 14 dígitos.' };
+  }
+
+  try {
+    const cliente = await db('clientes as c')
+      .whereRaw("REPLACE(REPLACE(REPLACE(c.documento, '.', ''), '/', ''), '-', '') = ?", [cnpjDigits])
+      .select('c.id', 'c.documento', 'c.razao_social', 'c.nome_fantasia', 'c.email')
+      .orderBy('c.id', 'desc')
+      .first();
+
+    if (!cliente) {
+      return {
+        ok: false,
+        possuiCadastro: false,
+        cnpj: cnpjDigits,
+        error: 'Cliente não encontrado para este CNPJ.',
+      };
+    }
+
+    const pendencia = await resolvePendenciaPagamentoSicaf(db, cliente.id);
+    if (!pendencia.pendente) {
+      return {
+        ok: true,
+        possuiCadastro: true,
+        clienteId: cliente.id,
+        cnpj: cnpjDigits,
+        razaoSocial: cliente.razao_social || cliente.nome_fantasia || null,
+        pendentePagamento: false,
+        linkPdf: null,
+        linkBoleto: null,
+        message: 'Cliente sem pendência de pagamento da taxa SICAF.',
+      };
+    }
+
+    const valorTaxa = await require('./planos.service').resolveValorTaxaSicaf(null);
+    const allPagamentos = await loadAllPagamentosList(db, cliente.id);
+    const reutilizavel = pickBoletoSicafValido(allPagamentos, pendencia.taxasPendentes);
+
+    if (reutilizavel) {
+      const { pagamento, taxa } = reutilizavel;
+      return mapBoletoSicafResposta({
+        cliente,
+        cnpjDigits,
+        taxa,
+        pagamento,
+        valor: taxa?.valor ?? valorTaxa,
+        reutilizado: true,
+        geradoAgora: false,
+        message: 'Boleto vigente localizado. Link PDF retornado.',
+      });
+    }
+
+    const sicafTaxaService = require('./sicaf-taxa.service');
+    const geracao = await sicafTaxaService.gerarTaxa({
+      clienteId: cliente.id,
+      ano: pendencia.anoReferencia || new Date().getFullYear(),
+      formaPagamento: 'boleto',
+    });
+
+    if (!geracao.ok) {
+      return {
+        ok: false,
+        possuiCadastro: true,
+        clienteId: cliente.id,
+        cnpj: cnpjDigits,
+        error: geracao.error || 'Erro ao gerar boleto SICAF',
+        taxaId: geracao.taxaId || null,
+      };
+    }
+
+    const pagamentoGerado = geracao.dados?.pagamento || {};
+    const taxaId = geracao.dados?.taxaId || null;
+    let pagamentoDb = null;
+    if (pagamentoGerado.pagamentoId) {
+      pagamentoDb = allPagamentos.find((p) => p.id === pagamentoGerado.pagamentoId) || null;
+    }
+    if (!pagamentoDb && pagamentoGerado.pagamentoId) {
+      try {
+        pagamentoDb = await db('pagamentos').where('id', pagamentoGerado.pagamentoId).first();
+        if (pagamentoDb) pagamentoDb = normalizePagamentoFinanceiroFull(pagamentoDb);
+      } catch (_) {}
+    }
+
+    const pagamento = pagamentoDb || {
+      id: pagamentoGerado.pagamentoId || null,
+      origem_id: taxaId,
+      gn_pdf: pagamentoGerado.pdf || null,
+      gn_link: pagamentoGerado.link || null,
+      gn_barcode: pagamentoGerado.barcode || null,
+      protocolo: pagamentoGerado.protocolo || null,
+      data_vencimento: pagamentoGerado.vencimento || null,
+      valor: pagamentoGerado.valor ?? valorTaxa,
+    };
+
+    const taxa = taxaId
+      ? pendencia.taxasPendentes.find((t) => t.id === taxaId) || { id: taxaId, valor: geracao.dados?.valor }
+      : null;
+
+    if (!pagamento.gn_pdf) {
+      return {
+        ok: false,
+        possuiCadastro: true,
+        clienteId: cliente.id,
+        cnpj: cnpjDigits,
+        error: 'Boleto gerado, mas o link PDF não foi retornado pelo provedor de pagamento.',
+        taxaId,
+        pagamentoId: pagamento.id,
+      };
+    }
+
+    return mapBoletoSicafResposta({
+      cliente,
+      cnpjDigits,
+      taxa,
+      pagamento,
+      valor: geracao.dados?.valor ?? valorTaxa,
+      reutilizado: false,
+      geradoAgora: true,
+      message: geracao.message || 'Novo boleto SICAF gerado com sucesso.',
+    });
+  } catch (e) {
+    console.error('[Clients] Erro gerarOuObterBoletoSicafByCnpj:', e.message);
+    return { ok: false, error: 'Erro interno no servidor' };
+  }
+}
+
 const PORTES_VALIDOS = ['MEI', 'ME', 'EPP', 'Média', 'Grande'];
 const STATUS_VALIDOS = ['Ativo', 'Pendente', 'Inativo'];
 
@@ -2345,6 +2594,7 @@ module.exports = {
   updateClient,
   consultClientByCnpj,
   consultPendingBoletosByCnpj,
+  gerarOuObterBoletoSicafByCnpj,
   invalidateCitiesCache,
   ensureSicafTipoCertidoes,
 };
