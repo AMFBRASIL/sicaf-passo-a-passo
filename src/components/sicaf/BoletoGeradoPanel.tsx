@@ -71,7 +71,76 @@ export function BoletoGeradoPanel({
   };
 
   return (
-    <div className={compact ? "space-y-4" : "space-y-5"}>
+    <div className={compact ? "space-y-3" : "space-y-5"}>
+      {compact ? (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+              <span className="font-semibold">Boleto gerado</span>
+              <span className="text-muted-foreground">
+                {formatValor(boletoData.valor)} · vence {formatDate(boletoData.vencimento)}
+              </span>
+            </div>
+            {boletoData.protocolo && (
+              <span className="text-xs font-mono text-muted-foreground">{boletoData.protocolo}</span>
+            )}
+          </div>
+
+          <div className="rounded-xl border-2 border-primary bg-primary/5 p-3 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+              Pague agora — link do boleto
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <Button type="button" size="lg" className="gap-2 h-11 font-semibold" onClick={openPdf} disabled={!pdfUrl}>
+                <ExternalLink className="h-4 w-4" />
+                Abrir boleto (PDF)
+              </Button>
+              <Button type="button" size="lg" variant="outline" className="gap-2 h-11" onClick={downloadPdf} disabled={!pdfUrl}>
+                <Download className="h-4 w-4" />
+                Baixar PDF
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                variant="secondary"
+                className="gap-2 h-11"
+                onClick={() => copyText(linkUrl, "Link do boleto")}
+                disabled={!linkUrl}
+              >
+                <Copy className="h-4 w-4" />
+                Copiar link
+              </Button>
+            </div>
+            {linkUrl && (
+              <p className="text-[11px] text-muted-foreground truncate" title={linkUrl}>
+                {linkUrl}
+              </p>
+            )}
+          </div>
+
+          {barcode && (
+            <div className="rounded-lg border bg-muted/20 p-3 space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                <Barcode className="h-3 w-3" /> Linha digitável
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-[11px] font-mono leading-snug break-all line-clamp-2">{barcode}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 h-8 gap-1 text-xs"
+                  onClick={() => copyText(barcode.replace(/[.\s]/g, ""), "Código de barras")}
+                >
+                  <Copy className="h-3 w-3" /> Copiar
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
       <div className="flex items-center gap-3 bg-success/10 border border-success/30 rounded-xl p-4">
         <CheckCircle2 className="h-6 w-6 text-success shrink-0" />
         <div>
@@ -160,8 +229,10 @@ export function BoletoGeradoPanel({
           </Button>
         </div>
       </div>
+        </>
+      )}
 
-      {documento && (
+      {documento && !compact && (
         <p className="text-xs text-muted-foreground text-center font-mono">{documento}</p>
       )}
     </div>

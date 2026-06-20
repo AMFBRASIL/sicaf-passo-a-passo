@@ -2254,7 +2254,7 @@ export function NovaEmpresaWizard({
           </div>
 
           <ScrollArea className="flex-1">
-            <div className="px-8 py-8 max-w-3xl mx-auto w-full">
+            <div className={`px-8 max-w-3xl mx-auto w-full ${step === 6 ? "py-4" : "py-8"}`}>
               {step === 1 && (
                 <div className="space-y-6">
                   <div>
@@ -2453,33 +2453,32 @@ export function NovaEmpresaWizard({
               )}
 
               {step === 6 && (
-                <div className="space-y-6 py-4">
-                  <div className="text-center space-y-3">
-                    <div className="h-20 w-20 rounded-full bg-success/15 text-success flex items-center justify-center mx-auto">
-                      <CheckCircle2 className="h-10 w-10" />
-                    </div>
-                    <div>
-                      <h4 className="text-2xl font-bold">Empresa cadastrada!</h4>
-                      <p className="text-muted-foreground mt-2 max-w-md mx-auto">
-                        <strong>{form.razaoSocial}</strong> foi salva no sistema.
-                        {pagamentoGerado
-                          ? " Conclua o pagamento abaixo para iniciar o cadastro SICAF."
-                          : " Gere o pagamento em Minhas Empresas se ainda não aparecer aqui."}
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3 rounded-xl border border-success/40 bg-success/5 p-4">
+                    <CheckCircle2 className="h-9 w-9 text-success shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-lg font-bold leading-tight">Empresa cadastrada!</h4>
+                      <p className="text-sm font-medium mt-1 truncate" title={form.razaoSocial}>
+                        {form.razaoSocial}
                       </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        CNPJ {form.cnpj}
+                        {" · "}
+                        Plano {form.plano === "emergencial" ? "Emergencial" : "Padrão"}
+                        {" · "}
+                        {form.pagamento.toUpperCase()}
+                      </p>
+                      {!pagamentoGerado && (
+                        <p className="text-xs text-warning-foreground mt-2">
+                          Gere o pagamento em Minhas Empresas se o boleto não aparecer abaixo.
+                        </p>
+                      )}
                     </div>
-                  </div>
-
-                  <div className="rounded-xl border bg-muted/30 p-5 max-w-md mx-auto text-left grid gap-2 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">CNPJ</span><span className="font-medium">{form.cnpj}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Plano</span><span className="font-medium">{form.plano === "emergencial" ? "Emergencial" : "Padrão"}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Pagamento</span><span className="font-medium uppercase">{form.pagamento}</span></div>
-                    {clienteId != null && (
-                      <div className="flex justify-between"><span className="text-muted-foreground">ID</span><span className="font-mono text-xs">{clienteId}</span></div>
-                    )}
                   </div>
 
                   {pagamentoGerado && form.pagamento === "boleto" && pagamentoGerado.barcode && (
                     <BoletoGeradoPanel
+                      compact
                       boletoData={{
                         barcode: pagamentoGerado.barcode || "",
                         link: pagamentoGerado.link || "",
@@ -2494,8 +2493,9 @@ export function NovaEmpresaWizard({
                   )}
 
                   {pagamentoGerado && form.pagamento === "pix" && (
-                    <div className="text-center">
-                      <Button type="button" onClick={() => setPixModalOpen(true)} className="gap-2">
+                    <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-4 text-center space-y-3">
+                      <p className="text-sm font-semibold">PIX gerado — pague para liberar o SICAF</p>
+                      <Button type="button" size="lg" onClick={() => setPixModalOpen(true)} className="gap-2 w-full sm:w-auto">
                         <QrCode className="h-4 w-4" />
                         Abrir QR Code PIX
                       </Button>
