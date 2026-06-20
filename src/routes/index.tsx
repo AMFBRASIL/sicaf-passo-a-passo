@@ -24,6 +24,11 @@ import {
   buildTarefas,
   firstName,
 } from "@/lib/home-portfolio";
+import {
+  ProcessoClienteModal,
+  useProcessoModalAutoOpen,
+} from "@/components/processo-cliente-modal";
+import { buildProcessoClienteEtapas } from "@/lib/processo-cliente-etapas";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -43,6 +48,7 @@ import {
   ShieldCheck,
   Trophy,
   Loader2,
+  Map,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -108,6 +114,18 @@ function HomePage() {
   const totalAlertas = empresas.reduce((s, e) => s + e.alertas, 0);
   const ranking = [...empresas].sort((a, b) => b.score - a.score);
   const empresaPrioridade = [...empresas].sort((a, b) => a.score - b.score)[0];
+  const empresaPrioridadeRaw = empresaPrioridade
+    ? empresasRaw.find((e) => e.cnpj.replace(/\D/g, "") === empresaPrioridade.cnpj.replace(/\D/g, ""))
+    : empresasRaw[0];
+  const processoPrioridade = empresaPrioridadeRaw
+    ? buildProcessoClienteEtapas(empresaPrioridadeRaw)
+    : null;
+  const { open: processoModalOpen, setOpen: setProcessoModalOpen } = useProcessoModalAutoOpen(
+    empresasRaw,
+    loading,
+  );
+  const [processoModalManual, setProcessoModalManual] = useState(false);
+  const processoModalVisivel = processoModalOpen || processoModalManual;
   const nomeUsuario = firstName(user?.nome);
 
   if (loading) {
@@ -121,6 +139,18 @@ function HomePage() {
 
   return (
     <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 sm:py-10">
+      {empresasRaw.length > 0 && (
+        <ProcessoClienteModal
+          open={processoModalVisivel}
+          onOpenChange={(v) => {
+            setProcessoModalOpen(v);
+            setProcessoModalManual(v);
+          }}
+          empresas={empresasRaw}
+          empresaInicial={empresaPrioridadeRaw}
+        />
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-6">
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -147,6 +177,55 @@ function HomePage() {
               </Link>
             </Button>
           </div>
+
+          {empresasRaw.length > 0 && processoPrioridade && (
+            <Card
+              className="cursor-pointer overflow-hidden border-primary/25 shadow-soft transition hover:border-primary/40 hover:shadow-lift"
+              onClick={() => setProcessoModalManual(true)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setProcessoModalManual(true);
+                }
+              }}
+            >
+              <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md">
+                    <Map className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                      Jornada do processo
+                    </p>
+                    <h2 className="mt-1 text-lg font-bold tracking-tight">
+                      {processoPrioridade.processoConcluido
+                        ? "Seu processo está completo"
+                        : `${processoPrioridade.concluidas} de ${processoPrioridade.total} etapas concluídas`}
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Ativação SICAF, Habilitação Jurídica e Licitações Federais — veja o status de cada etapa.
+                    </p>
+                    <div className="mt-3 max-w-md">
+                      <Progress value={processoPrioridade.percentual} className="h-2" />
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  className="shrink-0 gap-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setProcessoModalManual(true);
+                  }}
+                >
+                  Ver etapas
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
             <KpiCard
