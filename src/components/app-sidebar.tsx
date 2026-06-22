@@ -17,6 +17,7 @@ import {
   Sparkles,
   Gauge,
   LogOut,
+  Users,
 } from "lucide-react";
 import {
   Sidebar,
@@ -36,6 +37,7 @@ const items = [
   { title: "Minhas Empresas", url: "/empresas", icon: Building2 },
   { title: "Prontidão", url: "/prontidao", icon: Gauge },
   { title: "Licitações", url: "/licitacoes", icon: Gavel },
+  { title: "Concorrência", url: "/concorrencia", icon: Users },
   { title: "Serviços com IA", url: "/servicos-ia", icon: Sparkles },
   { title: "Meus Serviços", url: "/servicos", icon: FileSignature },
   { title: "Suporte", url: "/suporte", icon: Headphones },
