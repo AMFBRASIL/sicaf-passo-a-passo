@@ -514,6 +514,7 @@ export function mergeDetalheFromApi(
       sicafStatus: api.sicaf?.status,
       niveisDetail: api.niveisDetail,
     }),
+    niveisDetail: api.niveisDetail,
   };
 }
 

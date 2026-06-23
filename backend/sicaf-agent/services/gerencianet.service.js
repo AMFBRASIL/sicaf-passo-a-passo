@@ -52,12 +52,32 @@ function extrairMensagemErro(err) {
       : (desc.property || JSON.stringify(desc));
   }
 
+  const errCode = err.code != null ? String(err.code) : '';
+
   // Mensagens amigáveis para erros conhecidos
   if (code === 'Unauthorized' || code === 'unauthorized' || httpStatus === 401) {
     return 'Unauthorized: Credenciais Gerencianet/Efí rejeitadas. Verifique CLIENT_ID, CLIENT_SECRET e o certificado .p12 no .env. Para boletos, confirme que a conta tem a emissão de boletos habilitada.';
   }
   if (code === 'Forbidden' || httpStatus === 403) {
     return 'Forbidden: Sua conta Gerencianet/Efí não tem permissão para esta operação. Verifique se o produto (Boleto/PIX) está habilitado na sua conta.';
+  }
+  if (
+    code === 'server_error'
+    || errCode === '3500000'
+    || errCode === '4699999'
+    || (httpStatus === 500 && String(desc || '').toLowerCase().includes('interno'))
+  ) {
+    return (
+      'Não foi possível emitir o boleto na Efí Pay (erro interno do servidor'
+      + (errCode ? `, código ${errCode}` : '')
+      + '). A autenticação da API de Cobranças está OK, mas a emissão de boletos falhou no lado da Efí. '
+      + 'Verifique no painel (app.sejaefi.com.br) se o produto Boleto/Bolix está habilitado, se o ramo de atividade está cadastrado '
+      + 'e se a conta está aprovada para emissão. Se estiver tudo correto, abra chamado com o suporte Efí informando este código. '
+      + 'Enquanto isso, use PIX como forma de pagamento — está operacional nesta conta.'
+    );
+  }
+  if (code === 'request_not_allowed' || errCode === '3500072') {
+    return 'A Efí Pay bloqueou a emissão do boleto (conta pendente de configuração). Cadastre o ramo de atividade no painel e/ou contate o suporte Efí.';
   }
 
   if (code && desc && String(code) !== String(desc)) return `${code}: ${desc}`;

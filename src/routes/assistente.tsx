@@ -43,10 +43,10 @@ import { GitCompareArrows } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { AssistenteSicafLaunchDialog } from "@/components/assistente-sicaf-launch-dialog";
-import {
-  AssistenteOnboardingModal,
+import { AssistenteOnboardingModal,
   hasSeenAssistenteOnboarding,
 } from "@/components/assistente-onboarding-modal";
+import { SelecionarEmpresaModal } from "@/components/selecionar-empresa-modal";
 import { resolveEmpresaPorCnpj } from "@/lib/documentos-api";
 import {
   CADBRASIL_EXTENSION_STORE_URL,
@@ -254,6 +254,7 @@ function AssistentePage() {
   const [comparadorAberto, setComparadorAberto] = useState(false);
   const [launchOpen, setLaunchOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [selecionarEmpresaOpen, setSelecionarEmpresaOpen] = useState(false);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState<string | undefined>();
   const [niveis, setNiveis] = useState<Record<number, NivelStatus>>(NIVEIS_VAZIOS);
@@ -569,8 +570,8 @@ function AssistentePage() {
           <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
             <Bot className="h-10 w-10 text-muted-foreground/50" />
             <p className="text-sm font-medium">Selecione uma empresa para usar o Assistente</p>
-            <Button asChild size="sm">
-              <Link to="/empresas">Ir para Minhas Empresas</Link>
+            <Button size="sm" onClick={() => setSelecionarEmpresaOpen(true)}>
+              Ir para Minhas Empresas
             </Button>
           </CardContent>
         </Card>
@@ -1167,6 +1168,16 @@ function AssistentePage() {
         open={onboardingOpen}
         onOpenChange={setOnboardingOpen}
         onComecar={() => inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+      />
+
+      <SelecionarEmpresaModal
+        open={selecionarEmpresaOpen}
+        onOpenChange={setSelecionarEmpresaOpen}
+        titulo="Selecionar empresa"
+        descricao="Escolha a empresa para usar o Assistente SICAF."
+        onSelect={(empresa) => {
+          void navigate({ to: "/assistente", search: { cnpj: empresa.cnpj } });
+        }}
       />
     </div>
   );

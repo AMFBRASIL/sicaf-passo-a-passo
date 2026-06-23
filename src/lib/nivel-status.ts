@@ -154,3 +154,48 @@ export function todosNiveisValidadosUi(niveis: Record<number, NivelStatus>): boo
 export function countNiveisComDadosUi(niveis: Record<number, NivelStatus>): number {
   return Object.values(niveis).filter((s) => s !== "nao_cadastrado").length;
 }
+
+export type NivelDetailInfo = { status: string; observacao?: string };
+
+/** Extrai data de vencimento da observação gravada via PDF Situação do Fornecedor. */
+export function extractValidadeFromObservacao(observacao?: string | null): string | null {
+  if (!observacao?.trim()) return null;
+
+  const validadeExplicita = observacao.match(/validade[:\s]+(\d{2}\/\d{2}\/\d{4})/i);
+  if (validadeExplicita?.[1]) return validadeExplicita[1];
+
+  const valParenteses = observacao.match(/\(Val:\s*(\d{2}\/\d{2}\/\d{4})\)/i);
+  if (valParenteses?.[1]) return valParenteses[1];
+
+  const datas = [...observacao.matchAll(/(\d{2}\/\d{2}\/\d{4})/g)].map((m) => m[1]);
+  if (datas.length === 0) return null;
+  if (datas.length === 1) return datas[0];
+
+  const ordenadas = [...datas].sort((a, b) => {
+    const toTime = (d: string) => {
+      const [dd, mm, yyyy] = d.split("/").map(Number);
+      return new Date(yyyy, mm - 1, dd).getTime();
+    };
+    return toTime(a) - toTime(b);
+  });
+  return ordenadas[0];
+}
+
+/** Data de vencimento exibida por nível (observação do PDF ou validade geral do cadastro). */
+export function getNivelVencimentoLabel(
+  roman: string,
+  niveisDetail?: Record<string, NivelDetailInfo>,
+  validadeSicafGeral?: string | null,
+): string | null {
+  const info = niveisDetail?.[roman];
+  const fromObs = extractValidadeFromObservacao(info?.observacao);
+  if (fromObs) return fromObs;
+
+  const status = String(info?.status || "");
+  const cadastrado = status && status !== "nao_cadastrado";
+  if (cadastrado && roman === "I" && validadeSicafGeral?.trim()) {
+    return validadeSicafGeral.trim();
+  }
+
+  return null;
+}

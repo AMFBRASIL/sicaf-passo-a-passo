@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import {
@@ -38,6 +38,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { PagamentosPendentesWizard } from "@/components/pagamentos-pendentes-wizard";
+import { SelecionarEmpresaModal } from "@/components/selecionar-empresa-modal";
 import { detectarFluxoPagamentoSicaf } from "@/lib/cliente-financeiro-api";
 import { CertificadoDigitalCard } from "@/components/certificado-digital-card";
 import {
@@ -636,6 +637,7 @@ function DocumentacaoDialog({
 // ============================================================
 function SicafPage() {
   const { cnpj } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
   const total = passosBase.length;
   const { extensionInstalled, openSICAF } = useCadBrasilExtension();
 
@@ -656,6 +658,7 @@ function SicafPage() {
   const [docsSaude, setDocsSaude] = useState<DocChecklistItem[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [ultimaVerificacao, setUltimaVerificacao] = useState<string | null>(null);
+  const [trocarEmpresaOpen, setTrocarEmpresaOpen] = useState(false);
 
   const carregarDocumentos = useCallback(async (clienteId: number) => {
     setDocsLoading(true);
@@ -962,8 +965,13 @@ function SicafPage() {
             <p className="text-xs text-muted-foreground">CNPJ {cliente.cnpj}</p>
           </div>
         </div>
-        <Button asChild variant="ghost" size="sm" className="h-8 shrink-0 text-xs">
-          <Link to="/empresas">Trocar empresa</Link>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 shrink-0 text-xs"
+          onClick={() => setTrocarEmpresaOpen(true)}
+        >
+          Trocar empresa
         </Button>
       </div>
 
@@ -1356,6 +1364,14 @@ function SicafPage() {
         onPago={() => {
           setPagamentosWizardOpen(false);
           concluirEtapa();
+        }}
+      />
+      <SelecionarEmpresaModal
+        open={trocarEmpresaOpen}
+        onOpenChange={setTrocarEmpresaOpen}
+        empresaAtualCnpj={cliente.cnpj}
+        onSelect={(empresa) => {
+          void navigate({ search: { cnpj: empresa.cnpj } });
         }}
       />
     </div>

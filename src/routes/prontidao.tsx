@@ -371,7 +371,7 @@ function EmpresaCard({ empresa: e, posicao }: { empresa: Empresa; posicao: numbe
             </Link>
           </Button>
           <Button asChild size="sm" variant="ghost">
-            <Link to="/sicaf">Ver SICAF</Link>
+            <Link to="/sicaf" search={{ cnpj: e.cnpj }}>Ver SICAF</Link>
           </Button>
         </div>
       </CardContent>

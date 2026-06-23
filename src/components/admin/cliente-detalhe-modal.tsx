@@ -67,6 +67,7 @@ import {
   type FaturaUi,
   type HistoricoUi,
 } from "@/lib/admin-clientes-api";
+import { getNivelVencimentoLabel, type NivelDetailInfo } from "@/lib/nivel-status";
 import { toast } from "sonner";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { Check, X as XIcon } from "lucide-react";
@@ -98,6 +99,7 @@ export interface ClienteDetalhe {
   mrr: number;
   ultimoContato: string;
   niveis: Record<number, NivelStatus>;
+  niveisDetail?: Record<string, NivelDetailInfo>;
   plano?: string;
   desde?: string;
   validadeSicaf?: string;
@@ -399,7 +401,9 @@ export function ClienteDetalheModal({
                 {step === "resumo" && (
                   <ResumoTab cliente={exibicao} completude={completude} faturas={faturas} />
                 )}
-                {step === "sicaf" && <SicafTab cliente={exibicao} onRenovar={() => setRenovarOpen(true)} />}
+                {step === "sicaf" && (
+                  <SicafTab cliente={exibicao} onRenovar={() => setRenovarOpen(true)} />
+                )}
                 {step === "financeiro" && (
                   <FinanceiroTab cliente={exibicao} faturasIniciais={faturas} onPagamentoAutorizado={atualizarPainel} />
                 )}
@@ -953,16 +957,30 @@ function SicafTab({ cliente, onRenovar }: { cliente: ClienteDetalhe; onRenovar?:
         <div>
           <h3 className="text-sm font-semibold">Níveis SICAF</h3>
           <p className="text-xs text-muted-foreground">
-            Status detalhado por nível — clique em renovar quando vencido.
+            Status e vencimento por nível — dados da Situação do Fornecedor e do cadastro.
           </p>
         </div>
         <Button size="sm" className="gap-1.5" onClick={onRenovar}>
           <RefreshCw className="h-3.5 w-3.5" /> Renovar agora
         </Button>
       </div>
+
+      {cliente.validadeSicaf && (
+        <div className="mt-3 flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+          <Calendar className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="text-muted-foreground">Validade geral do cadastro SICAF:</span>
+          <span className="font-semibold text-foreground">{cliente.validadeSicaf}</span>
+        </div>
+      )}
+
       <div className="mt-4 grid gap-2">
         {NIVEIS_SICAF.map((n) => {
           const status = cliente.niveis[n.num] ?? "nao_cadastrado";
+          const vencimento = getNivelVencimentoLabel(
+            n.roman,
+            cliente.niveisDetail,
+            cliente.validadeSicaf,
+          );
           const meta: Record<
             NivelStatus,
             { txt: string; cls: string }
@@ -976,21 +994,29 @@ function SicafTab({ cliente, onRenovar }: { cliente: ClienteDetalhe; onRenovar?:
           return (
             <div
               key={n.num}
-              className="flex items-center justify-between rounded-md border bg-card px-3 py-2.5"
+              className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2.5"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <span
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
                   style={{ backgroundColor: n.color }}
                 >
                   {n.roman}
                 </span>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium">Nível {n.roman}</p>
                   <p className="text-xs text-muted-foreground">{n.nome}</p>
+                  {vencimento ? (
+                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Calendar className="h-3 w-3 shrink-0" />
+                      Vence em <span className="font-medium text-foreground">{vencimento}</span>
+                    </p>
+                  ) : status !== "nao_cadastrado" ? (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground/80">Vencimento não informado</p>
+                  ) : null}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <span
                   className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${meta[status].cls}`}
                 >

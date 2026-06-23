@@ -22,6 +22,7 @@ import { Route as NotificacoesRouteImport } from './routes/notificacoes'
 import { Route as MissoesRouteImport } from './routes/missoes'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LicitacoesRouteImport } from './routes/licitacoes'
+import { Route as Inicio2RouteImport } from './routes/inicio2'
 import { Route as FaltamRouteImport } from './routes/faltam'
 import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as EmpresasLegacyRouteImport } from './routes/empresas-legacy'
@@ -122,6 +123,11 @@ const LoginRoute = LoginRouteImport.update({
 const LicitacoesRoute = LicitacoesRouteImport.update({
   id: '/licitacoes',
   path: '/licitacoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const Inicio2Route = Inicio2RouteImport.update({
+  id: '/inicio2',
+  path: '/inicio2',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FaltamRoute = FaltamRouteImport.update({
@@ -320,6 +326,7 @@ export interface FileRoutesByFullPath {
   '/empresas-legacy': typeof EmpresasLegacyRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/faltam': typeof FaltamRoute
+  '/inicio2': typeof Inicio2Route
   '/licitacoes': typeof LicitacoesRoute
   '/login': typeof LoginRoute
   '/missoes': typeof MissoesRoute
@@ -369,6 +376,7 @@ export interface FileRoutesByTo {
   '/empresas-legacy': typeof EmpresasLegacyRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/faltam': typeof FaltamRoute
+  '/inicio2': typeof Inicio2Route
   '/licitacoes': typeof LicitacoesRoute
   '/login': typeof LoginRoute
   '/missoes': typeof MissoesRoute
@@ -420,6 +428,7 @@ export interface FileRoutesById {
   '/empresas-legacy': typeof EmpresasLegacyRoute
   '/esqueci-senha': typeof EsqueciSenhaRoute
   '/faltam': typeof FaltamRoute
+  '/inicio2': typeof Inicio2Route
   '/licitacoes': typeof LicitacoesRoute
   '/login': typeof LoginRoute
   '/missoes': typeof MissoesRoute
@@ -473,6 +482,7 @@ export interface FileRouteTypes {
     | '/empresas-legacy'
     | '/esqueci-senha'
     | '/faltam'
+    | '/inicio2'
     | '/licitacoes'
     | '/login'
     | '/missoes'
@@ -522,6 +532,7 @@ export interface FileRouteTypes {
     | '/empresas-legacy'
     | '/esqueci-senha'
     | '/faltam'
+    | '/inicio2'
     | '/licitacoes'
     | '/login'
     | '/missoes'
@@ -572,6 +583,7 @@ export interface FileRouteTypes {
     | '/empresas-legacy'
     | '/esqueci-senha'
     | '/faltam'
+    | '/inicio2'
     | '/licitacoes'
     | '/login'
     | '/missoes'
@@ -624,6 +636,7 @@ export interface RootRouteChildren {
   EmpresasLegacyRoute: typeof EmpresasLegacyRoute
   EsqueciSenhaRoute: typeof EsqueciSenhaRoute
   FaltamRoute: typeof FaltamRoute
+  Inicio2Route: typeof Inicio2Route
   LicitacoesRoute: typeof LicitacoesRoute
   LoginRoute: typeof LoginRoute
   MissoesRoute: typeof MissoesRoute
@@ -730,6 +743,13 @@ declare module '@tanstack/react-router' {
       path: '/licitacoes'
       fullPath: '/licitacoes'
       preLoaderRoute: typeof LicitacoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inicio2': {
+      id: '/inicio2'
+      path: '/inicio2'
+      fullPath: '/inicio2'
+      preLoaderRoute: typeof Inicio2RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/faltam': {
@@ -1072,6 +1092,7 @@ const rootRouteChildren: RootRouteChildren = {
   EmpresasLegacyRoute: EmpresasLegacyRoute,
   EsqueciSenhaRoute: EsqueciSenhaRoute,
   FaltamRoute: FaltamRoute,
+  Inicio2Route: Inicio2Route,
   LicitacoesRoute: LicitacoesRoute,
   LoginRoute: LoginRoute,
   MissoesRoute: MissoesRoute,
