@@ -3,6 +3,7 @@
  */
 const { getDb } = require('../database/connection');
 const { assertClienteAcessivel } = require('./client-access.service');
+const { getDiasAvisoAntecedencia } = require('./sicaf-config.service');
 
 const ROMAN_TO_NUM = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
 
@@ -206,9 +207,39 @@ async function insertCertidao({ clienteId, tipoCertidaoId, numero, dataEmissao, 
   }
 }
 
+function statusFromValidadeDate(dataValidade, now, msAviso) {
+  if (!dataValidade) return null;
+  const validadeDt = new Date(dataValidade);
+  if (Number.isNaN(validadeDt.getTime())) return null;
+  if (validadeDt < now) return 'vencida';
+  if (validadeDt.getTime() - now.getTime() <= msAviso) return 'vencendo';
+  return 'ok';
+}
+
+/** Alinha com /certidoes: usa registro em certidoes mesmo sem PDF anexado. */
+function resolveChecklistItemStatus(cert, docMatch, now, msAviso) {
+  if (cert) {
+    const fromDate = statusFromValidadeDate(cert.data_validade, now, msAviso);
+    if (fromDate) return fromDate;
+    const certSt = String(cert.status || '').toLowerCase();
+    if (certSt.includes('vencid')) return 'vencida';
+    if (certSt.includes('vencendo') || certSt.includes('a vencer')) return 'vencendo';
+    if (cert.arquivo_url || certSt.includes('valid') || certSt.includes('válid')) return 'ok';
+    if (cert.data_emissao || cert.numero) return 'ok';
+  }
+  if (docMatch?.arquivo_url) {
+    const fromDate = statusFromValidadeDate(docMatch.data_validade, now, msAviso);
+    if (fromDate) return fromDate;
+    return 'ok';
+  }
+  return 'pendente';
+}
+
 async function buildChecklistDocumentos(db, cliente) {
   const clienteId = cliente.id;
   await ensureSicafTipoCertidoes();
+  const diasAviso = await getDiasAvisoAntecedencia();
+  const msAviso = diasAviso * 24 * 60 * 60 * 1000;
 
   const tipos = await db('tipo_certidoes').where('ativo', 1).orderBy('nivel_sicaf', 'asc').orderBy('nome', 'asc');
   const certidoes = await db('certidoes').where('cliente_id', clienteId);
@@ -232,38 +263,20 @@ async function buildChecklistDocumentos(db, cliente) {
     if (!num) continue;
 
     const cert = certByTipo[tipo.id];
-    let status = 'pendente';
-    let validade = undefined;
-    let arquivoUrl = null;
-    let codigoCertidao = null;
+    const docMatch = documentos.find(
+      (d) =>
+        d.nivel_sicaf === tipo.nivel_sicaf &&
+        (d.nome === tipo.nome ||
+          String(d.nome || '')
+            .toLowerCase()
+            .includes(String(tipo.codigo || '').replace(/_/g, ' '))),
+    );
 
-    if (cert?.arquivo_url) {
-      const certSt = String(cert.status || '').toLowerCase();
-      validade = cert.data_validade ? fmtDate(cert.data_validade) : '—';
-      arquivoUrl = cert.arquivo_url;
-      codigoCertidao = cert.numero || null;
-      if (certSt.includes('vencid')) status = 'vencida';
-      else if (certSt.includes('vencendo') || certSt.includes('a vencer')) status = 'vencendo';
-      else if (cert.data_validade) {
-        const validadeDt = new Date(cert.data_validade);
-        if (validadeDt < now) status = 'vencida';
-        else if (validadeDt.getTime() - now.getTime() <= 30 * 24 * 60 * 60 * 1000) status = 'vencendo';
-        else status = 'ok';
-      } else {
-        status = 'ok';
-      }
-    } else {
-      const docMatch = documentos.find(
-        (d) =>
-          d.nivel_sicaf === tipo.nivel_sicaf &&
-          (d.nome === tipo.nome || String(d.nome || '').toLowerCase().includes(String(tipo.codigo || '').replace(/_/g, ' '))),
-      );
-      if (docMatch?.arquivo_url) {
-        status = 'ok';
-        validade = docMatch.data_validade ? fmtDate(docMatch.data_validade) : '—';
-        arquivoUrl = docMatch.arquivo_url;
-      }
-    }
+    const status = resolveChecklistItemStatus(cert, docMatch, now, msAviso);
+    const dataValidadeRaw = cert?.data_validade || docMatch?.data_validade || null;
+    const validade = dataValidadeRaw ? fmtDate(dataValidadeRaw) : status === 'pendente' ? undefined : '—';
+    const arquivoUrl = cert?.arquivo_url || docMatch?.arquivo_url || null;
+    const codigoCertidao = cert?.numero || null;
 
     if (!docsPorNivel[num]) docsPorNivel[num] = [];
     docsPorNivel[num].push({
@@ -276,7 +289,7 @@ async function buildChecklistDocumentos(db, cliente) {
       orgaoEmissor: tipo.orgao_emissor || null,
       status,
       validade,
-      dataValidade: cert?.data_validade || null,
+      dataValidade: dataValidadeRaw,
       codigoCertidao,
       arquivoUrl,
       requerValidade: rules.requerValidade,

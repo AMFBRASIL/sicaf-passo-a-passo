@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { EmailsConfigPanel } from "@/components/admin/emails-config-panel";
 import { IaConfigPanel } from "@/components/admin/ia-config-panel";
 import { StorageConfigPanel } from "@/components/admin/storage-config-panel";
+import { SicafConfigPanel } from "@/components/admin/sicaf-config-panel";
 
 export type ConfigModuleKey =
   | "emails"
@@ -85,7 +86,7 @@ export function ConfiguracaoModal({ moduleKey, open, onOpenChange }: Props) {
   const Icon = meta.icon;
 
   const handleSave = () => {
-    if (moduleKey === "emails" || moduleKey === "ia" || moduleKey === "armazenamento") return;
+    if (moduleKey === "emails" || moduleKey === "ia" || moduleKey === "armazenamento" || moduleKey === "sicaf") return;
     toast.success(`Configurações de ${meta.titulo} salvas`, {
       description: "As alterações entram em vigor imediatamente.",
     });
@@ -120,7 +121,7 @@ export function ConfiguracaoModal({ moduleKey, open, onOpenChange }: Props) {
             {moduleKey === "whatsapp" && <WhatsAppBody />}
             {moduleKey === "ia" && <IaConfigPanel onSaved={() => onOpenChange(false)} />}
             {moduleKey === "financeiro" && <FinanceiroBody />}
-            {moduleKey === "sicaf" && <SicafBody />}
+            {moduleKey === "sicaf" && <SicafConfigPanel onSaved={() => onOpenChange(false)} />}
             {moduleKey === "seguranca" && <SegurancaBody />}
             {moduleKey === "usuarios" && <UsuariosBody />}
             {moduleKey === "googleads" && <GoogleAdsBody />}
@@ -130,7 +131,7 @@ export function ConfiguracaoModal({ moduleKey, open, onOpenChange }: Props) {
         </ScrollArea>
 
         {/* Footer — e-mails tem botão próprio no painel */}
-        {moduleKey !== "emails" && moduleKey !== "ia" && moduleKey !== "armazenamento" && (
+        {moduleKey !== "emails" && moduleKey !== "ia" && moduleKey !== "armazenamento" && moduleKey !== "sicaf" && (
           <div className="flex items-center justify-between border-t bg-muted/30 px-6 py-3">
             <p className="text-xs text-muted-foreground">As alterações se aplicam a toda a plataforma.</p>
             <div className="flex gap-2">
@@ -315,40 +316,6 @@ function FinanceiroBody() {
           <Field label="Multa por atraso (%)"><Input type="number" defaultValue={2} /></Field>
           <Field label="Dias até vencimento padrão"><Input type="number" defaultValue={7} /></Field>
           <Field label="Tentativas de cobrança"><Input type="number" defaultValue={3} /></Field>
-        </div>
-      </Section>
-    </>
-  );
-}
-
-// ───────────────────────── SICAF ─────────────────────────
-function SicafBody() {
-  return (
-    <>
-      <Section title="Níveis obrigatórios" desc="Marque os níveis exigidos por padrão para novas empresas.">
-        <div className="grid gap-2 sm:grid-cols-2">
-          {[
-            "Nível I — Credenciamento",
-            "Nível II — Habilitação Jurídica",
-            "Nível III — Regularidade Fiscal Federal",
-            "Nível IV — Regularidade Fiscal Estadual/Municipal",
-            "Nível V — Qualificação Técnica",
-            "Nível VI — Qualificação Econômico-Financeira",
-          ].map((n, i) => (
-            <ToggleRow key={n} title={n} desc="Aplicado automaticamente a novas empresas." defaultChecked={i < 4} />
-          ))}
-        </div>
-      </Section>
-
-      <Section title="Automações de vencimento">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Avisar com antecedência (dias)"><Input type="number" defaultValue={30} /></Field>
-          <Field label="Reenviar lembrete a cada (dias)"><Input type="number" defaultValue={7} /></Field>
-        </div>
-        <div className="mt-3 space-y-2">
-          <ToggleRow title="Abrir ticket automaticamente" desc="Cria ticket interno 30 dias antes do vencimento." defaultChecked />
-          <ToggleRow title="Notificar cliente por e-mail e WhatsApp" desc="Dispara comunicação em ambos os canais." defaultChecked />
-          <ToggleRow title="Bloquear emissão de relatório se vencido" desc="Apenas relatórios oficiais." />
         </div>
       </Section>
     </>

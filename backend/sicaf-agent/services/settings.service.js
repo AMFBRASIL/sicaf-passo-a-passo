@@ -365,6 +365,16 @@ async function testEmailConnection(testEmailTo, settingsOverride) {
   }
 }
 
+const sicafConfigService = require('./sicaf-config.service');
+
+async function getSicafSettings() {
+  return sicafConfigService.getSicafSettings();
+}
+
+async function updateSicafSettings(updates) {
+  return sicafConfigService.updateSicafSettings(updates);
+}
+
 module.exports = {
   EMAIL_KEYS,
   IA_KEYS,
@@ -381,4 +391,6 @@ module.exports = {
   testEmailConnection,
   testIaConnection,
   testStorageSettings,
+  getSicafSettings,
+  updateSicafSettings,
 };

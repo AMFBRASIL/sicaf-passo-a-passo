@@ -323,3 +323,51 @@ export async function updateEmailTemplateAdmin(
   if (!data.ok) throw new Error(data.error || "Erro ao atualizar template");
   return data.message || "Template atualizado";
 }
+
+export type SicafSettings = {
+  niveisObrigatorios: boolean[];
+  avisoAntecedenciaDias: number;
+  lembreteReenvioDias: number;
+  centralAlertaCertidoesDias: number;
+  ticketAutomatico: boolean;
+  notificarEmailWhatsapp: boolean;
+  bloquearRelatorioVencido: boolean;
+};
+
+export type SicafSettingsStatus = {
+  niveisAtivos: number;
+  centralAlertaDias: number;
+  avisoAntecedenciaDias: number;
+};
+
+export async function fetchSicafSettings(): Promise<{
+  settings: SicafSettings;
+  status: SicafSettingsStatus;
+}> {
+  const res = await apiFetch("/api/admin/settings/sicaf");
+  const data = (await res.json()) as {
+    ok: boolean;
+    settings?: SicafSettings;
+    status?: SicafSettingsStatus;
+    error?: string;
+  };
+  if (!data.ok || !data.settings) throw new Error(data.error || "Erro ao carregar configurações SICAF");
+  return {
+    settings: data.settings,
+    status: data.status || {
+      niveisAtivos: data.settings.niveisObrigatorios.filter(Boolean).length,
+      centralAlertaDias: data.settings.centralAlertaCertidoesDias,
+      avisoAntecedenciaDias: data.settings.avisoAntecedenciaDias,
+    },
+  };
+}
+
+export async function saveSicafSettings(settings: SicafSettings): Promise<string> {
+  const res = await apiFetch("/api/admin/settings/sicaf", {
+    method: "PUT",
+    body: JSON.stringify({ settings }),
+  });
+  const data = (await res.json()) as { ok: boolean; message?: string; error?: string };
+  if (!data.ok) throw new Error(data.error || "Erro ao salvar configurações SICAF");
+  return data.message || "Configurações SICAF salvas";
+}

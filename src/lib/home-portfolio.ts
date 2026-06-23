@@ -50,6 +50,29 @@ function prontidaoByCnpj(empresas: EmpresaProntidao[]): Map<string, EmpresaPront
   return map;
 }
 
+function certAlertasVisiveis(p?: EmpresaProntidao): number {
+  if (!p) return 0;
+  if (p.certidoes.alertaCentral != null) return p.certidoes.alertaCentral;
+  return (p.certidoes.danger ?? 0) + (p.certidoes.warn ?? 0);
+}
+
+/** Certidões vencidas/ausentes visíveis na central (sempre todas). */
+function certDangerCentral(p?: EmpresaProntidao): number {
+  if (!p) return 0;
+  if (p.certidoes.alertaCentralDanger != null) return p.certidoes.alertaCentralDanger;
+  if (p.certidoes.alertaCentral != null) {
+    return Math.max(0, p.certidoes.alertaCentral - (p.certidoes.alertaCentralWarn ?? 0));
+  }
+  return p.certidoes.danger ?? 0;
+}
+
+/** Certidões vencendo dentro da janela configurada em Admin → SICAF. */
+function certWarnCentral(p?: EmpresaProntidao): number {
+  if (!p) return 0;
+  if (p.certidoes.alertaCentralWarn != null) return p.certidoes.alertaCentralWarn;
+  return p.certidoes.warn ?? 0;
+}
+
 export function buildEmpresasResumo(
   empresas: EmpresaData[],
   prontidao: EmpresaProntidao[],
@@ -60,7 +83,7 @@ export function buildEmpresasResumo(
     const doc = e.cnpj.replace(/\D/g, "");
     const p = byDoc.get(doc);
     const apto = isEmpresaApto(e);
-    const alertas = (p?.certidoes.danger ?? 0) + (p?.certidoes.warn ?? 0);
+    const alertas = certAlertasVisiveis(p);
     const sicafSt = p?.sicaf.status ?? (e.sicaf === "ativo" ? "ok" : e.sicaf === "atencao" ? "warn" : "danger");
 
     let statusLabel = apto ? "APTA" : "INAPTA";
@@ -106,30 +129,34 @@ export function buildTarefas(empresas: EmpresaData[], prontidao: EmpresaProntida
       continue;
     }
 
-    if ((p?.certidoes.danger ?? 0) > 0) {
+    const dangerCentral = certDangerCentral(p);
+    if (dangerCentral > 0) {
       tarefas.push({
         id: `cert-${cnpj}`,
         prioridade: "urgente",
         titulo: "Regularizar certidões",
-        descricao: `${p!.certidoes.danger} certidão(ões) vencida(s) ou ausente(s).`,
+        descricao: `${dangerCentral} certidão(ões) vencida(s) ou ausente(s).`,
         empresa: e.nome,
         acaoLabel: "Renovar agora",
         link: "/certidoes",
         linkSearch: { cnpj },
         tempoEstimado: "5 min",
       });
-    } else if ((p?.certidoes.warn ?? 0) > 0) {
-      tarefas.push({
-        id: `cert-warn-${cnpj}`,
-        prioridade: "atencao",
-        titulo: "Certidões vencendo em breve",
-        descricao: `${p!.certidoes.warn} certidão(ões) precisam de atenção.`,
-        empresa: e.nome,
-        acaoLabel: "Ver certidões",
-        link: "/certidoes",
-        linkSearch: { cnpj },
-        tempoEstimado: "5 min",
-      });
+    } else {
+      const warnCentral = certWarnCentral(p);
+      if (warnCentral > 0) {
+        tarefas.push({
+          id: `cert-warn-${cnpj}`,
+          prioridade: "atencao",
+          titulo: "Certidões vencendo em breve",
+          descricao: `${warnCentral} certidão(ões) precisam de atenção.`,
+          empresa: e.nome,
+          acaoLabel: "Ver certidões",
+          link: "/certidoes",
+          linkSearch: { cnpj },
+          tempoEstimado: "5 min",
+        });
+      }
     }
 
     if (e.sicaf === "atencao") {
@@ -203,22 +230,26 @@ export function buildAlertasPortfolio(
         severidade: "warn",
       });
     }
-    if ((p?.certidoes.danger ?? 0) > 0) {
+    const dangerCentral = certDangerCentral(p);
+    if (dangerCentral > 0) {
       alertas.push({
         empresa: e.nome,
         cnpj: e.cnpj,
-        tipo: `${p!.certidoes.danger} certidão(ões) irregular(es)`,
+        tipo: `${dangerCentral} certidão(ões) irregular(es)`,
         quando: "Ação imediata",
         severidade: "danger",
       });
-    } else if ((p?.certidoes.warn ?? 0) > 0) {
-      alertas.push({
-        empresa: e.nome,
-        cnpj: e.cnpj,
-        tipo: "Certidões vencendo",
-        quando: `${p!.certidoes.warn} em atenção`,
-        severidade: "warn",
-      });
+    } else {
+      const warnCentral = certWarnCentral(p);
+      if (warnCentral > 0) {
+        alertas.push({
+          empresa: e.nome,
+          cnpj: e.cnpj,
+          tipo: "Certidões vencendo",
+          quando: `${warnCentral} em atenção`,
+          severidade: "warn",
+        });
+      }
     }
     if (!isEmpresaApto(e) && e.sicaf === "ativo") {
       alertas.push({

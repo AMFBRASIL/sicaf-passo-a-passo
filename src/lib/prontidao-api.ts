@@ -7,7 +7,14 @@ export type EmpresaProntidao = {
   uf: string;
   score: number;
   sicaf: { nivel: number; status: "ok" | "warn" | "danger" };
-  certidoes: { ok: number; warn: number; danger: number };
+  certidoes: {
+    ok: number;
+    warn: number;
+    danger: number;
+    alertaCentral?: number;
+    alertaCentralWarn?: number;
+    alertaCentralDanger?: number;
+  };
   docs: { ok: number; total: number };
   propostas?: number;
   prioridade: "alta" | "media" | "baixa";

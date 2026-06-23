@@ -5,6 +5,10 @@
 const { getDb } = require('../database/connection');
 const sicafListService = require('./sicaf-list.service');
 const { getChecklistDocumentos } = require('./certidoes.service');
+const {
+  getDiasCentralAlertaCertidoes,
+  certidaoVisivelCentralAlerta,
+} = require('./sicaf-config.service');
 
 const ROMAN_TO_NUM = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
 
@@ -36,12 +40,15 @@ function acaoFromScore(score, sicafStatus, docsPend, propostasCount) {
   return 'Atualize certidões e níveis SICAF para melhorar a prontidão.';
 }
 
-function countChecklistStats(docsPorNivel) {
+function countChecklistStats(docsPorNivel, diasCentral = 30) {
   let docsOk = 0;
   let docsTotal = 0;
   let certOk = 0;
   let certWarn = 0;
   let certDanger = 0;
+  let alertaCentral = 0;
+  let alertaCentralWarn = 0;
+  let alertaCentralDanger = 0;
 
   for (const items of Object.values(docsPorNivel || {})) {
     for (const d of items) {
@@ -52,13 +59,28 @@ function countChecklistStats(docsPorNivel) {
         certOk += 1;
       } else if (st === 'vencendo') {
         certWarn += 1;
+        if (certidaoVisivelCentralAlerta(st, d.dataValidade, diasCentral)) {
+          alertaCentral += 1;
+          alertaCentralWarn += 1;
+        }
       } else {
         certDanger += 1;
+        alertaCentral += 1;
+        alertaCentralDanger += 1;
       }
     }
   }
 
-  return { docsOk, docsTotal, certOk, certWarn, certDanger };
+  return {
+    docsOk,
+    docsTotal,
+    certOk,
+    certWarn,
+    certDanger,
+    alertaCentral,
+    alertaCentralWarn,
+    alertaCentralDanger,
+  };
 }
 
 function scoreSicafPart(status, nivelMax) {
@@ -117,16 +139,35 @@ async function getPortfolioProntidao(usuarioId, search = '') {
 
   const clienteIds = (list.items || []).map((item) => Number(item.clienteId)).filter((id) => id > 0);
   const propostasMap = await loadPropostasCountByCliente(clienteIds);
+  const diasCentral = await getDiasCentralAlertaCertidoes();
 
   const empresas = [];
   for (const item of list.items || []) {
     const checklist = await getChecklistDocumentos(item.clienteId, usuarioId);
     const stats =
       checklist.ok && checklist.docsPorNivel
-        ? countChecklistStats(checklist.docsPorNivel)
-        : { docsOk: 0, docsTotal: 0, certOk: 0, certWarn: 0, certDanger: 0 };
+        ? countChecklistStats(checklist.docsPorNivel, diasCentral)
+        : {
+            docsOk: 0,
+            docsTotal: 0,
+            certOk: 0,
+            certWarn: 0,
+            certDanger: 0,
+            alertaCentral: 0,
+            alertaCentralWarn: 0,
+            alertaCentralDanger: 0,
+          };
 
-    const { docsOk, docsTotal, certOk, certWarn, certDanger } = stats;
+    const {
+      docsOk,
+      docsTotal,
+      certOk,
+      certWarn,
+      certDanger,
+      alertaCentral,
+      alertaCentralWarn,
+      alertaCentralDanger,
+    } = stats;
     const docsPend = Math.max(0, docsTotal - docsOk);
 
     const niveis = (item.levels || []).map((r) => ROMAN_TO_NUM[r] || 0).filter((n) => n > 0);
@@ -147,7 +188,14 @@ async function getPortfolioProntidao(usuarioId, search = '') {
       uf: item.estado || '—',
       score: Math.min(100, Math.round(score)),
       sicaf: { nivel: nivelMax, status: sicafSt },
-      certidoes: { ok: certOk, warn: certWarn, danger: certDanger },
+      certidoes: {
+        ok: certOk,
+        warn: certWarn,
+        danger: certDanger,
+        alertaCentral,
+        alertaCentralWarn,
+        alertaCentralDanger,
+      },
       docs: { ok: docsOk, total: docsTotal },
       propostas: propostasCount,
       prioridade: prioridadeFromScore(score),

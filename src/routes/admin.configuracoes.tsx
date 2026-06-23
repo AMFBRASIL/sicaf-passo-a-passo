@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCallback, useEffect, useState } from "react";
-import { fetchEmailSettings, fetchIaSettings, fetchStorageSettings } from "@/lib/admin-settings-api";
+import { fetchEmailSettings, fetchIaSettings, fetchSicafSettings, fetchStorageSettings } from "@/lib/admin-settings-api";
 import {
   Mail,
   MessageCircle,
@@ -49,6 +49,7 @@ function ConfiguracoesPage() {
   const [emailChip, setEmailChip] = useState("…");
   const [iaChip, setIaChip] = useState("…");
   const [storageChip, setStorageChip] = useState("…");
+  const [sicafChip, setSicafChip] = useState("…");
 
   const carregarChips = useCallback(async () => {
     try {
@@ -71,6 +72,12 @@ function ConfiguracoesPage() {
       setStorageChip(uso ? `${uso.usedGb} GB · ${prov}` : prov);
     } catch {
       setStorageChip("Configurar");
+    }
+    try {
+      const { status } = await fetchSicafSettings();
+      setSicafChip(`${status.niveisAtivos} níveis · alerta ${status.centralAlertaDias}d`);
+    } catch {
+      setSicafChip("Configurar");
     }
   }, []);
 
@@ -107,7 +114,9 @@ function ConfiguracoesPage() {
                       ? iaChip
                       : c.key === "armazenamento"
                         ? storageChip
-                        : c.chip}
+                        : c.key === "sicaf"
+                          ? sicafChip
+                          : c.chip}
                 </Badge>
               </div>
               <h3 className="mt-3 text-sm font-semibold">{c.titulo}</h3>
