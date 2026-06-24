@@ -3,6 +3,7 @@
  */
 const { getDb } = require('../database/connection');
 const { sendCobrancaTaxaEmail } = require('./cobranca-taxa-email.service');
+const { getPublicPayBaseUrl } = require('../utils/pay-link.util');
 
 const TAXA_ABERTA_STATUSES = [
   'Pendente', 'pendente', 'Aguardando', 'aguardando', 'Gerado', 'gerado',
@@ -15,15 +16,6 @@ const PAGAMENTO_PENDENTE_STATUSES = [
 ];
 
 const PAY_CODE_RE = /^(t|p|c)-(\d+)$/i;
-
-function getPublicPayBaseUrl() {
-  const base =
-    process.env.PUBLIC_PAY_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.APP_URL ||
-    'https://fornecedor.cadbrasil.com.br';
-  return String(base).replace(/\/$/, '');
-}
 
 function parsePayCode(code) {
   const raw = String(code || '').trim().toLowerCase();

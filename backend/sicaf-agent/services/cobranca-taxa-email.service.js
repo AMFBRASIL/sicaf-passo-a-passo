@@ -2,6 +2,7 @@
  * E-mail de cobrança — taxa CADBRASIL pendente (admin → cliente).
  */
 const emailService = require('./email.service');
+const { getPublicPayBaseUrl } = require('../utils/pay-link.util');
 
 const WHATSAPP_NUMERO = process.env.CADBRASIL_WHATSAPP_NUMERO || '551121220202';
 const WHATSAPP_DISPLAY = process.env.CADBRASIL_WHATSAPP_DISPLAY || '(11) 2122-0202';
@@ -191,12 +192,7 @@ async function sendCobrancaTaxaEmail({ db, cliente, taxa, mensagemCustom }) {
   const whatsappUrl = buildWhatsAppUrl(cliente, cliente.razao_social || cliente.nome_fantasia);
   const empresa = cliente.razao_social || cliente.nome_fantasia || 'sua empresa';
   const assuntoFallback = `Taxa CADBRASIL pendente — regularize seu cadastro — ${empresa}`;
-  const payBase = (
-    process.env.PUBLIC_PAY_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.APP_URL ||
-    'https://fornecedor.cadbrasil.com.br'
-  ).replace(/\/$/, '');
+  const payBase = getPublicPayBaseUrl();
   const payCode = taxa?.id ? `t-${taxa.id}` : `c-${cliente.id}`;
   const linkPagamentoPublico = `${payBase}/pay/${payCode}`;
 
