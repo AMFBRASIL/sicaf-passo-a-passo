@@ -41,6 +41,7 @@ import {
   ExternalLink,
   Copy,
   Loader2,
+  HandCoins,
 } from "lucide-react";
 import { AcoesTab } from "./cliente-acoes";
 import { SituacaoTab } from "./cliente-situacao-tab";
@@ -79,6 +80,13 @@ import { RenovarSicafModal } from "@/components/admin/renovar-sicaf-modal";
 import { EditarClienteModal } from "@/components/admin/editar-cliente-modal";
 import { ManutencaoModal } from "@/components/manutencao-modal";
 import type { EmpresaData } from "@/routes/empresas";
+import { CobrancaClienteModal } from "@/components/admin/cobranca-cliente-modal";
+import {
+  fetchCobrancaCliente,
+  fetchCobrancaHistorico,
+  type ClienteCobrancaPendente,
+  type SeveridadeCobranca,
+} from "@/lib/cobranca-api";
 
 export interface ClienteDetalhe {
   id: string;
@@ -1038,6 +1046,81 @@ type FaturaItem = FaturaUi & {
   motivoCancelamento?: string;
 };
 
+function calcSeveridadeCobranca(dias: number): SeveridadeCobranca {
+  if (dias > 30) return "critica";
+  if (dias >= 10) return "media";
+  return "leve";
+}
+
+function buildPayLinks(opts: {
+  taxaId?: number | null;
+  pagamentoId?: number | null;
+  clienteId: number;
+}) {
+  const code = opts.taxaId
+    ? `t-${opts.taxaId}`
+    : opts.pagamentoId
+      ? `p-${opts.pagamentoId}`
+      : `c-${opts.clienteId}`;
+  const base =
+    typeof window !== "undefined"
+      ? window.location.origin.replace(/\/$/, "")
+      : "https://fornecedor.cadbrasil.com.br";
+  return { payCode: code, payLink: `${base}/pay/${code}` };
+}
+
+function buildCobrancaPendenteFallback(
+  cliente: ClienteDetalhe,
+  faturas: FaturaItem[],
+  totalEmAberto: number,
+): ClienteCobrancaPendente {
+  const clienteId = parseInt(cliente.id, 10);
+  const aberta = faturas.find((f) => f.status === "aberto") ?? faturas[0];
+  const vencDate = aberta ? parseBrDate(aberta.venc) : null;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  let diasPendente = 0;
+  let status = "Aguardando";
+  if (vencDate) {
+    vencDate.setHours(0, 0, 0, 0);
+    diasPendente = Math.max(0, Math.floor((hoje.getTime() - vencDate.getTime()) / 86400000));
+    if (diasPendente > 0) status = "Vencido";
+  }
+  const links = buildPayLinks({
+    taxaId: aberta?.taxaId,
+    pagamentoId: aberta?.pagamentoId,
+    clienteId,
+  });
+  return {
+    clienteId,
+    taxaId: aberta?.taxaId ?? null,
+    pagamentoId: aberta?.pagamentoId ?? null,
+    company: cliente.razao,
+    cnpj: cliente.cnpj,
+    email: cliente.email || "",
+    telefone: cliente.celular || cliente.telefone || "",
+    responsavel: cliente.responsavel,
+    descricao: aberta?.desc || "Taxa SICAF CADBRASIL",
+    valor: aberta?.valor ?? totalEmAberto,
+    formaPagamento: aberta?.forma || "—",
+    dataVencimento: null,
+    vencimentoFormatado: aberta?.venc || "—",
+    pendenteDesde: null,
+    pendenteDesdeFormatado: aberta?.dataGeracao || "—",
+    diasPendente,
+    status,
+    origem: "cliente_detalhe",
+    cidade: cliente.cidade,
+    severidade: calcSeveridadeCobranca(diasPendente),
+    payCode: links.payCode,
+    payLink: links.payLink,
+    foiCobrado: false,
+    ultimaCobrancaEm: null,
+    ultimaCobrancaFormatada: "",
+    totalCobrancas: 0,
+  };
+}
+
 function FinanceiroTab({
   cliente,
   faturasIniciais = [],
@@ -1051,6 +1134,9 @@ function FinanceiroTab({
   const [faturaAtiva, setFaturaAtiva] = useState<FaturaItem | null>(null);
   const [cancelarOpen, setCancelarOpen] = useState(false);
   const [faturaCancelId, setFaturaCancelId] = useState<string | null>(null);
+  const [cobrancaOpen, setCobrancaOpen] = useState(false);
+  const [cobrancaCliente, setCobrancaCliente] = useState<ClienteCobrancaPendente | null>(null);
+  const [loadingCobranca, setLoadingCobranca] = useState(false);
 
   const faturasSicaf = useMemo(
     () => faturasIniciais.filter((f) => !/^manuten[cç][aã]o\b/i.test(f.desc.trim())),
@@ -1153,8 +1239,58 @@ function FinanceiroTab({
     cancelado: { cls: "bg-muted text-muted-foreground line-through", txt: "Cancel." },
   };
 
+  const abrirCobranca = async () => {
+    const clienteId = parseInt(cliente.id, 10);
+    if (!Number.isFinite(clienteId)) {
+      toast.error("Cliente inválido");
+      return;
+    }
+    setLoadingCobranca(true);
+    const [res, hist] = await Promise.all([
+      fetchCobrancaCliente(clienteId),
+      fetchCobrancaHistorico(clienteId),
+    ]);
+    setLoadingCobranca(false);
+
+    let dados: ClienteCobrancaPendente;
+    if (res.ok && res.cliente) {
+      dados = res.cliente;
+    } else {
+      dados = buildCobrancaPendenteFallback(cliente, faturas, totalEmAberto);
+    }
+
+    if (hist.ok && hist.historico?.length) {
+      const ultima = hist.historico[0];
+      dados = {
+        ...dados,
+        totalCobrancas: hist.historico.length,
+        foiCobrado: true,
+        ultimaCobrancaEm: ultima.enviadoEm,
+        ultimaCobrancaFormatada: ultima.enviadoEmFormatado,
+      };
+    }
+
+    setCobrancaCliente(dados);
+    setCobrancaOpen(true);
+  };
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          size="sm"
+          className="gap-1.5 bg-rose-600 hover:bg-rose-700"
+          disabled={loadingCobranca}
+          onClick={() => void abrirCobranca()}
+        >
+          {loadingCobranca ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <HandCoins className="h-3.5 w-3.5" />
+          )}
+          Cobrança
+        </Button>
+      </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MiniStat label="MRR" value={`R$ ${(cliente.mrr || 0).toLocaleString("pt-BR")}`} />
         <MiniStat label="Total faturado (12m)" value={`R$ ${totalFaturado12m.toLocaleString("pt-BR")}`} />
@@ -1301,6 +1437,15 @@ function FinanceiroTab({
         onOpenChange={setCancelarOpen}
         faturaId={faturaCancelId}
         onConfirmar={confirmarCancelamento}
+      />
+      <CobrancaClienteModal
+        cliente={cobrancaCliente}
+        open={cobrancaOpen}
+        onClose={() => {
+          setCobrancaOpen(false);
+          setCobrancaCliente(null);
+        }}
+        onAtualizado={onPagamentoAutorizado}
       />
     </div>
   );

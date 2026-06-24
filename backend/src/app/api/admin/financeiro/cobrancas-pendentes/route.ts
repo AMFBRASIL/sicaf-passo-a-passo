@@ -23,6 +23,7 @@ export async function GET(request: Request) {
       diasMin: searchParams.get("diasMin") || "",
       semEmail: searchParams.get("semEmail") || "todos",
       severidade: searchParams.get("severidade") || "todos",
+      clienteId: searchParams.get("clienteId") || "",
     };
 
     const svc = await getSicafAgentModule<CobrancaTaxaService>("services/cobranca-taxa.service");

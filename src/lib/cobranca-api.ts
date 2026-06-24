@@ -129,6 +129,7 @@ export type CobrancaHistoricoItem = {
 
 export type CobrancaPendentesFiltrosExt = CobrancaPendentesFiltros & {
   severidade?: "todos" | SeveridadeCobranca;
+  clienteId?: number;
 };
 
 export {
@@ -161,6 +162,7 @@ export async function fetchCobrancasAdmin(
     params.set("diasMin", String(filtros.diasMin));
   }
   if (filtros.semEmail) params.set("semEmail", filtros.semEmail);
+  if (filtros.clienteId) params.set("clienteId", String(filtros.clienteId));
 
   const qs = params.toString();
   const res = await apiFetch(`/api/admin/financeiro/cobrancas-pendentes${qs ? `?${qs}` : ""}`);
@@ -171,6 +173,16 @@ export async function fetchCobrancasAdmin(
     pagination?: { page: number; pageSize: number; total: number; totalPages: number };
     resumo?: CobrancaPendentesResumo & { totalCriticos?: number; mediaAtrasoDias?: number };
   };
+}
+
+export async function fetchCobrancaCliente(clienteId: number): Promise<{
+  ok: boolean;
+  error?: string;
+  cliente?: ClienteCobrancaPendente;
+}> {
+  const res = await fetchCobrancasAdmin({ clienteId, page: 1, pageSize: 1 });
+  if (!res.ok) return { ok: false, error: res.error };
+  return { ok: true, cliente: res.clientes?.[0] };
 }
 
 export async function fetchCobrancaHistorico(clienteId: number): Promise<{

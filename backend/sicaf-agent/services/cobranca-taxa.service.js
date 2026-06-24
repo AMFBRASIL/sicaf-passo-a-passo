@@ -385,8 +385,11 @@ function applyFiltros(rows, filtros) {
   const diasMin = parseInt(filtros.diasMin, 10);
   const semEmail = String(filtros.semEmail || 'todos').toLowerCase();
   const severidade = String(filtros.severidade || 'todos').toLowerCase();
+  const clienteId = parseInt(filtros.clienteId, 10);
 
   return rows.filter((row) => {
+    if (Number.isFinite(clienteId) && clienteId > 0 && row.clienteId !== clienteId) return false;
+
     if (q) {
       const hay = [row.company, row.cnpj, row.email, row.responsavel].join(' ').toLowerCase();
       const digits = q.replace(/\D/g, '');
