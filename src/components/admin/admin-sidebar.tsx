@@ -1,26 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-  LayoutDashboard,
-  Users,
-  DollarSign,
-  HandCoins,
-  FileCheck2,
-  FolderOpen,
-  Ticket,
-  PhoneCall,
-  TrendingUp,
-  Bot,
-  UserCog,
-  BarChart3,
-  BellRing,
-  Filter,
-  Brain,
-  ScrollText,
-  Settings2,
-  Shield,
-  Building2,
-  Cog,
-} from "lucide-react";
+import { Building2 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -33,37 +12,13 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-
-const operacional = [
-  { title: "Dashboard Executivo", url: "/admin", icon: LayoutDashboard },
-  { title: "Gestão de Clientes", url: "/admin/clientes", icon: Users },
-  { title: "Financeiro", url: "/admin/financeiro", icon: DollarSign },
-  { title: "Cobrança", url: "/admin/cobranca", icon: HandCoins },
-  { title: "Gestão SICAF", url: "/admin/sicaf", icon: FileCheck2 },
-  { title: "Documentos", url: "/admin/documentos", icon: FolderOpen },
-];
-
-const atendimento = [
-  { title: "Suporte (Kanban)", url: "/admin/suporte", icon: Ticket },
-  { title: "Central de Atendimento", url: "/admin/atendimento", icon: PhoneCall },
-  { title: "Central de Alertas", url: "/admin/alertas", icon: BellRing },
-];
-
-const inteligencia = [
-  { title: "Google Ads", url: "/admin/google-ads", icon: TrendingUp },
-  { title: "Processos", url: "/admin/processos", icon: Cog },
-  { title: "Funil Comercial", url: "/admin/funil", icon: Filter },
-  { title: "IA Gerencial", url: "/admin/ia", icon: Brain },
-  { title: "Automações", url: "/admin/automacoes", icon: Bot },
-];
-
-const gestao = [
-  { title: "Gestão de Equipe", url: "/admin/equipe", icon: UserCog },
-  { title: "Gestão de Perfis", url: "/admin/perfis", icon: Shield },
-  { title: "Relatórios", url: "/admin/relatorios", icon: BarChart3 },
-  { title: "Auditoria", url: "/admin/auditoria", icon: ScrollText },
-  { title: "Configurações", url: "/admin/configuracoes", icon: Settings2 },
-];
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  ADMIN_MENU_CATEGORIES,
+  filterAdminMenu,
+  groupAdminMenu,
+  type AdminMenuItem,
+} from "@/lib/admin-menu-manifest";
 
 function Group({
   label,
@@ -72,22 +27,27 @@ function Group({
   collapsed,
 }: {
   label: string;
-  items: { title: string; url: string; icon: any }[];
+  items: AdminMenuItem[];
   currentPath: string;
   collapsed: boolean;
 }) {
+  if (!items.length) return null;
+
   return (
     <SidebarGroup>
       {!collapsed && <SidebarGroupLabel>{label}</SidebarGroupLabel>}
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
-            const active = currentPath === item.url;
+            const active =
+              currentPath === item.url ||
+              (item.url !== "/admin" && currentPath.startsWith(`${item.url}/`));
+            const Icon = item.icon;
             return (
               <SidebarMenuItem key={item.url}>
                 <SidebarMenuButton asChild isActive={active} tooltip={item.title}>
                   <Link to={item.url} className="flex items-center gap-2">
-                    <item.icon className="h-4 w-4 shrink-0" />
+                    <Icon className="h-4 w-4 shrink-0" />
                     {!collapsed && <span className="truncate">{item.title}</span>}
                   </Link>
                 </SidebarMenuButton>
@@ -104,6 +64,10 @@ export function AdminSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
+  const { hasPermission } = useAuth();
+
+  const visibleItems = filterAdminMenu(hasPermission);
+  const groups = groupAdminMenu(visibleItems);
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
@@ -123,10 +87,15 @@ export function AdminSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <Group label="Operação" items={operacional} currentPath={currentPath} collapsed={collapsed} />
-        <Group label="Atendimento" items={atendimento} currentPath={currentPath} collapsed={collapsed} />
-        <Group label="Inteligência" items={inteligencia} currentPath={currentPath} collapsed={collapsed} />
-        <Group label="Gestão" items={gestao} currentPath={currentPath} collapsed={collapsed} />
+        {ADMIN_MENU_CATEGORIES.map((category) => (
+          <Group
+            key={category}
+            label={category}
+            items={groups[category] ?? []}
+            currentPath={currentPath}
+            collapsed={collapsed}
+          />
+        ))}
       </SidebarContent>
     </Sidebar>
   );

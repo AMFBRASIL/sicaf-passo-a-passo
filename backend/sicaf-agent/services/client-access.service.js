@@ -41,6 +41,7 @@ async function getTipoUsuario(db, usuarioId) {
 
 function isStaffTipo(tipo) {
   const t = String(tipo || '').toLowerCase();
+  if (!t || t === 'cliente') return false;
   return (
     t === 'admin' ||
     t === 'colaborador' ||
@@ -48,6 +49,10 @@ function isStaffTipo(tipo) {
     t === 'analista' ||
     t === 'visualizador'
   );
+}
+
+function isEquipePerfilTipo(tipo) {
+  return String(tipo || '').toLowerCase() !== 'cliente';
 }
 
 /**
@@ -74,7 +79,7 @@ async function isUsuarioStaff(db, usuarioId, _jwtTipo) {
       if (!perfil || !perfil.ativo) return false;
       const perfilTipo = String(perfil.tipo || '').toLowerCase();
       if (perfilTipo === 'cliente') return false;
-      return isStaffTipo(perfilTipo);
+      return isEquipePerfilTipo(perfilTipo);
     }
 
     // Sem perfil_id: fallback legado em tipo_usuario

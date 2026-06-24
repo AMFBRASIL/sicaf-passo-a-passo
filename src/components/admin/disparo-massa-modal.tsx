@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -111,17 +111,17 @@ export function DisparoMassaModal({ open, onOpenChange, onConcluido }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="max-w-2xl gap-0 overflow-hidden p-0 sm:max-w-2xl [&>button:last-child]:hidden">
         <div className="flex items-start justify-between border-b px-6 py-5">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
               <Bell className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">Disparo em massa</h2>
-              <p className="text-sm text-muted-foreground">
+              <DialogTitle className="text-lg font-bold">Disparo em massa</DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
                 Envie cobranças simultaneamente para um grupo de clientes inadimplentes.
-              </p>
+              </DialogDescription>
             </div>
           </div>
           <Button variant="ghost" size="icon" className="shrink-0" onClick={() => onOpenChange(false)}>

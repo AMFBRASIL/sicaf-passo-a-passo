@@ -18,6 +18,7 @@ import {
 import { EditarPerfilModal } from "@/components/editar-perfil-modal";
 import { useAuth } from "@/contexts/AuthContext";
 import { AdminRouteGuard } from "@/components/admin/admin-route-guard";
+import { AdminPageGuard } from "@/components/admin/admin-page-guard";
 import { readAuthToken } from "@/lib/auth-cookie";
 import { apiUrl } from "@/lib/api-config";
 
@@ -67,7 +68,9 @@ function AdminLayout() {
             <div className="flex items-center gap-3">
               <SidebarTrigger />
               <div className="hidden items-center gap-2 md:flex">
-                <Badge variant="secondary" className="rounded-sm">ADMIN</Badge>
+                <Badge variant="secondary" className="rounded-sm">
+                  {user?.perfil?.nome ?? "Equipe"}
+                </Badge>
                 <span className="text-xs text-muted-foreground">
                   Central de Comando CADBRASIL
                 </span>
@@ -132,7 +135,9 @@ function AdminLayout() {
             </div>
           </header>
           <main className="flex-1">
-            <Outlet />
+            <AdminPageGuard>
+              <Outlet />
+            </AdminPageGuard>
           </main>
         </div>
       </div>

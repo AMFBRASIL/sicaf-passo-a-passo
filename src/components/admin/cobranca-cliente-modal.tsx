@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   HandCoins,
   Phone,
@@ -141,7 +141,7 @@ export function CobrancaClienteModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-5xl p-0 overflow-hidden gap-0 sm:rounded-2xl border-0 max-h-[92vh] flex flex-col">
+      <DialogContent className="max-w-5xl p-0 overflow-hidden gap-0 sm:rounded-2xl border-0 max-h-[92vh] flex flex-col [&>button:last-child]:hidden">
         <div className="border-b bg-gradient-to-r from-rose-50 via-white to-white px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3 min-w-0">
@@ -150,7 +150,9 @@ export function CobrancaClienteModal({
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-lg font-bold text-slate-900 truncate">{cliente.company}</h2>
+                  <DialogTitle className="text-lg font-bold text-slate-900 truncate">
+                    {cliente.company}
+                  </DialogTitle>
                   <Badge variant="outline" className={sevBadge[sev].cls}>
                     {sevBadge[sev].label}
                   </Badge>
@@ -160,9 +162,9 @@ export function CobrancaClienteModal({
                     </Badge>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground mt-0.5">
+                <DialogDescription className="text-sm text-muted-foreground mt-0.5">
                   CNPJ {cliente.cnpj} {cliente.cidade ? `· ${cliente.cidade}` : ""}
-                </p>
+                </DialogDescription>
                 <div className="flex items-center gap-4 mt-2 text-xs text-slate-600 flex-wrap">
                   {cliente.telefone && (
                     <span className="flex items-center gap-1">
