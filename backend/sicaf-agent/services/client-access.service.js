@@ -50,23 +50,38 @@ function isStaffTipo(tipo) {
   );
 }
 
-async function isUsuarioStaff(db, usuarioId, jwtTipo) {
-  if (isStaffTipo(jwtTipo)) return true;
-
-  const tipoUsuario = await getTipoUsuario(db, usuarioId);
-  if (isStaffTipo(tipoUsuario)) return true;
+/**
+ * Equipe interna: fonte da verdade é usuarios.perfil_id → perfis_acesso.tipo.
+ * Perfil "cliente" nunca acessa /admin, mesmo com tipo_usuario legado incorreto.
+ */
+async function isUsuarioStaff(db, usuarioId, _jwtTipo) {
+  if (!db) return false;
 
   try {
-    const u = await db('usuarios').where('id', usuarioId).select('perfil_id').first();
-    if (u?.perfil_id) {
-      const perfil = await db('perfis_acesso').where('id', u.perfil_id).select('tipo', 'nome').first();
-      if (perfil && isStaffTipo(perfil.tipo)) return true;
-      const nome = String(perfil?.nome || '').toLowerCase();
-      if (nome.includes('admin') || nome.includes('gestor') || nome.includes('colaborador')) return true;
-    }
-  } catch (_) {}
+    const u = await db('usuarios')
+      .where('id', usuarioId)
+      .whereNull('deleted_at')
+      .select('perfil_id', 'tipo_usuario')
+      .first();
+    if (!u) return false;
 
-  return false;
+    if (u.perfil_id) {
+      const perfil = await db('perfis_acesso')
+        .where('id', u.perfil_id)
+        .select('tipo', 'ativo')
+        .first();
+
+      if (!perfil || !perfil.ativo) return false;
+      const perfilTipo = String(perfil.tipo || '').toLowerCase();
+      if (perfilTipo === 'cliente') return false;
+      return isStaffTipo(perfilTipo);
+    }
+
+    // Sem perfil_id: fallback legado em tipo_usuario
+    return isStaffTipo(u.tipo_usuario);
+  } catch (_) {
+    return false;
+  }
 }
 
 async function assertClienteAcessivel(db, clienteId, usuarioId, jwtTipo) {
@@ -139,7 +154,10 @@ async function assertClienteAcessivelById(clienteId, usuarioId, jwtTipo) {
 
 async function checkUsuarioIsStaff(usuarioId, jwtTipo) {
   const db = getDb();
-  if (!db) return isStaffTipo(jwtTipo);
+  if (!db) {
+    // Sem banco: só confia no JWT se não for cliente
+    return String(jwtTipo || '').toLowerCase() !== 'cliente' && isStaffTipo(jwtTipo);
+  }
   return isUsuarioStaff(db, usuarioId, jwtTipo);
 }
 

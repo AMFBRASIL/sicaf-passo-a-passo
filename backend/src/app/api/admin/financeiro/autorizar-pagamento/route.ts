@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireLegacyUserId } from "@/lib/auth/legacy-auth";
+import { requireStaffAccess } from "@/lib/auth/legacy-auth";
 import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
@@ -65,7 +65,7 @@ type PagamentoComprovanteService = {
 
 export async function POST(request: Request) {
   try {
-    const usuarioId = await requireLegacyUserId(request);
+    const { usuarioId } = await requireStaffAccess(request);
     const formData = await request.formData();
 
     const taxaId = parseInt(String(formData.get("taxaId") || ""), 10);

@@ -18,6 +18,7 @@ import {
 import { ClientOnly } from "@/components/client-only";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { isStaffUser } from "@/lib/auth-roles";
 
 export const Route = createFileRoute("/auth/")({
   head: () => ({
@@ -37,8 +38,7 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
 
-  const defaultRoute =
-    user?.perfil?.tipo === "gestor" || user?.perfil?.tipo === "admin" ? "/admin" : "/";
+  const defaultRoute = isStaffUser(user) ? "/admin" : "/";
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
@@ -57,10 +57,7 @@ function AuthPage() {
       toast.success("Login realizado com sucesso!", {
         description: "Redirecionando para o portal...",
       });
-      const route =
-        result.user?.perfil?.tipo === "gestor" || result.user?.perfil?.tipo === "admin"
-          ? "/admin"
-          : "/";
+      const route = isStaffUser(result.user) ? "/admin" : "/";
       void navigate({ to: route });
       return;
     }

@@ -1,4 +1,4 @@
-import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Outlet, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
@@ -17,8 +17,28 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EditarPerfilModal } from "@/components/editar-perfil-modal";
 import { useAuth } from "@/contexts/AuthContext";
+import { AdminRouteGuard } from "@/components/admin/admin-route-guard";
+import { readAuthToken } from "@/lib/auth-cookie";
+import { apiUrl } from "@/lib/api-config";
 
 export const Route = createFileRoute("/admin")({
+  beforeLoad: async () => {
+    if (typeof window === "undefined") return;
+
+    const token = readAuthToken();
+    if (!token) {
+      throw redirect({ to: "/auth" });
+    }
+
+    const res = await fetch(apiUrl("/api/auth/staff-access"), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; isStaff?: boolean };
+
+    if (!res.ok || !data.ok || !data.isStaff) {
+      throw redirect({ to: "/" });
+    }
+  },
   component: AdminLayout,
 });
 
@@ -38,7 +58,8 @@ function AdminLayout() {
     "AD";
 
   return (
-    <SidebarProvider>
+    <AdminRouteGuard>
+      <SidebarProvider>
       <div className="flex min-h-screen w-full bg-muted/30">
         <AdminSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -117,5 +138,6 @@ function AdminLayout() {
       </div>
       <EditarPerfilModal open={editarOpen} onOpenChange={setEditarOpen} />
     </SidebarProvider>
+    </AdminRouteGuard>
   );
 }

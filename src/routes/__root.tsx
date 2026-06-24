@@ -172,7 +172,15 @@ function RootLayout() {
   if (isAdmin || isAuth || isIframeChat || isPublicPay) {
     return (
       <ThemeProvider>
-        <Outlet />
+        <ClientOnly
+          fallback={
+            <div className="flex min-h-screen items-center justify-center bg-background">
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            </div>
+          }
+        >
+          <Outlet />
+        </ClientOnly>
       </ThemeProvider>
     );
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireLegacyUserId } from "@/lib/auth/legacy-auth";
+import { requireStaffAccess } from "@/lib/auth/legacy-auth";
 import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ type SettingsService = {
 
 export async function GET(request: Request) {
   try {
-    await requireLegacyUserId(request);
+    await requireStaffAccess(request);
     const svc = await getSicafAgentModule<SettingsService>("services/settings.service");
     const result = await svc.getTemplates();
     return NextResponse.json(result, { status: result.ok ? 200 : 500 });

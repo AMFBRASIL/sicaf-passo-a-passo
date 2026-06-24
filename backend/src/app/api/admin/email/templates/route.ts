@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireLegacyUserId } from "@/lib/auth/legacy-auth";
+import { requireStaffAccess } from "@/lib/auth/legacy-auth";
 import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ type EmailAvisosService = {
 
 export async function GET(request: Request) {
   try {
-    await requireLegacyUserId(request);
+    await requireStaffAccess(request);
     const svc = await getSicafAgentModule<EmailAvisosService>("services/email-avisos.service");
     const result = await svc.listAvisoTemplates();
     return NextResponse.json(result, { status: result.ok ? 200 : 500 });

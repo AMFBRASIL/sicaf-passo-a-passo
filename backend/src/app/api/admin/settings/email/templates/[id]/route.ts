@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireLegacyUserId } from "@/lib/auth/legacy-auth";
+import { requireStaffAccess } from "@/lib/auth/legacy-auth";
 import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireLegacyUserId(request);
+    await requireStaffAccess(request);
     const { id } = await context.params;
     const templateId = parseInt(id, 10);
     if (!Number.isFinite(templateId) || templateId <= 0) {

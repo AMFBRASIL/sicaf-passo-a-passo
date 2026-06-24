@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireLegacyUserId } from "@/lib/auth/legacy-auth";
+import { requireStaffAccess } from "@/lib/auth/legacy-auth";
 import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ type PagamentosService = {
 
 export async function POST(request: Request) {
   try {
-    await requireLegacyUserId(request);
+    await requireStaffAccess(request);
     const body = await request.json();
     const ids = Array.isArray(body.ids)
       ? body.ids.map((id: unknown) => parseInt(String(id), 10)).filter((n: number) => Number.isFinite(n) && n > 0)

@@ -29,18 +29,18 @@ export type LegacyLoginResult =
   | { ok: true; token: string; user: AuthUser }
   | { ok: false; error: string };
 
-/** JWT só aceita admin | colaborador | cliente — perfis internos mapeiam para admin/colaborador. */
+/** JWT só aceita admin | colaborador | cliente — derivado de perfis_acesso.tipo (via perfil_id). */
 function resolveJwtTipo(
   tipoUsuario: string | null | undefined,
   perfilTipo: string | null,
 ): TokenPayload["tipo"] {
-  const tu = String(tipoUsuario || "").toLowerCase();
-  if (tu === "admin" || tu === "colaborador") return tu;
-
   const pt = String(perfilTipo || "").toLowerCase();
+  if (pt === "cliente") return "cliente";
   if (pt === "colaborador") return "colaborador";
   if (["admin", "gestor", "analista", "visualizador"].includes(pt)) return "admin";
 
+  const tu = String(tipoUsuario || "").toLowerCase();
+  if (tu === "admin" || tu === "colaborador") return tu;
   return "cliente";
 }
 

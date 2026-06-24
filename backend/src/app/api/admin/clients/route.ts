@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireLegacyUserId } from "@/lib/auth/legacy-auth";
+import { requireStaffAccess } from "@/lib/auth/legacy-auth";
 import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ type AdminClientsService = {
 
 export async function GET(request: Request) {
   try {
-    await requireLegacyUserId(request);
+    await requireStaffAccess(request);
     const url = new URL(request.url);
     const svc = await getSicafAgentModule<AdminClientsService>("services/admin-clients.service");
     const result = await svc.listClientsForAdmin({
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const usuarioId = await requireLegacyUserId(request);
+    const { usuarioId } = await requireStaffAccess(request);
     const body = await request.json();
     const svc = await getSicafAgentModule<AdminClientsService>("services/admin-clients.service");
     const result = await svc.createClient(

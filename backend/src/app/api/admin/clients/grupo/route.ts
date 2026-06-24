@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireLegacyUserId } from "@/lib/auth/legacy-auth";
+import { requireStaffAccess } from "@/lib/auth/legacy-auth";
 import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ type AdminClientsService = {
 
 export async function GET(request: Request) {
   try {
-    await requireLegacyUserId(request);
+    await requireStaffAccess(request);
     const url = new URL(request.url);
     const grupoId = url.searchParams.get("grupoId") || undefined;
     const clienteIdRaw = url.searchParams.get("clienteId");
