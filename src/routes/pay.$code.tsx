@@ -398,10 +398,10 @@ function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
                   <Phone className="h-4 w-4" /> WhatsApp (11) 2122-0202
                 </a>
                 <a
-                  href="mailto:financeiro@cadbrasil.com"
+                  href="mailto:documentos@fornecedordigital.com.br"
                   className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900"
                 >
-                  <Mail className="h-4 w-4" /> financeiro@cadbrasil.com
+                  <Mail className="h-4 w-4" /> documentos@fornecedordigital.com.br
                 </a>
               </CardContent>
             </Card>
