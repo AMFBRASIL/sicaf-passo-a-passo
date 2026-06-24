@@ -36,7 +36,8 @@ import {
   formatSlaUi,
   formatTamanhoArquivo,
   prioridadeParaUi,
-  responderTicketAdmin,
+  enviarRespostaAdminTicket,
+  MAX_ANEXO_TICKET_BYTES,
 } from "@/lib/admin-suporte-api";
 
 export interface TicketItem {
@@ -54,7 +55,7 @@ interface Props {
   onRespondido?: () => void;
 }
 
-type ReplyAnexo = { id: string; name: string; size: number; type: string };
+type ReplyAnexo = { id: string; name: string; size: number; type: string; file: File };
 
 function formatBytes(b: number) {
   if (b < 1024) return `${b} B`;
@@ -327,16 +328,24 @@ export function TicketRespostaModal({ open, onOpenChange, ticketId, onRespondido
           open={responderOpen}
           onOpenChange={setResponderOpen}
           ticket={ticket}
-          onEnviar={async (msg, fechar) => {
-            const res = await responderTicketAdmin(ticket.id, {
+          onEnviar={async (msg, fechar, arquivos) => {
+            const res = await enviarRespostaAdminTicket(ticket.id, {
               mensagem: msg,
               marcarResolvido: fechar,
+              arquivos,
             });
             if (!res.ok) {
               toast.error(res.error || "Erro ao enviar resposta");
               return;
             }
-            toast.success(fechar ? "Resposta enviada e ticket marcado como resolvido" : "Resposta enviada ao cliente");
+            if (res.avisoAnexos) toast.warning(res.avisoAnexos);
+            toast.success(
+              fechar
+                ? "Resposta enviada e ticket marcado como resolvido"
+                : arquivos.length > 0
+                  ? `Resposta e ${arquivos.length} anexo(s) enviados`
+                  : "Resposta enviada ao cliente",
+            );
             setResponderOpen(false);
             await carregar();
             onRespondido?.();
@@ -419,7 +428,7 @@ function ResponderModal({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   ticket: AdminTicketDetalhe;
-  onEnviar: (mensagem: string, fechar: boolean) => Promise<void>;
+  onEnviar: (mensagem: string, fechar: boolean, arquivos: File[]) => Promise<void>;
 }) {
   const [resposta, setResposta] = useState("");
   const [anexos, setAnexos] = useState<ReplyAnexo[]>([]);
@@ -430,15 +439,21 @@ function ResponderModal({
 
   const addFiles = (files: FileList | null) => {
     if (!files) return;
-    setAnexos((prev) => [
-      ...prev,
-      ...Array.from(files).map((f) => ({
+    const novos: ReplyAnexo[] = [];
+    for (const f of Array.from(files)) {
+      if (f.size > MAX_ANEXO_TICKET_BYTES) {
+        toast.error(`${f.name} excede o limite de 20 MB`);
+        continue;
+      }
+      novos.push({
         id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2, 7)}`,
         name: f.name,
         size: f.size,
         type: f.type,
-      })),
-    ]);
+        file: f,
+      });
+    }
+    if (novos.length) setAnexos((prev) => [...prev, ...novos]);
   };
 
   const enviar = async () => {
@@ -446,12 +461,13 @@ function ResponderModal({
       toast.error("Escreva uma mensagem antes de enviar");
       return;
     }
-    if (anexos.length > 0) {
-      toast.info("Upload de anexos na resposta do admin em breve — enviando só a mensagem.");
-    }
     setEnviando(true);
     try {
-      await onEnviar(resposta.trim(), fechar);
+      await onEnviar(
+        resposta.trim(),
+        fechar,
+        anexos.map((a) => a.file),
+      );
       setResposta("");
       setAnexos([]);
       setFechar(false);

@@ -675,13 +675,14 @@ function SicafPage() {
   }, []);
 
   const saudeStats = useMemo(() => {
-    const base = calcSaudeDocumentalSicaf(docsSaude, painel?.niveisDetail);
+    const etapasConcluidas = etapaAtual > total;
+    const base = calcSaudeDocumentalSicaf(docsSaude, painel?.niveisDetail, { etapasConcluidas });
     return {
       ...base,
       ultimaVerificacao,
       labelMonitorado: `${base.total} documento${base.total === 1 ? "" : "s"} do SICAF monitorados`,
     };
-  }, [docsSaude, ultimaVerificacao, painel?.niveisDetail]);
+  }, [docsSaude, ultimaVerificacao, painel?.niveisDetail, etapaAtual, total]);
 
   const aplicarDados = useCallback(
     (

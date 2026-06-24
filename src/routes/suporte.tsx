@@ -55,7 +55,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { PageHeader, StatusBadge } from "@/components/page-header";
+import { PageHeader, StatusBadge, PageContainer } from "@/components/page-header";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -895,7 +895,7 @@ function SupportPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
+    <PageContainer>
       <PageHeader
         icon={<Headphones className="h-5 w-5" />}
         title="Suporte"
@@ -984,7 +984,7 @@ function SupportPage() {
         onOpenChange={(v) => !v && setAberto(null)}
         onResponder={responder}
       />
-    </div>
+    </PageContainer>
   );
 }
 

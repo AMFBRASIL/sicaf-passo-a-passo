@@ -160,6 +160,7 @@ function RootLayout() {
   const [editarOpen, setEditarOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isPublicPay = pathname === "/pay" || pathname.startsWith("/pay/");
   const isAuth =
     pathname === "/auth" ||
     pathname === "/login" ||
@@ -168,7 +169,7 @@ function RootLayout() {
   const isIframeChat =
     pathname === "/sicaf-assistant-chat" || pathname === "/sicaf-assistant";
 
-  if (isAdmin || isAuth || isIframeChat) {
+  if (isAdmin || isAuth || isIframeChat || isPublicPay) {
     return (
       <ThemeProvider>
         <Outlet />

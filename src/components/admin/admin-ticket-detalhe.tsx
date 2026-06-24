@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,8 @@ import {
   RefreshCw,
   Send,
   User,
-  AlertTriangle,
+  Upload,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -47,8 +48,11 @@ import {
   formatSlaUi,
   formatTamanhoArquivo,
   prioridadeParaUi,
-  responderTicketAdmin,
+  enviarRespostaAdminTicket,
+  MAX_ANEXO_TICKET_BYTES,
 } from "@/lib/admin-suporte-api";
+
+type AnexoResposta = { id: string; file: File; name: string; size: number };
 
 const respostasRapidas = [
   "Olá! Recebemos sua solicitação e já estamos trabalhando nela.",
@@ -69,6 +73,27 @@ export function AdminTicketDetalhe({ ticketId }: Props) {
   const [modoSituacao, setModoSituacao] = useState<ModoSituacaoTicket>("padrao");
   const [situacaoManual, setSituacaoManual] = useState<TicketSituacao>("Em andamento");
   const [marcarResolvido, setMarcarResolvido] = useState(false);
+  const [anexosResposta, setAnexosResposta] = useState<AnexoResposta[]>([]);
+  const [dragAnexo, setDragAnexo] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const addAnexosResposta = (files: FileList | null) => {
+    if (!files) return;
+    const novos: AnexoResposta[] = [];
+    for (const f of Array.from(files)) {
+      if (f.size > MAX_ANEXO_TICKET_BYTES) {
+        toast.error(`${f.name} excede o limite de 20 MB`);
+        continue;
+      }
+      novos.push({
+        id: `${f.name}-${f.size}-${Math.random().toString(36).slice(2, 7)}`,
+        file: f,
+        name: f.name,
+        size: f.size,
+      });
+    }
+    if (novos.length) setAnexosResposta((prev) => [...prev, ...novos]);
+  };
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -128,10 +153,11 @@ export function AdminTicketDetalhe({ ticketId }: Props) {
             : undefined;
 
     setEnviando(true);
-    const res = await responderTicketAdmin(ticket.id, {
+    const res = await enviarRespostaAdminTicket(ticket.id, {
       mensagem,
       status,
       marcarResolvido: opcoes.modoSituacao === "padrao" ? opcoes.marcarResolvido : undefined,
+      arquivos: anexosResposta.map((a) => a.file),
     });
     setEnviando(false);
 
@@ -140,12 +166,19 @@ export function AdminTicketDetalhe({ ticketId }: Props) {
       return;
     }
 
+    if (res.avisoAnexos) {
+      toast.warning(res.avisoAnexos);
+    }
+
     toast.success(
       situacaoPrevista !== colunaAtual
         ? `Resposta enviada · situação: ${situacaoPrevista}`
-        : "Resposta enviada ao cliente",
+        : anexosResposta.length > 0
+          ? `Resposta e ${anexosResposta.length} anexo(s) enviados ao cliente`
+          : "Resposta enviada ao cliente",
     );
     setMensagem("");
+    setAnexosResposta([]);
     setModoSituacao("padrao");
     setMarcarResolvido(false);
     await carregar();
@@ -329,6 +362,63 @@ export function AdminTicketDetalhe({ ticketId }: Props) {
                 rows={7}
                 className="mt-2 resize-none text-sm"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Anexar arquivos
+              </Label>
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragAnexo(true);
+                }}
+                onDragLeave={() => setDragAnexo(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragAnexo(false);
+                  addAnexosResposta(e.dataTransfer.files);
+                }}
+                onClick={() => fileRef.current?.click()}
+                className={cn(
+                  "flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition",
+                  dragAnexo
+                    ? "border-primary bg-primary/10"
+                    : "border-border bg-muted/20 hover:border-primary/40",
+                )}
+              >
+                <Upload className="h-5 w-5 text-muted-foreground" />
+                <p className="mt-2 text-xs text-muted-foreground">PDF, imagens, DOCX — até 20 MB</p>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addAnexosResposta(e.target.files)}
+                />
+              </div>
+              {anexosResposta.length > 0 && (
+                <ul className="space-y-1.5">
+                  {anexosResposta.map((a) => (
+                    <li key={a.id} className="flex items-center gap-2 rounded-md border bg-muted/30 px-2 py-1.5 text-xs">
+                      <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate">{a.name}</span>
+                      <span className="text-muted-foreground">{formatTamanhoArquivo(a.size)}</span>
+                      <button
+                        type="button"
+                        className="rounded p-0.5 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAnexosResposta((p) => p.filter((x) => x.id !== a.id));
+                        }}
+                        aria-label="Remover anexo"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <Card className="p-3 space-y-3 bg-muted/20">

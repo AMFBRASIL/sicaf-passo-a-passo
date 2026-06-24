@@ -122,20 +122,47 @@ export function temAlgumNivelSicafHabilitado(
   return false;
 }
 
+/** Nível I–VI com situação ativa (validado, vencendo ou pendente no Compras.gov.br). */
+function nivelComValidade(
+  niveisDetail: EmpresaGerenciarPainel["niveisDetail"] | null | undefined,
+  n: number,
+): boolean {
+  const st = getNivelDetail(niveisDetail, n)?.status;
+  return st === "validado" || st === "vencendo" || st === "pendente";
+}
+
+/** Algum nível de I a VI com validade informada. */
+export function algumNivelSicafComValidade(
+  niveisDetail: EmpresaGerenciarPainel["niveisDetail"] | null | undefined,
+): boolean {
+  for (let n = 1; n <= NIVEIS_SICAF_TOTAL; n++) {
+    if (nivelComValidade(niveisDetail, n)) return true;
+  }
+  return false;
+}
+
+export function etapasSicafConcluidas(etapaAtual: number, totalEtapas: number): boolean {
+  return etapaAtual > totalEtapas;
+}
+
 /**
  * Saúde documental na página /sicaf:
- * - Nenhum nível habilitado → % real pelos documentos inseridos (válidos / total).
- * - Com qualquer nível I–VI habilitado → exibe 50% (apenas visual; contadores vêm dos documentos).
+ * - Etapas em andamento + algum nível I–VI com validade → 50% (progresso parcial).
+ * - Etapas concluídas → % real pelos documentos (válido 100%, vencendo 50%, vencida/pendente 0%).
  */
 export function calcSaudeDocumentalSicaf(
   docs: { status: string }[],
   niveisDetail?: EmpresaGerenciarPainel["niveisDetail"] | null,
+  options?: { etapasConcluidas?: boolean },
 ): SaudeDocumentalStats {
   const fromDocs = calcSaudeDocumentalFromDocs(docs);
-  if (!temAlgumNivelSicafHabilitado(niveisDetail)) {
+  if (options?.etapasConcluidas) {
     return fromDocs;
   }
-  return { ...fromDocs, score: 50 };
+  if (algumNivelSicafComValidade(niveisDetail)) {
+    return { ...fromDocs, score: 50 };
+  }
+  return fromDocs;
 }
 
 /** Estado exibido nos banners — não confundir com status "Ativo" só pela data de validade. */

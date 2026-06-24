@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Users,
   DollarSign,
+  HandCoins,
   FileCheck2,
   FolderOpen,
   Ticket,
@@ -37,6 +38,7 @@ const operacional = [
   { title: "Dashboard Executivo", url: "/admin", icon: LayoutDashboard },
   { title: "Gestão de Clientes", url: "/admin/clientes", icon: Users },
   { title: "Financeiro", url: "/admin/financeiro", icon: DollarSign },
+  { title: "Cobrança", url: "/admin/cobranca", icon: HandCoins },
   { title: "Gestão SICAF", url: "/admin/sicaf", icon: FileCheck2 },
   { title: "Documentos", url: "/admin/documentos", icon: FolderOpen },
 ];

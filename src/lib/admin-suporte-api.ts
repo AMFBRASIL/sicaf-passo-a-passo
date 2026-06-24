@@ -295,13 +295,115 @@ export async function responderTicketAdmin(
     mensagem: string;
     status?: string;
     marcarResolvido?: boolean;
+    enviarEmail?: boolean;
   },
 ) {
   const res = await apiFetch(`/api/tickets-admin/${encodeURIComponent(id)}/responder`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  return parseApiJson<{ status?: string }>(res);
+  return parseApiJson<{
+    status?: string;
+    mensagem?: AdminTicketMensagem;
+    emailNotificacao?: { enviado?: boolean; erro?: string };
+  }>(res);
+}
+
+export const MAX_ANEXO_TICKET_BYTES = 20 * 1024 * 1024;
+
+export async function uploadAdminTicketAnexo(
+  ticketId: string,
+  file: File,
+  mensagemId?: number,
+): Promise<{ ok: boolean; error?: string; anexo?: AdminTicketAnexo }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (mensagemId != null) {
+    formData.append("mensagemId", String(mensagemId));
+  }
+
+  const res = await apiFetch(`/api/tickets-admin/${encodeURIComponent(ticketId)}/anexos`, {
+    method: "POST",
+    body: formData,
+  });
+  return parseApiJson<{ anexo?: AdminTicketAnexo }>(res);
+}
+
+export async function notificarEmailRespostaAdmin(
+  ticketId: string,
+  mensagemId: number,
+): Promise<{ ok: boolean; error?: string; emailNotificacao?: { enviado?: boolean; erro?: string } }> {
+  const res = await apiFetch(`/api/tickets-admin/${encodeURIComponent(ticketId)}/notificar-email`, {
+    method: "POST",
+    body: JSON.stringify({ mensagemId }),
+  });
+  return parseApiJson<{ emailNotificacao?: { enviado?: boolean; erro?: string } }>(res);
+}
+
+/** Salva resposta, envia anexos vinculados à mensagem e dispara e-mail ao cliente. */
+export async function enviarRespostaAdminTicket(
+  ticketId: string,
+  options: {
+    mensagem: string;
+    status?: string;
+    marcarResolvido?: boolean;
+    arquivos?: File[];
+  },
+): Promise<{
+  ok: boolean;
+  error?: string;
+  avisoAnexos?: string;
+  emailNotificacao?: { enviado?: boolean; erro?: string };
+}> {
+  const arquivos = options.arquivos?.filter((f) => f && f.size > 0) ?? [];
+  const res = await responderTicketAdmin(ticketId, {
+    mensagem: options.mensagem,
+    status: options.status,
+    marcarResolvido: options.marcarResolvido,
+    enviarEmail: arquivos.length === 0,
+  });
+
+  if (!res.ok) {
+    return { ok: false, error: res.error || "Erro ao enviar resposta" };
+  }
+
+  const mensagemId = res.mensagem?.id;
+  if (arquivos.length === 0) {
+    return { ok: true, emailNotificacao: res.emailNotificacao };
+  }
+
+  if (!mensagemId) {
+    return {
+      ok: false,
+      error: "Resposta salva, mas não foi possível vincular os anexos (ID da mensagem ausente).",
+    };
+  }
+
+  let falhas = 0;
+  for (const file of arquivos) {
+    const up = await uploadAdminTicketAnexo(ticketId, file, mensagemId);
+    if (!up.ok) falhas++;
+  }
+
+  const emailRes = await notificarEmailRespostaAdmin(ticketId, mensagemId);
+
+  if (falhas > 0) {
+    return {
+      ok: true,
+      avisoAnexos: `${falhas} de ${arquivos.length} anexo(s) não foram enviados.`,
+      emailNotificacao: emailRes.emailNotificacao,
+    };
+  }
+
+  if (!emailRes.ok) {
+    return {
+      ok: true,
+      avisoAnexos: emailRes.error || "Anexos salvos, mas o e-mail ao cliente pode não ter sido enviado.",
+      emailNotificacao: emailRes.emailNotificacao,
+    };
+  }
+
+  return { ok: true, emailNotificacao: emailRes.emailNotificacao };
 }
 
 export async function atualizarTicketAdmin(id: string, payload: { status?: string; prioridade?: string }) {

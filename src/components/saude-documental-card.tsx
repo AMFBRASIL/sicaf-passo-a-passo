@@ -137,7 +137,8 @@ export function calcSaudeDocumentalFromDocs(
   const vencendo = docs.filter((d) => d.status === "vencendo").length;
   const vencidas = docs.filter((d) => d.status === "vencida").length;
   const pendentes = docs.filter((d) => d.status === "pendente").length;
-  const score = total ? Math.round((validas / total) * 100) : 0;
+  const weighted = validas + vencendo * 0.5;
+  const score = total ? Math.round((weighted / total) * 100) : 0;
 
   return {
     score,

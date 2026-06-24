@@ -39,6 +39,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthIndexRouteImport } from './routes/auth.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as PayCodeRouteImport } from './routes/pay.$code'
 import { Route as AuthRecuperarSenhaRouteImport } from './routes/auth.recuperar-senha'
 import { Route as AdminSuporteRouteImport } from './routes/admin.suporte'
 import { Route as AdminSicafRouteImport } from './routes/admin.sicaf'
@@ -52,6 +53,7 @@ import { Route as AdminFinanceiroRouteImport } from './routes/admin.financeiro'
 import { Route as AdminEquipeRouteImport } from './routes/admin.equipe'
 import { Route as AdminDocumentosRouteImport } from './routes/admin.documentos'
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
+import { Route as AdminCobrancaRouteImport } from './routes/admin.cobranca'
 import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
 import { Route as AdminAutomacoesRouteImport } from './routes/admin.automacoes'
 import { Route as AdminAuditoriaRouteImport } from './routes/admin.auditoria'
@@ -210,6 +212,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const PayCodeRoute = PayCodeRouteImport.update({
+  id: '/pay/$code',
+  path: '/pay/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRecuperarSenhaRoute = AuthRecuperarSenhaRouteImport.update({
   id: '/recuperar-senha',
   path: '/recuperar-senha',
@@ -273,6 +280,11 @@ const AdminDocumentosRoute = AdminDocumentosRouteImport.update({
 const AdminConfiguracoesRoute = AdminConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminCobrancaRoute = AdminCobrancaRouteImport.update({
+  id: '/cobranca',
+  path: '/cobranca',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminClientesRoute = AdminClientesRouteImport.update({
@@ -345,6 +357,7 @@ export interface FileRoutesByFullPath {
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
   '/admin/clientes': typeof AdminClientesRoute
+  '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/documentos': typeof AdminDocumentosRoute
   '/admin/equipe': typeof AdminEquipeRoute
@@ -358,6 +371,7 @@ export interface FileRoutesByFullPath {
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRouteWithChildren
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
+  '/pay/$code': typeof PayCodeRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/': typeof AuthIndexRoute
   '/admin/suporte/$ticketId': typeof AdminSuporteTicketIdRoute
@@ -395,6 +409,7 @@ export interface FileRoutesByTo {
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
   '/admin/clientes': typeof AdminClientesRoute
+  '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/documentos': typeof AdminDocumentosRoute
   '/admin/equipe': typeof AdminEquipeRoute
@@ -407,6 +422,7 @@ export interface FileRoutesByTo {
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
+  '/pay/$code': typeof PayCodeRoute
   '/admin': typeof AdminIndexRoute
   '/auth': typeof AuthIndexRoute
   '/admin/suporte/$ticketId': typeof AdminSuporteTicketIdRoute
@@ -447,6 +463,7 @@ export interface FileRoutesById {
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
   '/admin/clientes': typeof AdminClientesRoute
+  '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/documentos': typeof AdminDocumentosRoute
   '/admin/equipe': typeof AdminEquipeRoute
@@ -460,6 +477,7 @@ export interface FileRoutesById {
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRouteWithChildren
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
+  '/pay/$code': typeof PayCodeRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/': typeof AuthIndexRoute
   '/admin/suporte/$ticketId': typeof AdminSuporteTicketIdRoute
@@ -501,6 +519,7 @@ export interface FileRouteTypes {
     | '/admin/auditoria'
     | '/admin/automacoes'
     | '/admin/clientes'
+    | '/admin/cobranca'
     | '/admin/configuracoes'
     | '/admin/documentos'
     | '/admin/equipe'
@@ -514,6 +533,7 @@ export interface FileRouteTypes {
     | '/admin/sicaf'
     | '/admin/suporte'
     | '/auth/recuperar-senha'
+    | '/pay/$code'
     | '/admin/'
     | '/auth/'
     | '/admin/suporte/$ticketId'
@@ -551,6 +571,7 @@ export interface FileRouteTypes {
     | '/admin/auditoria'
     | '/admin/automacoes'
     | '/admin/clientes'
+    | '/admin/cobranca'
     | '/admin/configuracoes'
     | '/admin/documentos'
     | '/admin/equipe'
@@ -563,6 +584,7 @@ export interface FileRouteTypes {
     | '/admin/relatorios'
     | '/admin/sicaf'
     | '/auth/recuperar-senha'
+    | '/pay/$code'
     | '/admin'
     | '/auth'
     | '/admin/suporte/$ticketId'
@@ -602,6 +624,7 @@ export interface FileRouteTypes {
     | '/admin/auditoria'
     | '/admin/automacoes'
     | '/admin/clientes'
+    | '/admin/cobranca'
     | '/admin/configuracoes'
     | '/admin/documentos'
     | '/admin/equipe'
@@ -615,6 +638,7 @@ export interface FileRouteTypes {
     | '/admin/sicaf'
     | '/admin/suporte'
     | '/auth/recuperar-senha'
+    | '/pay/$code'
     | '/admin/'
     | '/auth/'
     | '/admin/suporte/$ticketId'
@@ -650,6 +674,7 @@ export interface RootRouteChildren {
   SicafAssistantRoute: typeof SicafAssistantRoute
   SicafAssistantChatRoute: typeof SicafAssistantChatRoute
   SuporteRoute: typeof SuporteRoute
+  PayCodeRoute: typeof PayCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -864,6 +889,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/pay/$code': {
+      id: '/pay/$code'
+      path: '/pay/$code'
+      fullPath: '/pay/$code'
+      preLoaderRoute: typeof PayCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth/recuperar-senha': {
       id: '/auth/recuperar-senha'
       path: '/recuperar-senha'
@@ -955,6 +987,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminConfiguracoesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/cobranca': {
+      id: '/admin/cobranca'
+      path: '/cobranca'
+      fullPath: '/admin/cobranca'
+      preLoaderRoute: typeof AdminCobrancaRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/clientes': {
       id: '/admin/clientes'
       path: '/clientes'
@@ -1027,6 +1066,7 @@ interface AdminRouteChildren {
   AdminAuditoriaRoute: typeof AdminAuditoriaRoute
   AdminAutomacoesRoute: typeof AdminAutomacoesRoute
   AdminClientesRoute: typeof AdminClientesRoute
+  AdminCobrancaRoute: typeof AdminCobrancaRoute
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
   AdminDocumentosRoute: typeof AdminDocumentosRoute
   AdminEquipeRoute: typeof AdminEquipeRoute
@@ -1048,6 +1088,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminAuditoriaRoute: AdminAuditoriaRoute,
   AdminAutomacoesRoute: AdminAutomacoesRoute,
   AdminClientesRoute: AdminClientesRoute,
+  AdminCobrancaRoute: AdminCobrancaRoute,
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
   AdminDocumentosRoute: AdminDocumentosRoute,
   AdminEquipeRoute: AdminEquipeRoute,
@@ -1106,6 +1147,7 @@ const rootRouteChildren: RootRouteChildren = {
   SicafAssistantRoute: SicafAssistantRoute,
   SicafAssistantChatRoute: SicafAssistantChatRoute,
   SuporteRoute: SuporteRoute,
+  PayCodeRoute: PayCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
