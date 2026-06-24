@@ -207,8 +207,85 @@ async function gerarTaxa(opts) {
  * Atualiza taxa → Pago, renovação → Concluída, SICAF → Ativo + nova validade.
  *
  * @param {number} taxaId
- * @returns {Promise<Object>}
+ * @param {number} [usuarioId]
+ * @param {Object} [extra]
+ * @param {string} [extra.formaPagamento]
+ * @param {string} [extra.observacoes]
+ * @param {boolean} [extra.autorizacaoManual]
+ * @param {number} [extra.pagamentoId] — boleto/PIX específico (autorização admin)
  */
+async function sincronizarPagamentosDaTaxa(db, taxaId, clienteId, extra = {}) {
+  const pagamentoId = extra.pagamentoId ? parseInt(extra.pagamentoId, 10) : null;
+  const manual = Boolean(extra.autorizacaoManual);
+  const paidUpdate = { status: 'pago', data_pagamento: db.fn.now(), updated_at: db.fn.now() };
+  const cancelUpdate = { status: 'cancelado', updated_at: db.fn.now() };
+  const skipPaid = ['pago', 'cancelado', 'estornado'];
+
+  const tables = ['pagamentos'];
+  try {
+    if (await db.schema.hasTable('pagamentos_gerencianet')) {
+      tables.push('pagamentos_gerencianet');
+    }
+  } catch (_) {}
+
+  for (const table of tables) {
+    try {
+      if (manual && pagamentoId) {
+        await db(table)
+          .where({ id: pagamentoId, origem: 'sicaf' })
+          .whereNotIn('status', skipPaid)
+          .update(paidUpdate);
+
+        await db(table)
+          .where({ origem: 'sicaf', origem_id: taxaId })
+          .whereNot('id', pagamentoId)
+          .whereNotIn('status', skipPaid)
+          .update(cancelUpdate);
+      } else {
+        await db(table)
+          .where({ origem: 'sicaf', origem_id: taxaId })
+          .whereNotIn('status', skipPaid)
+          .update(paidUpdate);
+      }
+    } catch (e) {
+      console.warn(`[Taxa SICAF] sincronizarPagamentosDaTaxa (${table}):`, e.message);
+    }
+  }
+
+  if (!manual) return;
+
+  const taxaStatusesAbertos = [
+    'Pendente', 'pendente', 'Aguardando', 'aguardando', 'Gerado', 'gerado',
+    'Vencido', 'vencido', 'Atrasado', 'atrasado',
+  ];
+
+  const outrasTaxas = await db('taxas_sicaf')
+    .where('cliente_id', clienteId)
+    .whereNot('id', taxaId)
+    .whereIn('status', taxaStatusesAbertos)
+    .select('id');
+
+  if (!outrasTaxas.length) return;
+
+  const ids = outrasTaxas.map((t) => t.id);
+  await db('taxas_sicaf').whereIn('id', ids).update({
+    status: 'Cancelado',
+    updated_at: db.fn.now(),
+  });
+
+  for (const table of tables) {
+    try {
+      await db(table)
+        .where('origem', 'sicaf')
+        .whereIn('origem_id', ids)
+        .whereNotIn('status', skipPaid)
+        .update(cancelUpdate);
+    } catch (e) {
+      console.warn(`[Taxa SICAF] cancelar boletos outras taxas (${table}):`, e.message);
+    }
+  }
+}
+
 async function confirmarPagamento(taxaId, usuarioId, extra = {}) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
@@ -227,18 +304,7 @@ async function confirmarPagamento(taxaId, usuarioId, extra = {}) {
     });
 
     // 1b. Sincronizar registros de pagamento (PIX/boleto) vinculados à taxa
-    try {
-      await db('pagamentos')
-        .where({ origem: 'sicaf', origem_id: taxaId })
-        .whereNotIn('status', ['pago', 'cancelado', 'estornado'])
-        .update({ status: 'pago', data_pagamento: db.fn.now() });
-    } catch (_) {}
-    try {
-      await db('pagamentos_gerencianet')
-        .where({ origem: 'sicaf', origem_id: taxaId })
-        .whereNotIn('status', ['pago', 'cancelado', 'estornado'])
-        .update({ status: 'pago', data_pagamento: db.fn.now() });
-    } catch (_) {}
+    await sincronizarPagamentosDaTaxa(db, taxaId, taxa.cliente_id, extra);
 
     // 2. Marcar renovação(ões) pendente(s) como Concluída
     await db('sicaf_renovacoes')

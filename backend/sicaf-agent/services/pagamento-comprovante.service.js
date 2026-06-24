@@ -47,6 +47,7 @@ async function autorizarComComprovante({
     formaPagamento,
     observacoes,
     autorizacaoManual: true,
+    pagamentoId: pagamentoId || undefined,
   });
   if (!confirm.ok) return confirm;
 

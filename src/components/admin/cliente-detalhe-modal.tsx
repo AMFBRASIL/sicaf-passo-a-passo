@@ -1224,11 +1224,19 @@ function FinanceiroTab({
       toast.warning(motivo);
     }
     setFaturas((prev) =>
-      prev.map((f) =>
-        f.id === faturaAtiva.id
-          ? { ...f, status: "pago", dataPago: new Date().toLocaleDateString("pt-BR") }
-          : f,
-      ),
+      prev.map((f) => {
+        if (f.id === faturaAtiva.id) {
+          return { ...f, status: "pago", dataPago: new Date().toLocaleDateString("pt-BR") };
+        }
+        if (f.status === "aberto") {
+          return {
+            ...f,
+            status: "cancelado",
+            motivoCancelamento: "Substituído pela autorização de outro boleto",
+          };
+        }
+        return f;
+      }),
     );
     onPagamentoAutorizado?.();
   };

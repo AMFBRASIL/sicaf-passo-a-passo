@@ -2312,15 +2312,16 @@ function normalizePagamentoFinanceiro(p) {
 }
 
 function resolveFinanceStatus(taxaStatus, pgStatus) {
-  if (isPaidFinanceStatus(pgStatus) || isPaidFinanceStatus(taxaStatus)) return 'Pago';
   const pg = normPayStatus(pgStatus);
   const tx = normPayStatus(taxaStatus);
   if (['cancelado', 'cancelada', 'estornado', 'erro', 'removido'].includes(pg)) {
-    return taxaStatus || pgStatus;
+    return pgStatus || 'Cancelado';
   }
   if (['cancelado', 'cancelada', 'estornado', 'erro', 'removido'].includes(tx)) {
-    return taxaStatus;
+    return taxaStatus || 'Cancelado';
   }
+  if (isPaidFinanceStatus(pgStatus)) return 'Pago';
+  if (isPaidFinanceStatus(taxaStatus)) return 'Pago';
   return pgStatus || taxaStatus || 'Pendente';
 }
 
