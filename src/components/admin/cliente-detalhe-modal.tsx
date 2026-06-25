@@ -404,7 +404,7 @@ export function ClienteDetalheModal({
             </header>
 
             {/* Content */}
-            <ScrollArea className="flex-1 max-h-[520px]">
+            <ScrollArea className="flex-1 min-h-0 max-h-[min(600px,calc(90vh-220px))]">
               <div className="min-w-0 p-5">
                 {step === "resumo" && (
                   <ResumoTab cliente={exibicao} completude={completude} faturas={faturas} />

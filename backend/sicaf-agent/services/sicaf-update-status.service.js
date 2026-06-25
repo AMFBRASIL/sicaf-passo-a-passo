@@ -130,6 +130,40 @@ function dbStatusForTarget(targetStatus) {
   return 'Ativo';
 }
 
+function todayIsoUtc() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    .toISOString()
+    .slice(0, 10);
+}
+
+/** Extrai YYYY-MM-DD de Date (mysql2), string ISO ou null para datas inválidas. */
+function normalizeDateIso(value) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const y = value.getFullYear();
+    if (y < 1970) return null;
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(value).trim();
+  const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const y = Number(match[1]);
+  if (!Number.isFinite(y) || y < 1970 || match[1].startsWith('0000')) return null;
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function dbStatusForVigencia(diasRestantes, currentDbStatus) {
+  const dbSt = String(currentDbStatus || '').trim();
+  if (['Suspenso', 'Cancelado'].includes(dbSt)) return null;
+  if (diasRestantes === null) return null;
+  if (diasRestantes > 0) return dbStatusForTarget('Ativo');
+  return 'Pendente';
+}
+
 function addDaysUtc(baseDate, days) {
   const d = new Date(baseDate);
   d.setUTCDate(d.getUTCDate() + days);
@@ -280,7 +314,119 @@ async function updateSicafStatusManual({ sicafId, status, usuarioId, mensagem, d
   };
 }
 
+function parseDataValidade(dataValidadeRaw) {
+  const dataValidade = String(dataValidadeRaw || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataValidade)) {
+    return { ok: false, error: 'dataValidade é obrigatória no formato YYYY-MM-DD' };
+  }
+  const [y, m, d] = dataValidade.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (
+    Number.isNaN(dt.getTime()) ||
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== m - 1 ||
+    dt.getUTCDate() !== d
+  ) {
+    return { ok: false, error: 'dataValidade inválida. Informe uma data real no formato YYYY-MM-DD' };
+  }
+  return { ok: true, date: dataValidade };
+}
+
+function addYearsUtc(isoDate, years) {
+  const normalized = normalizeDateIso(isoDate);
+  if (!normalized) return null;
+  const [y, m, d] = normalized.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCFullYear(dt.getUTCFullYear() + (Number(years) || 0));
+  return dt.toISOString().slice(0, 10);
+}
+
+async function updateSicafVigencia({ sicafId, clienteId, novaDataValidade, adicionarAnos, usuarioId, mensagem }) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  if (!String(mensagem || '').trim()) {
+    return { ok: false, error: 'Informe o motivo para registro no histórico' };
+  }
+
+  let sicaf = null;
+  if (sicafId) {
+    sicaf = await db('sicaf_cadastros').where('id', sicafId).first();
+  } else if (clienteId) {
+    sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
+  }
+  if (!sicaf) return { ok: false, error: 'Cadastro SICAF não encontrado' };
+
+  const oldValidade = normalizeDateIso(sicaf.data_validade);
+  const oldDisplayStatus = resolveSicafDisplayStatus(sicaf.status, oldValidade || sicaf.data_validade, true);
+
+  let newValidade;
+  const anos = Number(adicionarAnos);
+  if (Number.isFinite(anos) && anos > 0) {
+    const base = oldValidade || todayIsoUtc();
+    newValidade = addYearsUtc(base, anos);
+    if (!newValidade) {
+      return { ok: false, error: 'Não foi possível calcular a nova validade a partir da data atual do cadastro' };
+    }
+  } else if (novaDataValidade) {
+    const parsed = parseDataValidade(novaDataValidade);
+    if (!parsed.ok) return parsed;
+    newValidade = parsed.date;
+  } else {
+    return { ok: false, error: 'Informe a nova data de validade ou use adicionarAnos' };
+  }
+
+  const validadeCheck = parseDataValidade(newValidade);
+  if (!validadeCheck.ok) return validadeCheck;
+
+  const diasValidadeRaw = calcDaysRemaining(newValidade);
+  const diasValidade = diasValidadeRaw !== null ? Math.max(0, diasValidadeRaw) : 0;
+  const newDisplayStatus = resolveSicafDisplayStatus(sicaf.status, newValidade, true);
+
+  const updatePayload = {
+    data_validade: newValidade,
+    dias_validade: diasValidade,
+    data_ultima_atualizacao: db.fn.now(),
+    updated_at: db.fn.now(),
+  };
+
+  const nextDbStatus = dbStatusForVigencia(diasValidadeRaw, sicaf.status);
+  if (nextDbStatus) {
+    updatePayload.status = nextDbStatus;
+  }
+
+  await db('sicaf_cadastros').where('id', sicaf.id).update(updatePayload);
+
+  const acaoBase = oldValidade
+    ? `Vigência SICAF alterada: ${oldValidade} → ${newValidade} (${oldDisplayStatus} → ${newDisplayStatus})`
+    : `Vigência SICAF definida: ${newValidade} (status ${newDisplayStatus})`;
+  const acaoFull = `${acaoBase} — ${String(mensagem).trim()}`;
+
+  try {
+    await db('historico_acoes').insert({
+      cliente_id: sicaf.cliente_id,
+      usuario_id: usuarioId,
+      acao: acaoFull,
+      entidade: 'sicaf_cadastros',
+      entidade_id: sicaf.id,
+      created_at: db.fn.now(),
+    });
+  } catch (_) {}
+
+  return {
+    ok: true,
+    message: `Vigência atualizada até ${newValidade}`,
+    sicafId: sicaf.id,
+    oldValidade,
+    novaValidade: newValidade,
+    diasValidade,
+    oldStatus: oldDisplayStatus,
+    newStatus: newDisplayStatus,
+  };
+}
+
 module.exports = {
   updateSicafStatusManual,
+  updateSicafVigencia,
   VALID_STATUSES,
 };

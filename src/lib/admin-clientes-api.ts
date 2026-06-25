@@ -257,7 +257,14 @@ export async function fetchAdminClienteDetalhe(clienteId: number) {
         telefone?: string;
         status?: string;
       } | null;
-      sicaf?: { id?: number; status?: string; data_validade?: string; manutencao_ativa?: number };
+      sicaf?: {
+        id?: number;
+        status?: string;
+        data_validade?: string;
+        dias_validade?: number;
+        credenciamento_anual?: number;
+        manutencao_ativa?: number;
+      };
       certidoes?: { tipo_nome?: string; data_validade?: string; status?: string; arquivo_url?: string }[];
       historico?: { acao?: string; created_at?: string; usuario_nome?: string }[];
       loginLogs?: { created_at?: string; ip?: string; navegador?: string }[];
@@ -773,6 +780,32 @@ export async function updateSicafStatusManual(payload: {
     body: JSON.stringify(payload),
   });
   return res.json() as UpdateSicafStatusManualResult;
+}
+
+export type UpdateSicafVigenciaResult = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  sicafId?: number;
+  oldValidade?: string | null;
+  novaValidade?: string;
+  diasValidade?: number;
+  oldStatus?: string;
+  newStatus?: string;
+};
+
+export async function updateSicafVigencia(payload: {
+  sicafId?: number;
+  clienteId?: number;
+  novaDataValidade?: string;
+  adicionarAnos?: number;
+  mensagem: string;
+}): Promise<UpdateSicafVigenciaResult> {
+  const res = await apiFetch("/api/sicaf/update-vigencia", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.json() as UpdateSicafVigenciaResult;
 }
 
 export type ContratoDigitalUi = {
