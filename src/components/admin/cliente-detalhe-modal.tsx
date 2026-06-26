@@ -42,12 +42,14 @@ import {
   Copy,
   Loader2,
   HandCoins,
+  Ban,
 } from "lucide-react";
 import { AcoesTab } from "./cliente-acoes";
 import { SituacaoTab } from "./cliente-situacao-tab";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   atualizarAdminCliente,
+  cancelarAdminClienteCnpj,
   fetchAdminClienteDetalhe,
   fetchAdminClienteFinanceiro,
   fetchAdminTicketsCliente,
@@ -79,6 +81,7 @@ import { TicketRespostaModal, type TicketItem } from "@/components/admin/ticket-
 import { RenovarSicafModal } from "@/components/admin/renovar-sicaf-modal";
 import { EditarClienteModal } from "@/components/admin/editar-cliente-modal";
 import { ManutencaoModal } from "@/components/manutencao-modal";
+import { CancelarCnpjModal } from "@/components/admin/cancelar-cnpj-modal";
 import type { EmpresaData } from "@/routes/empresas";
 import { CobrancaClienteModal } from "@/components/admin/cobranca-cliente-modal";
 import {
@@ -112,6 +115,7 @@ export interface ClienteDetalhe {
   desde?: string;
   validadeSicaf?: string;
   ltv?: number;
+  statusConta?: string;
 }
 
 interface Props {
@@ -157,6 +161,8 @@ export function ClienteDetalheModal({
   const [renovarPagOpen, setRenovarPagOpen] = useState(false);
   const [editarOpen, setEditarOpen] = useState(false);
   const [manutOpen, setManutOpen] = useState(false);
+  const [cancelarCnpjOpen, setCancelarCnpjOpen] = useState(false);
+  const [cancelandoCnpj, setCancelandoCnpj] = useState(false);
   const [detalhe, setDetalhe] = useState<ClienteDetalhe | null>(null);
   const [faturas, setFaturas] = useState<FaturaUi[]>([]);
   const [documentosPainel, setDocumentosPainel] = useState<DocumentosPainelUi | null>(null);
@@ -214,6 +220,8 @@ export function ClienteDetalheModal({
 
   const exibicao = detalhe || cliente;
   if (!cliente || !exibicao) return null;
+
+  const cnpjInativo = exibicao.statusConta === "Inativo";
 
   const iniciais = exibicao.razao
     .split(" ")
@@ -385,6 +393,11 @@ export function ClienteDetalheModal({
                   {exibicao.novo && (
                     <Badge className="bg-blue-500 text-white border-0 text-[10px]">Novo</Badge>
                   )}
+                  {cnpjInativo && (
+                    <Badge variant="destructive" className="text-[10px]">
+                      Inativo
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Etapa {stepIndex + 1} de {STEPS.length} · {STEPS[stepIndex].desc}
@@ -459,12 +472,24 @@ export function ClienteDetalheModal({
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditarOpen(true)}>
                   <Edit3 className="h-3.5 w-3.5" /> Editar
                 </Button>
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setManutOpen(true)}>
-                  <Wrench className="h-3.5 w-3.5" /> Manutenção
-                </Button>
-                <Button size="sm" className="gap-1.5" onClick={() => setRenovarOpen(true)}>
-                  <RefreshCw className="h-3.5 w-3.5" /> Renovar SICAF
-                </Button>
+                {!cnpjInativo && (
+                  <>
+                    <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setManutOpen(true)}>
+                      <Wrench className="h-3.5 w-3.5" /> Manutenção
+                    </Button>
+                    <Button size="sm" className="gap-1.5" onClick={() => setRenovarOpen(true)}>
+                      <RefreshCw className="h-3.5 w-3.5" /> Renovar SICAF
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => setCancelarCnpjOpen(true)}
+                    >
+                      <Ban className="h-3.5 w-3.5" /> Cancelar CNPJ
+                    </Button>
+                  </>
+                )}
               </div>
             </footer>
           </section>
@@ -511,6 +536,31 @@ export function ClienteDetalheModal({
           toast.success(res.message || "Cliente atualizado");
           atualizarPainel();
           return true;
+        }}
+      />
+      <CancelarCnpjModal
+        open={cancelarCnpjOpen}
+        onOpenChange={setCancelarCnpjOpen}
+        razao={exibicao.razao}
+        cnpj={exibicao.cnpj}
+        loading={cancelandoCnpj}
+        onConfirmar={async (motivo) => {
+          const clienteId = parseInt(exibicao.id, 10);
+          if (!Number.isFinite(clienteId)) return;
+          setCancelandoCnpj(true);
+          try {
+            const res = await cancelarAdminClienteCnpj(clienteId, motivo);
+            if (!res.ok) {
+              toast.error(res.error || "Erro ao cancelar CNPJ");
+              return;
+            }
+            toast.success(res.message || "CNPJ cancelado com sucesso");
+            setCancelarCnpjOpen(false);
+            setDetalhe((d) => (d ? { ...d, statusConta: "Inativo", manutencao: false } : d));
+            atualizarPainel();
+          } finally {
+            setCancelandoCnpj(false);
+          }
         }}
       />
       <ManutencaoModal

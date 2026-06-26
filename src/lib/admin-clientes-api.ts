@@ -164,6 +164,7 @@ export function mapApiClientToDetalhe(c: ApiAdminClient, extra?: Partial<Cliente
     desde: extra?.desde,
     validadeSicaf: c.sicafValidade ? formatDateBr(c.sicafValidade) : extra?.validadeSicaf,
     ltv: extra?.ltv,
+    statusConta: c.status || extra?.statusConta,
   };
 }
 
@@ -249,6 +250,7 @@ export async function fetchAdminClienteDetalhe(clienteId: number) {
       responsavel_nome?: string;
       observacoes?: string;
       celular?: string;
+      status?: string;
       created_at?: string;
       usuario_principal?: {
         id?: number;
@@ -522,6 +524,7 @@ export function mergeDetalheFromApi(
       niveisDetail: api.niveisDetail,
     }),
     niveisDetail: api.niveisDetail,
+    statusConta: api.status || base.statusConta,
   };
 }
 
@@ -1061,6 +1064,14 @@ export function buildAtualizarClientePayload(data: EditarClientePayload): Record
   }
 
   return payload;
+}
+
+export async function cancelarAdminClienteCnpj(clienteId: number, motivo: string) {
+  const res = await apiFetch(`/api/admin/clients/${clienteId}/cancelar`, {
+    method: "POST",
+    body: JSON.stringify({ motivo }),
+  });
+  return res.json() as Promise<{ ok: boolean; error?: string; message?: string }>;
 }
 
 export async function atualizarAdminCliente(clienteId: number, data: EditarClientePayload | Record<string, unknown>) {

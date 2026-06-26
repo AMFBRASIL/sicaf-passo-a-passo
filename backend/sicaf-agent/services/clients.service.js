@@ -2233,6 +2233,153 @@ async function updateClient(id, payload, usuarioId = null) {
   }
 }
 
+async function _hasTable(db, name) {
+  try {
+    return await db.schema.hasTable(name);
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Cancela o CNPJ/empresa no portal — cliente não deseja mais usar o serviço.
+ * Inativa o cadastro, cancela SICAF, taxas e pagamentos em aberto.
+ */
+async function cancelClientCnpj(clienteId, { usuarioId, motivo } = {}) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const id = parseInt(clienteId, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false, error: 'Cliente inválido' };
+  }
+
+  const motivoTxt = String(motivo || '').trim();
+  if (!motivoTxt) {
+    return { ok: false, error: 'Informe o motivo do cancelamento' };
+  }
+
+  const cliente = await db('clientes').where('id', id).first();
+  if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
+
+  if (String(cliente.status || '').trim() === 'Inativo') {
+    return { ok: false, error: 'Este CNPJ já está cancelado (inativo)' };
+  }
+
+  const resumo = {
+    taxasCanceladas: 0,
+    pagamentosCancelados: 0,
+    sicafCancelado: false,
+    manutencaoRemovida: false,
+  };
+
+  const skipPaid = ['pago', 'paga', 'aprovado', 'aprovada', 'paid', 'quitado', 'liberado', 'liberada'];
+  const skipCanceled = ['cancelado', 'cancelada', 'estornado', 'removido', 'erro'];
+
+  try {
+    const TAXA_CANCELAVEL = [
+      'Pendente', 'pendente', 'Aguardando', 'aguardando', 'Gerado', 'gerado',
+      'Vencido', 'vencido', 'Atrasado', 'atrasado',
+    ];
+    resumo.taxasCanceladas = await db('taxas_sicaf')
+      .where('cliente_id', id)
+      .whereIn('status', TAXA_CANCELAVEL)
+      .update({ status: 'Cancelado', updated_at: db.fn.now() });
+  } catch (_) {}
+
+  const cancelPagamento = async (table) => {
+    if (!(await _hasTable(db, table))) return 0;
+    try {
+      let q = db(table).where('cliente_id', id).whereNotIn('status', skipPaid);
+      if (table === 'pagamentos') q = q.whereNull('deleted_at');
+      return await q
+        .whereNotIn('status', skipCanceled)
+        .update({ status: 'cancelado', updated_at: db.fn.now() });
+    } catch (_) {
+      return 0;
+    }
+  };
+
+  resumo.pagamentosCancelados += await cancelPagamento('pagamentos');
+  resumo.pagamentosCancelados += await cancelPagamento('pagamentos_gerencianet');
+
+  const sicaf = await db('sicaf_cadastros').where('cliente_id', id).first();
+  if (sicaf) {
+    await db('sicaf_cadastros').where('id', sicaf.id).update({
+      status: 'Cancelado',
+      manutencao_ativa: 0,
+      dias_validade: 0,
+      data_validade: null,
+      updated_at: db.fn.now(),
+    });
+    resumo.sicafCancelado = true;
+  }
+
+  try {
+    const MANUTENCAO_STATUS_ATIVOS = ['Ativo', 'ativo', 'A Vencer', 'a vencer', 'Vencendo', 'vencendo'];
+    const manut = await db('manutencoes')
+      .where('cliente_id', id)
+      .whereIn('status', MANUTENCAO_STATUS_ATIVOS)
+      .orderBy('created_at', 'desc')
+      .first();
+
+    if (manut) {
+      const boletoIds = await db('manutencao_boletos')
+        .where('manutencao_id', manut.id)
+        .pluck('id');
+
+      if (boletoIds.length) {
+        if (await _hasTable(db, 'pagamentos')) {
+          await db('pagamentos')
+            .where('origem', 'manutencao')
+            .whereIn('origem_id', boletoIds)
+            .whereNotIn('status', skipPaid)
+            .update({ status: 'cancelado', updated_at: db.fn.now() });
+        }
+        if (await _hasTable(db, 'pagamentos_gerencianet')) {
+          await db('pagamentos_gerencianet')
+            .where('origem', 'manutencao')
+            .whereIn('origem_id', boletoIds)
+            .whereNotIn('status', skipPaid)
+            .update({ status: 'cancelado', updated_at: db.fn.now() });
+        }
+      }
+
+      await db('manutencoes').where('cliente_id', id).whereIn('status', MANUTENCAO_STATUS_ATIVOS).delete();
+      resumo.manutencaoRemovida = true;
+    }
+  } catch (_) {}
+
+  const dataCancel = new Date().toISOString().slice(0, 10);
+  const obsExtra = `[${dataCancel}] CNPJ cancelado pela equipe: ${motivoTxt}`;
+  const observacoes = cliente.observacoes
+    ? `${cliente.observacoes}\n\n${obsExtra}`
+    : obsExtra;
+
+  await db('clientes').where('id', id).update({
+    status: 'Inativo',
+    observacoes,
+    updated_at: db.fn.now(),
+  });
+
+  try {
+    await db('historico_acoes').insert({
+      cliente_id: id,
+      usuario_id: usuarioId || null,
+      acao: `CNPJ cancelado — ${cliente.razao_social || cliente.documento || id} (${cliente.documento || '—'}). ${motivoTxt}`,
+      entidade: 'clientes',
+      entidade_id: id,
+      created_at: db.fn.now(),
+    });
+  } catch (_) {}
+
+  return {
+    ok: true,
+    message: 'CNPJ cancelado com sucesso. O cliente não aparecerá mais como ativo no portal.',
+    resumo,
+  };
+}
+
 function normPayStatus(raw) {
   return String(raw || '').toLowerCase().trim();
 }
@@ -2593,6 +2740,7 @@ module.exports = {
   insertCertidao,
   createClient,
   updateClient,
+  cancelClientCnpj,
   consultClientByCnpj,
   consultPendingBoletosByCnpj,
   gerarOuObterBoletoSicafByCnpj,

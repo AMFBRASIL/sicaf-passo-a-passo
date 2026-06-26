@@ -4,6 +4,11 @@
 const { getDb } = require('../database/connection');
 const { sendCobrancaTaxaEmail } = require('./cobranca-taxa-email.service');
 const { getPublicPayBaseUrl } = require('../utils/pay-link.util');
+const {
+  derivePagamentoSicafResumo,
+  isClienteElegivelCobrancaSicaf,
+  TAXA_SICAF_PAGA_WHERE,
+} = require('../utils/sicaf-pagamento-resumo');
 
 const TAXA_ABERTA_STATUSES = [
   'Pendente', 'pendente', 'Aguardando', 'aguardando', 'Gerado', 'gerado',
@@ -77,6 +82,41 @@ function mapGuiaTipoLabel(tipo) {
 function toNumber(value) {
   const n = Number(value || 0);
   return Number.isFinite(n) ? n : 0;
+}
+
+function normPayStatus(raw) {
+  return String(raw || '').toLowerCase().trim();
+}
+
+function isPaidFinanceStatus(status) {
+  const s = normPayStatus(status);
+  return ['pago', 'paga', 'aprovado', 'aprovada', 'paid', 'quitado', 'liberado', 'liberada'].includes(s);
+}
+
+function isCanceledFinanceStatus(status) {
+  const s = normPayStatus(status);
+  return ['cancelado', 'cancelada', 'estornado', 'erro', 'removido'].includes(s);
+}
+
+function isPendingFinanceStatus(status) {
+  const s = normPayStatus(status);
+  if (isPaidFinanceStatus(s) || isCanceledFinanceStatus(s)) return false;
+  return true;
+}
+
+function resolveFinanceStatus(taxaStatus, pgStatus) {
+  if (isCanceledFinanceStatus(pgStatus)) return pgStatus || 'Cancelado';
+  if (isCanceledFinanceStatus(taxaStatus)) return taxaStatus || 'Cancelado';
+  if (isPaidFinanceStatus(pgStatus)) return 'Pago';
+  if (isPaidFinanceStatus(taxaStatus)) return 'Pago';
+  return pgStatus || taxaStatus || 'Pendente';
+}
+
+function isCobrancaRealmentePendente({ taxaStatus, pagamentoStatus, taxaTemPagamentoQuitado }) {
+  if (taxaTemPagamentoQuitado) return false;
+  if (resolveFinanceStatus(taxaStatus, pagamentoStatus) === 'Pago') return false;
+  if (isCanceledFinanceStatus(taxaStatus) || isCanceledFinanceStatus(pagamentoStatus)) return false;
+  return isPendingFinanceStatus(taxaStatus) || isPendingFinanceStatus(pagamentoStatus);
 }
 
 function formatDateBr(value) {
@@ -221,6 +261,144 @@ async function loadPagamentoVencimentoByTaxaMap(db, taxaIds) {
   return map;
 }
 
+/** Taxas SICAF com ao menos um pagamento quitado (origem=sicaf). */
+async function loadTaxaIdsComPagamentoQuitado(db, taxaIds) {
+  const paid = new Set();
+  if (!taxaIds.length) return paid;
+
+  const tables = [];
+  if (await hasTable(db, 'pagamentos')) tables.push('pagamentos');
+  if (await hasTable(db, 'pagamentos_gerencianet')) tables.push('pagamentos_gerencianet');
+
+  for (const table of tables) {
+    const hasDeleted = table === 'pagamentos';
+    let q = db(table)
+      .where('origem', 'sicaf')
+      .whereIn('origem_id', taxaIds)
+      .select('origem_id', 'status');
+    if (hasDeleted) q = q.whereNull('deleted_at');
+    const rows = await q;
+    for (const row of rows) {
+      if (isPaidFinanceStatus(row.status)) paid.add(row.origem_id);
+    }
+  }
+
+  return paid;
+}
+
+async function loadTaxasStatusMap(db, taxaIds) {
+  const map = new Map();
+  if (!taxaIds.length || !(await hasTable(db, 'taxas_sicaf'))) return map;
+  const rows = await db('taxas_sicaf').whereIn('id', taxaIds).select('id', 'status');
+  for (const row of rows) map.set(row.id, row.status);
+  return map;
+}
+
+async function loadUltimoPagamentoSicafPagoPorCliente(db, clienteIds) {
+  const map = new Map();
+  if (!clienteIds.length || !(await hasTable(db, 'pagamentos'))) return map;
+
+  const rows = await db('pagamentos')
+    .whereIn('cliente_id', clienteIds)
+    .whereNull('deleted_at')
+    .where('origem', 'sicaf')
+    .select('cliente_id', 'status', 'created_at', 'data_pagamento');
+
+  for (const row of rows) {
+    if (!isPaidFinanceStatus(row.status)) continue;
+    const ref = row.data_pagamento || row.created_at;
+    if (!ref) continue;
+    const prev = map.get(row.cliente_id);
+    if (!prev || new Date(ref).getTime() > new Date(prev).getTime()) {
+      map.set(row.cliente_id, ref);
+    }
+  }
+
+  return map;
+}
+
+function isPagamentoObsoletoAposQuitacao(row, ultimoPagoPorCliente) {
+  const ultimoPago = ultimoPagoPorCliente.get(row.clienteId);
+  if (!ultimoPago) return false;
+  const pendenteEm = row.pendenteDesde;
+  if (!pendenteEm) return false;
+  return new Date(ultimoPago).getTime() >= new Date(pendenteEm).getTime();
+}
+
+/** Mesma regra do card Pagamento SICAF em /admin/clientes — filtra quem está em dia/vigente. */
+async function loadClienteCobrancaElegibilidadeMap(db, clienteIds) {
+  const map = new Map();
+  if (!clienteIds.length) return map;
+
+  const sicafByCliente = new Map();
+  try {
+    const rows = await db('sicaf_cadastros')
+      .whereIn('cliente_id', clienteIds)
+      .select('cliente_id', 'status', 'data_validade');
+    for (const r of rows) {
+      sicafByCliente.set(r.cliente_id, r);
+    }
+  } catch (_) {}
+
+  const taxaReleasedSet = new Set();
+  try {
+    const pagos = await db('taxas_sicaf')
+      .whereIn('cliente_id', clienteIds)
+      .whereRaw(TAXA_SICAF_PAGA_WHERE)
+      .distinct('cliente_id')
+      .pluck('cliente_id');
+    for (const id of pagos) taxaReleasedSet.add(id);
+  } catch (_) {}
+
+  const inativoSet = new Set();
+  try {
+    const inativos = await db('clientes')
+      .whereIn('id', clienteIds)
+      .where('status', 'Inativo')
+      .pluck('id');
+    for (const id of inativos) inativoSet.add(id);
+  } catch (_) {}
+
+  for (const clienteId of clienteIds) {
+    if (inativoSet.has(clienteId)) {
+      map.set(clienteId, { elegivel: false, motivo: 'inativo' });
+      continue;
+    }
+
+    const sicaf = sicafByCliente.get(clienteId);
+    const resumo = derivePagamentoSicafResumo({
+      sicafStatus: sicaf?.status,
+      sicafValidade: sicaf?.data_validade,
+      temTaxaAberta: true,
+      temPagamentoPendente: true,
+      hasSicaf: !!sicaf,
+      taxaReleased: taxaReleasedSet.has(clienteId),
+    });
+
+    map.set(clienteId, {
+      elegivel: isClienteElegivelCobrancaSicaf(resumo),
+      resumo,
+    });
+  }
+
+  return map;
+}
+
+function filtrarClientesElegiveisCobranca(rows, elegibilidadeMap) {
+  return rows.filter((row) => elegibilidadeMap.get(row.clienteId)?.elegivel === true);
+}
+
+async function loadPagamentoStatusMap(db, pagamentoIds) {
+  const map = new Map();
+  if (!pagamentoIds.length || !(await hasTable(db, 'pagamentos'))) return map;
+  const rows = await db('pagamentos')
+    .whereIn('id', pagamentoIds)
+    .whereNull('deleted_at')
+    .select('id', 'status', 'origem', 'origem_id');
+  for (const row of rows) map.set(row.id, row);
+  return map;
+}
+
 async function loadTaxasPendentesRows(db) {
   const hasTaxas = await hasTable(db, 'taxas_sicaf');
   if (!hasTaxas) return [];
@@ -250,15 +428,38 @@ async function loadTaxasPendentesRows(db) {
     .orderBy('t.created_at', 'asc');
 
   const taxaIds = rows.map((r) => r.taxaId);
-  const vencMap = await loadPagamentoVencimentoByTaxaMap(db, taxaIds);
+  const [vencMap, paidTaxaIds] = await Promise.all([
+    loadPagamentoVencimentoByTaxaMap(db, taxaIds),
+    loadTaxaIdsComPagamentoQuitado(db, taxaIds),
+  ]);
+
+  const linkedPagamentoIds = [...new Set(
+    [...vencMap.values()].map((v) => v.pagamentoId).filter(Boolean),
+  )];
+  const pagamentoStatusMap = await loadPagamentoStatusMap(db, linkedPagamentoIds);
 
   const byCliente = new Map();
   for (const row of rows) {
     const venc = vencMap.get(row.taxaId);
+    const pagamentoStatus = venc?.pagamentoId
+      ? pagamentoStatusMap.get(venc.pagamentoId)?.status
+      : null;
+
+    if (
+      !isCobrancaRealmentePendente({
+        taxaStatus: row.status,
+        pagamentoStatus,
+        taxaTemPagamentoQuitado: paidTaxaIds.has(row.taxaId),
+      })
+    ) {
+      continue;
+    }
+
     const enriched = {
       ...row,
       pagamentoId: venc?.pagamentoId || null,
       dataVencimento: venc?.dataVencimento || null,
+      pagamentoStatus: pagamentoStatus || null,
     };
     if (!byCliente.has(row.clienteId)) {
       byCliente.set(row.clienteId, enriched);
@@ -282,6 +483,8 @@ async function loadPagamentosPendentesRows(db) {
     .select(
       'p.id as pagamentoId',
       'p.cliente_id as clienteId',
+      'p.origem',
+      'p.origem_id as origemId',
       'p.descricao',
       'p.valor',
       'p.status',
@@ -300,7 +503,31 @@ async function loadPagamentosPendentesRows(db) {
     )
     .orderBy('p.created_at', 'asc');
 
-  return rows;
+  const clienteIds = [...new Set(rows.map((r) => r.clienteId))];
+  const taxaIds = [...new Set(
+    rows.filter((r) => r.origem === 'sicaf' && r.origemId).map((r) => r.origemId),
+  )];
+
+  const [paidTaxaIds, taxasStatusMap, ultimoPagoPorCliente] = await Promise.all([
+    loadTaxaIdsComPagamentoQuitado(db, taxaIds),
+    loadTaxasStatusMap(db, taxaIds),
+    loadUltimoPagamentoSicafPagoPorCliente(db, clienteIds),
+  ]);
+
+  return rows.filter((row) => {
+    if (isPagamentoObsoletoAposQuitacao(row, ultimoPagoPorCliente)) return false;
+
+    const taxaStatus =
+      row.origem === 'sicaf' && row.origemId ? taxasStatusMap.get(row.origemId) : null;
+    const taxaTemPagamentoQuitado =
+      row.origem === 'sicaf' && row.origemId ? paidTaxaIds.has(row.origemId) : false;
+
+    return isCobrancaRealmentePendente({
+      taxaStatus,
+      pagamentoStatus: row.status,
+      taxaTemPagamentoQuitado,
+    });
+  });
 }
 
 function mergePendencias(taxaRows, pagamentoRows) {
@@ -434,7 +661,9 @@ async function listClientesCobrancaPendentes(opts = {}) {
 
   let merged = mergePendencias(taxaRows, pagamentoRows);
   const clienteIds = merged.map((r) => r.clienteId);
-  const cobrancaMap = await loadCobrancaResumoMap(db, clienteIds);
+  const elegibilidadeMap = await loadClienteCobrancaElegibilidadeMap(db, clienteIds);
+  merged = filtrarClientesElegiveisCobranca(merged, elegibilidadeMap);
+  const cobrancaMap = await loadCobrancaResumoMap(db, merged.map((r) => r.clienteId));
 
   merged = merged.map((row) => {
     const cob = cobrancaMap[row.clienteId] || {
@@ -493,7 +722,9 @@ async function loadAllClientesCobrancaPendentes() {
 
   let merged = mergePendencias(taxaRows, pagamentoRows);
   const clienteIds = merged.map((r) => r.clienteId);
-  const cobrancaMap = await loadCobrancaResumoMap(db, clienteIds);
+  const elegibilidadeMap = await loadClienteCobrancaElegibilidadeMap(db, clienteIds);
+  merged = filtrarClientesElegiveisCobranca(merged, elegibilidadeMap);
+  const cobrancaMap = await loadCobrancaResumoMap(db, merged.map((r) => r.clienteId));
 
   return merged.map((row) => {
     const cob = cobrancaMap[row.clienteId] || {
@@ -584,6 +815,47 @@ async function enviarCobrancaTaxa({
         pagamentoIdResolved = venc.pagamentoId;
       }
     }
+  }
+
+  let pagamentoStatus = null;
+  let taxaTemPagamentoQuitado = false;
+  if (pagamentoIdResolved && (await hasTable(db, 'pagamentos'))) {
+    const pg = await db('pagamentos')
+      .where('id', pagamentoIdResolved)
+      .whereNull('deleted_at')
+      .first();
+    pagamentoStatus = pg?.status || null;
+    if (pg?.origem === 'sicaf' && pg.origem_id) {
+      const paidSet = await loadTaxaIdsComPagamentoQuitado(db, [pg.origem_id]);
+      taxaTemPagamentoQuitado = paidSet.has(pg.origem_id);
+    }
+  }
+  if (taxa.id) {
+    const paidSet = await loadTaxaIdsComPagamentoQuitado(db, [taxa.id]);
+    if (paidSet.has(taxa.id)) taxaTemPagamentoQuitado = true;
+  }
+
+  if (
+    !isCobrancaRealmentePendente({
+      taxaStatus: taxa.status,
+      pagamentoStatus,
+      taxaTemPagamentoQuitado,
+    })
+  ) {
+    return {
+      ok: false,
+      error: 'Cliente já quitou esta cobrança — não consta como inadimplente',
+    };
+  }
+
+  const elegMap = await loadClienteCobrancaElegibilidadeMap(db, [cid]);
+  const eleg = elegMap.get(cid);
+  if (!eleg?.elegivel) {
+    const status = eleg?.resumo?.pagamentoSicafStatus || 'em dia';
+    return {
+      ok: false,
+      error: `Cliente com SICAF ${status} — não elegível para cobrança (mesma regra do detalhe do cliente)`,
+    };
   }
 
   const envio = await sendCobrancaTaxaEmail({

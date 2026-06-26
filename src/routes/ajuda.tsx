@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { HelpCircle, Search, PlayCircle, Bot, Sparkles, Loader2, FileText } from "lucide-react";
+import { HelpCircle, Search, PlayCircle, Bot, Sparkles, Loader2, FileText, BookOpen } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,9 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader, PageContainer } from "@/components/page-header";
 import { AjudaSituacaoFornecedorSlider, PASSOS_SITUACAO_FORNECEDOR } from "@/components/ajuda-situacao-fornecedor-slider";
-import { useRef, useState } from "react";
+import { AjudaTutorialGovModal } from "@/components/ajuda-tutorial-gov-modal";
+import { TOPICOS_CADASTRO_SICAF, type TutorialGovTopico } from "@/lib/ajuda-tutoriais-sicaf";
+import { useRef, useState, Fragment } from "react";
 import { perguntarAjuda } from "@/lib/ajuda-api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -78,7 +80,14 @@ function HelpPage() {
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [videoAtivo, setVideoAtivo] = useState<VideoAjuda | null>(null);
   const [situacaoModalOpen, setSituacaoModalOpen] = useState(false);
+  const [tutorialGovOpen, setTutorialGovOpen] = useState(false);
+  const [tutorialGovAtivo, setTutorialGovAtivo] = useState<TutorialGovTopico | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  function abrirTutorialGov(topico: TutorialGovTopico) {
+    setTutorialGovAtivo(topico);
+    setTutorialGovOpen(true);
+  }
 
   function abrirVideo(v: VideoAjuda) {
     if (!v.src && !v.youtubeId) return;
@@ -200,37 +209,85 @@ function HelpPage() {
                 </div>
               </button>
             </li>
-            {videos.map((v) => {
+            {videos.map((v, index) => {
               const clicavel = Boolean(v.src || v.youtubeId);
+              const mostrarCadastramentoApos = index === 0;
               return (
-                <li key={v.id}>
-                  <button
-                    type="button"
-                    disabled={!clicavel}
-                    onClick={() => abrirVideo(v)}
-                    className={cn(
-                      "group flex w-full items-center gap-3 rounded-lg border bg-card p-3 text-left transition",
-                      clicavel
-                        ? "border-border hover:border-primary/40 hover:bg-primary/5 hover:shadow-soft cursor-pointer"
-                        : "border-border opacity-60 cursor-not-allowed",
-                    )}
-                  >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
-                      <PlayCircle className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium leading-snug">{v.titulo}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {clicavel ? "Clique para assistir" : v.duracao}
-                      </p>
-                    </div>
-                  </button>
-                </li>
+                <Fragment key={v.id}>
+                  <li>
+                    <button
+                      type="button"
+                      disabled={!clicavel}
+                      onClick={() => abrirVideo(v)}
+                      className={cn(
+                        "group flex w-full items-center gap-3 rounded-lg border bg-card p-3 text-left transition",
+                        clicavel
+                          ? "border-border hover:border-primary/40 hover:bg-primary/5 hover:shadow-soft cursor-pointer"
+                          : "border-border opacity-60 cursor-not-allowed",
+                      )}
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                        <PlayCircle className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-snug">{v.titulo}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {clicavel ? "Clique para assistir" : v.duracao}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                  {mostrarCadastramentoApos && (
+                    <li key="cadastramento-sicaf" className="sm:col-span-2">
+                      <div className="rounded-xl border border-primary/25 bg-gradient-to-br from-primary/5 to-card p-4">
+                        <div className="mb-3 flex items-center gap-2">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                            <BookOpen className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold">Cadastramento SICAF</p>
+                            <p className="text-xs text-muted-foreground">
+                              Tutoriais oficiais do Compras.gov.br — clique para abrir no portal
+                            </p>
+                          </div>
+                        </div>
+                        <ul className="grid gap-2 sm:grid-cols-2">
+                          {TOPICOS_CADASTRO_SICAF.map((topico) => (
+                            <li key={topico.id}>
+                              <button
+                                type="button"
+                                onClick={() => abrirTutorialGov(topico)}
+                                className={cn(
+                                  "group flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition",
+                                  "hover:border-primary/40 hover:bg-primary/5 hover:shadow-soft cursor-pointer",
+                                )}
+                              >
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                                  <FileText className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium leading-snug">{topico.titulo}</p>
+                                  <p className="text-xs text-muted-foreground">{topico.subtitulo}</p>
+                                </div>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </li>
+                  )}
+                </Fragment>
               );
             })}
           </ul>
         </CardContent>
       </Card>
+
+      <AjudaTutorialGovModal
+        open={tutorialGovOpen}
+        onOpenChange={setTutorialGovOpen}
+        topico={tutorialGovAtivo}
+      />
 
       <Dialog open={situacaoModalOpen} onOpenChange={setSituacaoModalOpen}>
         <DialogContent className="flex max-h-[90vh] w-[min(92vw,900px)] max-w-[92vw] flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl">
