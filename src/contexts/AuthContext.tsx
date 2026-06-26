@@ -9,6 +9,7 @@ import {
 } from "react";
 import { apiFetch } from "@/lib/api-fetch";
 import { persistAuthToken, readAuthToken } from "@/lib/auth-cookie";
+import { invalidateAuthSession, redirectToAuth, registerAuthStateSync } from "@/lib/auth-session";
 
 interface UserProfile {
   id: number;
@@ -34,6 +35,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  sessionChecked: boolean;
   permissoes: string[];
   login: (email: string, password: string) => Promise<{ ok: boolean; user?: AuthUser; error?: string }>;
   logout: () => void;
@@ -48,38 +50,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  const clearSession = useCallback(() => {
+    setToken(null);
+    setUser(null);
+  }, []);
+
+  useEffect(() => registerAuthStateSync({ onClear: clearSession }), [clearSession]);
 
   useEffect(() => {
     const stored = readAuthToken();
-    if (stored) setToken(stored);
-    else setIsLoading(false);
+    if (stored) {
+      setToken(stored);
+      return;
+    }
+    setIsLoading(false);
+    setSessionChecked(true);
   }, []);
 
-  const verifyToken = useCallback(async (t: string) => {
+  const verifyToken = useCallback(async (t: string, options?: { redirectOnFail?: boolean }) => {
+    const redirectOnFail = options?.redirectOnFail ?? true;
     try {
       const res = await apiFetch("/api/auth/me", {
         headers: { Authorization: `Bearer ${t}` },
         auth: false,
+        skipUnauthorizedRedirect: true,
       });
       const data = await res.json();
 
-      if (data.ok && data.user) {
+      if (res.ok && data.ok && data.user) {
         persistAuthToken(t);
         setUser(data.user);
         setToken(t);
-      } else {
-        persistAuthToken(null);
-        setToken(null);
-        setUser(null);
+        return true;
       }
+
+      invalidateAuthSession();
+      clearSession();
+      if (redirectOnFail) redirectToAuth();
+      return false;
     } catch {
-      persistAuthToken(null);
-      setToken(null);
-      setUser(null);
+      invalidateAuthSession();
+      clearSession();
+      if (redirectOnFail) redirectToAuth();
+      return false;
     } finally {
       setIsLoading(false);
+      setSessionChecked(true);
     }
-  }, []);
+  }, [clearSession]);
 
   useEffect(() => {
     if (token) {
@@ -92,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await apiFetch("/api/auth/login", {
         method: "POST",
         auth: false,
+        skipUnauthorizedRedirect: true,
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
@@ -100,6 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         persistAuthToken(data.token);
         setToken(data.token);
         setUser(data.user);
+        setSessionChecked(true);
+        setIsLoading(false);
         return { ok: true, user: data.user as AuthUser };
       }
 
@@ -110,15 +133,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    persistAuthToken(null);
-    setToken(null);
-    setUser(null);
-  }, []);
+    invalidateAuthSession();
+    clearSession();
+    setSessionChecked(true);
+    setIsLoading(false);
+  }, [clearSession]);
 
   const refreshUser = useCallback(async () => {
     const t = readAuthToken();
     if (!t) return;
-    await verifyToken(t);
+    await verifyToken(t, { redirectOnFail: false });
   }, [verifyToken]);
 
   const permissoes = useMemo(() => user?.permissoes ?? [], [user?.permissoes]);
@@ -139,6 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         isAuthenticated: Boolean(user && token),
         isLoading,
+        sessionChecked,
         permissoes,
         login,
         logout,

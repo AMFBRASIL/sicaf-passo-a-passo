@@ -1,14 +1,17 @@
 import { apiUrl } from "@/lib/api-config";
 import { readAuthToken } from "@/lib/auth-cookie";
+import { handleApiUnauthorized } from "@/lib/auth-session";
 
 type FetchOptions = RequestInit & {
   auth?: boolean;
   /** Quando true, 404 não é tratado como falha (retorna a Response normalmente). */
   allowNotFound?: boolean;
+  /** Quando true, 401 não dispara logout global (ex.: verificação inicial de sessão). */
+  skipUnauthorizedRedirect?: boolean;
 };
 
 export async function apiFetch(input: string, options: FetchOptions = {}) {
-  const { auth = true, allowNotFound = false, headers, ...rest } = options;
+  const { auth = true, allowNotFound = false, skipUnauthorizedRedirect = false, headers, ...rest } = options;
   const h = new Headers(headers);
 
   if (auth) {
@@ -22,6 +25,11 @@ export async function apiFetch(input: string, options: FetchOptions = {}) {
 
   const url = input.startsWith("http") ? input : apiUrl(input);
   const res = await fetch(url, { ...rest, headers: h });
+
+  if (res.status === 401 && !skipUnauthorizedRedirect) {
+    handleApiUnauthorized(input);
+  }
+
   if (allowNotFound && res.status === 404) {
     return res;
   }

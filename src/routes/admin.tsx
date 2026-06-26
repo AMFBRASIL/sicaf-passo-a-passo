@@ -21,6 +21,7 @@ import { AdminRouteGuard } from "@/components/admin/admin-route-guard";
 import { AdminPageGuard } from "@/components/admin/admin-page-guard";
 import { readAuthToken } from "@/lib/auth-cookie";
 import { apiUrl } from "@/lib/api-config";
+import { invalidateAuthSession } from "@/lib/auth-session";
 
 export const Route = createFileRoute("/admin")({
   beforeLoad: async () => {
@@ -35,6 +36,11 @@ export const Route = createFileRoute("/admin")({
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; isStaff?: boolean };
+
+    if (res.status === 401) {
+      invalidateAuthSession();
+      throw redirect({ to: "/auth" });
+    }
 
     if (!res.ok || !data.ok || !data.isStaff) {
       throw redirect({ to: "/" });

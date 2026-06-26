@@ -34,7 +34,7 @@ import { ClientOnly } from "@/components/client-only";
 import { Toaster } from "@/components/ui/sonner";
 import { WhatsappFloatingButton } from "@/components/whatsapp-floating-button";
 import { buildWhatsAppSuporteUrl, getWhatsAppMensagemPorPath } from "@/lib/whatsapp-suporte";
-import { useNavigate } from "@tanstack/react-router";
+import { redirectToAuth } from "@/lib/auth-session";
 
 function NotFoundComponent() {
   return (
@@ -207,18 +207,17 @@ function AuthenticatedShell({
   editarOpen: boolean;
   setEditarOpen: (v: boolean) => void;
 }) {
-  const { user, logout, isLoading, isAuthenticated } = useAuth();
-  const navigate = useNavigate();
+  const { user, logout, isLoading, isAuthenticated, sessionChecked } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const whatsappUrl = buildWhatsAppSuporteUrl(getWhatsAppMensagemPorPath(pathname));
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      void navigate({ to: "/auth" });
+    if (sessionChecked && !isLoading && !isAuthenticated) {
+      redirectToAuth(pathname);
     }
-  }, [isLoading, isAuthenticated, navigate]);
+  }, [sessionChecked, isLoading, isAuthenticated, pathname]);
 
-  if (isLoading || !isAuthenticated) {
+  if (!sessionChecked || isLoading || !isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-sm text-muted-foreground">Verificando sessão...</p>
@@ -287,7 +286,7 @@ function AuthenticatedShell({
                       <DropdownMenuItem
                         onSelect={() => {
                           logout();
-                          void navigate({ to: "/auth" });
+                          redirectToAuth();
                         }}
                       >
                         <LogOut className="mr-2 h-4 w-4" />

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { isStaffUser } from "@/lib/auth-roles";
 import { fetchStaffAccess } from "@/lib/staff-access-api";
+import { redirectToAuth } from "@/lib/auth-session";
 
 export function AdminRouteGuard({ children }: { children: ReactNode }) {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -19,7 +20,7 @@ export function AdminRouteGuard({ children }: { children: ReactNode }) {
       if (isLoading) return;
 
       if (!isAuthenticated) {
-        void navigate({ to: "/auth" });
+        redirectToAuth();
         return;
       }
 
