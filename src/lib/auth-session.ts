@@ -1,5 +1,6 @@
 import { persistAuthToken, readAuthToken } from "@/lib/auth-cookie";
 import { isPublicPortalPath } from "@/lib/require-portal-auth";
+import { isTokenExpired } from "@/lib/auth-token";
 
 type AuthStateSync = {
   onClear: () => void;
@@ -52,20 +53,35 @@ export function redirectToAuth(fromPath?: string) {
     url.searchParams.set("from", current);
   }
 
-  window.location.replace(`${url.pathname}${url.search}`);
+  const target = `${url.pathname}${url.search}`;
+  window.location.replace(target);
   window.setTimeout(() => {
+    if (window.location.pathname !== "/auth" && !window.location.pathname.startsWith("/auth/")) {
+      window.location.href = target;
+    }
     redirecting = false;
-  }, 2000);
+  }, 1500);
+}
+
+/** Sessão inválida ou expirada — limpa estado e força login. */
+export function handleSessionExpired(fromPath?: string) {
+  if (typeof window === "undefined") return;
+  invalidateAuthSession();
+  redirectToAuth(fromPath || window.location.pathname);
 }
 
 export function handleApiUnauthorized(apiInput: string) {
   const path = normalizeApiPath(apiInput);
   if (isPublicAuthApi(path)) return;
+  handleSessionExpired();
+}
 
-  invalidateAuthSession();
-
-  const current = typeof window !== "undefined" ? window.location.pathname : "/";
-  if (!isPublicPortalPath(current) && current !== "/login") {
-    redirectToAuth(current);
+/** Retorna true se o token ainda é válido; caso contrário encerra sessão e redireciona. */
+export function ensureAuthTokenValid(fromPath?: string): boolean {
+  const token = readAuthToken();
+  if (!token || isTokenExpired(token)) {
+    handleSessionExpired(fromPath);
+    return false;
   }
+  return true;
 }

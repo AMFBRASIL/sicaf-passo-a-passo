@@ -1,6 +1,7 @@
 import { apiUrl } from "@/lib/api-config";
 import { readAuthToken } from "@/lib/auth-cookie";
-import { handleApiUnauthorized } from "@/lib/auth-session";
+import { handleApiUnauthorized, handleSessionExpired } from "@/lib/auth-session";
+import { isTokenExpired } from "@/lib/auth-token";
 
 type FetchOptions = RequestInit & {
   auth?: boolean;
@@ -16,6 +17,15 @@ export async function apiFetch(input: string, options: FetchOptions = {}) {
 
   if (auth) {
     const token = readAuthToken();
+    if (token && isTokenExpired(token)) {
+      if (!skipUnauthorizedRedirect) {
+        handleSessionExpired();
+      }
+      return new Response(JSON.stringify({ ok: false, error: "Sessão expirada" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     if (token) h.set("Authorization", `Bearer ${token}`);
   }
 

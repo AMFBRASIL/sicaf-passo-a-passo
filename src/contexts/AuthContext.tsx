@@ -9,7 +9,14 @@ import {
 } from "react";
 import { apiFetch } from "@/lib/api-fetch";
 import { persistAuthToken, readAuthToken } from "@/lib/auth-cookie";
-import { invalidateAuthSession, redirectToAuth, registerAuthStateSync } from "@/lib/auth-session";
+import {
+  handleSessionExpired,
+  invalidateAuthSession,
+  redirectToAuth,
+  registerAuthStateSync,
+} from "@/lib/auth-session";
+import { isTokenExpired } from "@/lib/auth-token";
+import { isPortalRouteProtected } from "@/lib/require-portal-auth";
 
 interface UserProfile {
   id: number;
@@ -46,6 +53,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const SESSION_POLL_MS = 60_000;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -57,13 +66,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const endExpiredSession = useCallback((redirect = true) => {
+    invalidateAuthSession();
+    clearSession();
+    setIsLoading(false);
+    setSessionChecked(true);
+    if (redirect && typeof window !== "undefined") {
+      const path = window.location.pathname;
+      if (isPortalRouteProtected(path)) {
+        handleSessionExpired(path);
+      }
+    }
+  }, [clearSession]);
+
   useEffect(() => registerAuthStateSync({ onClear: clearSession }), [clearSession]);
 
   useEffect(() => {
     const stored = readAuthToken();
-    if (stored) {
+    if (stored && !isTokenExpired(stored)) {
       setToken(stored);
       return;
+    }
+    if (stored) {
+      invalidateAuthSession();
     }
     setIsLoading(false);
     setSessionChecked(true);
@@ -71,6 +96,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyToken = useCallback(async (t: string, options?: { redirectOnFail?: boolean }) => {
     const redirectOnFail = options?.redirectOnFail ?? true;
+
+    if (isTokenExpired(t)) {
+      endExpiredSession(redirectOnFail);
+      return false;
+    }
+
     try {
       const res = await apiFetch("/api/auth/me", {
         headers: { Authorization: `Bearer ${t}` },
@@ -86,26 +117,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return true;
       }
 
-      invalidateAuthSession();
-      clearSession();
-      if (redirectOnFail) redirectToAuth();
+      endExpiredSession(redirectOnFail);
       return false;
     } catch {
-      invalidateAuthSession();
-      clearSession();
-      if (redirectOnFail) redirectToAuth();
+      endExpiredSession(redirectOnFail);
       return false;
     } finally {
       setIsLoading(false);
       setSessionChecked(true);
     }
-  }, [clearSession]);
+  }, [endExpiredSession]);
 
   useEffect(() => {
     if (token) {
       void verifyToken(token);
     }
   }, [token, verifyToken]);
+
+  useEffect(() => {
+    if (!sessionChecked || !token) return;
+
+    const checkSessionLocal = () => {
+      const t = readAuthToken();
+      if (!t || isTokenExpired(t)) {
+        endExpiredSession(true);
+      }
+    };
+
+    const intervalId = window.setInterval(checkSessionLocal, SESSION_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const t = readAuthToken();
+      if (!t || isTokenExpired(t)) {
+        endExpiredSession(true);
+        return;
+      }
+      void verifyToken(t, { redirectOnFail: true });
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [sessionChecked, token, endExpiredSession, verifyToken]);
 
   const login = useCallback(async (email: string, password: string) => {
     try {

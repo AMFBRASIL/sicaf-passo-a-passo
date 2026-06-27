@@ -24,7 +24,7 @@ const envSchema = z.object({
   TZ: z.string().default("America/Sao_Paulo"),
 
   JWT_SECRET: z.string().min(32, "JWT_SECRET deve ter no mínimo 32 caracteres"),
-  JWT_EXPIRES_IN: z.string().default("7d"),
+  JWT_EXPIRES_IN: z.string().default("30d"),
   CRON_SECRET: z.string().min(16, "CRON_SECRET deve ter no mínimo 16 caracteres"),
 
   DB_LEGACY_HOST: z.string().min(1),

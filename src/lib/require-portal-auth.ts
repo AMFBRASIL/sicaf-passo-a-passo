@@ -1,7 +1,8 @@
 import { redirect } from "@tanstack/react-router";
 import { apiUrl } from "@/lib/api-config";
 import { readAuthToken } from "@/lib/auth-cookie";
-import { invalidateAuthSession } from "@/lib/auth-session";
+import { handleSessionExpired, invalidateAuthSession } from "@/lib/auth-session";
+import { isTokenExpired } from "@/lib/auth-token";
 
 const PUBLIC_PREFIXES = ["/auth", "/pay", "/sicaf-assistant", "/sicaf-assistant-chat"] as const;
 
@@ -24,11 +25,9 @@ export async function requirePortalAuth(fromPath?: string) {
   if (typeof window === "undefined") return;
 
   const token = readAuthToken();
-  if (!token) {
-    throw redirect({
-      to: "/auth",
-      search: fromPath && fromPath !== "/" ? { from: fromPath } : undefined,
-    });
+  if (!token || isTokenExpired(token)) {
+    handleSessionExpired(fromPath);
+    throw redirect({ to: "/auth" });
   }
 
   try {
@@ -39,6 +38,7 @@ export async function requirePortalAuth(fromPath?: string) {
 
     if (!res.ok || !data.ok || !data.user) {
       invalidateAuthSession();
+      handleSessionExpired(fromPath);
       throw redirect({
         to: "/auth",
         search: fromPath && fromPath !== "/" ? { from: fromPath } : undefined,
@@ -47,6 +47,7 @@ export async function requirePortalAuth(fromPath?: string) {
   } catch (err) {
     if (err && typeof err === "object" && "href" in err) throw err;
     invalidateAuthSession();
+    handleSessionExpired(fromPath);
     throw redirect({
       to: "/auth",
       search: fromPath && fromPath !== "/" ? { from: fromPath } : undefined,

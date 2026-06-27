@@ -1,13 +1,14 @@
+import { SESSION_MAX_AGE_SEC } from "@/lib/auth-token";
+
 const TOKEN_KEY = "cadbrasil_token";
 const COOKIE_NAME = "cadbrasil_token";
-const MAX_AGE_SEC = 7 * 24 * 60 * 60;
 
 export function persistAuthToken(token: string | null): void {
   if (typeof window === "undefined") return;
 
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
-    document.cookie = `${COOKIE_NAME}=${encodeURIComponent(token)}; path=/; max-age=${MAX_AGE_SEC}; SameSite=Lax`;
+    document.cookie = `${COOKIE_NAME}=${encodeURIComponent(token)}; path=/; max-age=${SESSION_MAX_AGE_SEC}; SameSite=Lax`;
   } else {
     localStorage.removeItem(TOKEN_KEY);
     document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; SameSite=Lax`;
