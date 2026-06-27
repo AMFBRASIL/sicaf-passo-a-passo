@@ -24,7 +24,6 @@ import {
   buildTarefas,
   firstName,
 } from "@/lib/home-portfolio";
-import { requirePortalAuth } from "@/lib/require-portal-auth";
 import {
   ProcessoClienteModal,
   useProcessoModalAutoOpen,
@@ -53,9 +52,6 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
-  beforeLoad: async () => {
-    await requirePortalAuth();
-  },
   head: () => ({
     meta: [
       { title: "Início — Portal CADBRASIL" },

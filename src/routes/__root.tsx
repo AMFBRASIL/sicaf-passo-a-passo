@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
+  Navigate,
   createRootRouteWithContext,
   useRouter,
   useRouterState,
@@ -35,6 +36,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { WhatsappFloatingButton } from "@/components/whatsapp-floating-button";
 import { buildWhatsAppSuporteUrl, getWhatsAppMensagemPorPath } from "@/lib/whatsapp-suporte";
 import { redirectToAuth } from "@/lib/auth-session";
+import { isPortalRouteProtected, requirePortalAuth } from "@/lib/require-portal-auth";
 
 function NotFoundComponent() {
   return (
@@ -97,6 +99,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  beforeLoad: async ({ location }) => {
+    if (typeof window === "undefined") return;
+    const pathname = location.pathname;
+    if (!isPortalRouteProtected(pathname)) return;
+    await requirePortalAuth(pathname);
+  },
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -211,17 +219,21 @@ function AuthenticatedShell({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const whatsappUrl = buildWhatsAppSuporteUrl(getWhatsAppMensagemPorPath(pathname));
 
-  useEffect(() => {
-    if (sessionChecked && !isLoading && !isAuthenticated) {
-      redirectToAuth(pathname);
-    }
-  }, [sessionChecked, isLoading, isAuthenticated, pathname]);
-
-  if (!sessionChecked || isLoading || !isAuthenticated) {
+  if (!sessionChecked || isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-sm text-muted-foreground">Verificando sessão...</p>
       </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/auth"
+        replace
+        search={pathname !== "/" ? { from: pathname } : undefined}
+      />
     );
   }
 

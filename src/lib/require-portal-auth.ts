@@ -3,13 +3,32 @@ import { apiUrl } from "@/lib/api-config";
 import { readAuthToken } from "@/lib/auth-cookie";
 import { invalidateAuthSession } from "@/lib/auth-session";
 
+const PUBLIC_PREFIXES = ["/auth", "/pay", "/sicaf-assistant", "/sicaf-assistant-chat"] as const;
+
+const PUBLIC_EXACT = new Set(["/login", "/esqueci-senha"]);
+
+/** Rotas que não exigem sessão do portal (fornecedor). */
+export function isPublicPortalPath(pathname: string): boolean {
+  if (PUBLIC_EXACT.has(pathname)) return true;
+  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+/** Admin tem guard próprio em /admin. */
+export function isPortalRouteProtected(pathname: string): boolean {
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) return false;
+  return !isPublicPortalPath(pathname);
+}
+
 /** Valida sessão antes de carregar rotas do portal (fornecedor). */
-export async function requirePortalAuth() {
+export async function requirePortalAuth(fromPath?: string) {
   if (typeof window === "undefined") return;
 
   const token = readAuthToken();
   if (!token) {
-    throw redirect({ to: "/auth" });
+    throw redirect({
+      to: "/auth",
+      search: fromPath && fromPath !== "/" ? { from: fromPath } : undefined,
+    });
   }
 
   try {
@@ -20,11 +39,17 @@ export async function requirePortalAuth() {
 
     if (!res.ok || !data.ok || !data.user) {
       invalidateAuthSession();
-      throw redirect({ to: "/auth" });
+      throw redirect({
+        to: "/auth",
+        search: fromPath && fromPath !== "/" ? { from: fromPath } : undefined,
+      });
     }
   } catch (err) {
     if (err && typeof err === "object" && "href" in err) throw err;
     invalidateAuthSession();
-    throw redirect({ to: "/auth" });
+    throw redirect({
+      to: "/auth",
+      search: fromPath && fromPath !== "/" ? { from: fromPath } : undefined,
+    });
   }
 }

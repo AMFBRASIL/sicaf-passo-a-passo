@@ -1,4 +1,5 @@
 import { persistAuthToken, readAuthToken } from "@/lib/auth-cookie";
+import { isPublicPortalPath } from "@/lib/require-portal-auth";
 
 type AuthStateSync = {
   onClear: () => void;
@@ -40,24 +41,31 @@ function isPublicAuthApi(path: string): boolean {
 
 export function redirectToAuth(fromPath?: string) {
   if (typeof window === "undefined") return;
-  if (redirecting) return;
 
   const current = fromPath || window.location.pathname;
-  if (current === "/auth" || current.startsWith("/auth/") || current === "/login") return;
+  if (isPublicPortalPath(current) || current === "/login") return;
+  if (redirecting) return;
 
   redirecting = true;
   const url = new URL("/auth", window.location.origin);
-  if (current && current !== "/" && !current.startsWith("/auth")) {
+  if (current && current !== "/" && !isPublicPortalPath(current)) {
     url.searchParams.set("from", current);
   }
+
   window.location.replace(`${url.pathname}${url.search}`);
+  window.setTimeout(() => {
+    redirecting = false;
+  }, 2000);
 }
 
 export function handleApiUnauthorized(apiInput: string) {
   const path = normalizeApiPath(apiInput);
   if (isPublicAuthApi(path)) return;
-  if (!readAuthToken()) return;
 
   invalidateAuthSession();
-  redirectToAuth(window.location.pathname);
+
+  const current = typeof window !== "undefined" ? window.location.pathname : "/";
+  if (!isPublicPortalPath(current) && current !== "/login") {
+    redirectToAuth(current);
+  }
 }
