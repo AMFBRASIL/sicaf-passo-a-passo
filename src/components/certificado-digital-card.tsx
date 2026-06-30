@@ -164,46 +164,92 @@ export function CertificadoDigitalCard({
       );
     }
 
-    if (!valido) return null;
+    const expirado = certificado?.status === "expirado";
+
+    if (valido) {
+      return (
+        <>
+          <Card className="shadow-soft border-success/35 bg-gradient-to-br from-success/10 to-success/5">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/20 text-success">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold leading-tight">Certificado validado</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
+                    e-CNPJ cadastrado
+                    {validade ? (
+                      <>
+                        {" "}
+                        · válido até <span className="font-medium text-foreground">{validade}</span>
+                      </>
+                    ) : null}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full gap-1.5 text-xs"
+                  onClick={() => setDialogOpen(true)}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Atualizar
+                </Button>
+                <BotaoAssistente
+                  cnpj={cnpj}
+                  assistenteDisponivel={assistenteDisponivel}
+                  onAssistenteBloqueado={onAssistenteBloqueado}
+                  size="sm"
+                />
+              </div>
+            </CardContent>
+          </Card>
+          {wizard}
+        </>
+      );
+    }
 
     return (
       <>
-        <Card className="shadow-soft border-success/35 bg-gradient-to-br from-success/10 to-success/5">
+        <Card
+          className={cn(
+            "shadow-soft",
+            expirado
+              ? "border-destructive/30 bg-gradient-to-br from-destructive/10 to-destructive/5"
+              : "border-primary/20 bg-gradient-to-br from-muted/40 to-muted/10",
+          )}
+        >
           <CardContent className="p-4 space-y-3">
             <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/20 text-success">
-                <CheckCircle2 className="h-5 w-5" />
+              <div
+                className={cn(
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                  expirado ? "bg-destructive/15 text-destructive" : "bg-primary/10 text-primary",
+                )}
+              >
+                <KeyRound className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold leading-tight">Certificado validado</p>
+                <p className="text-sm font-semibold leading-tight">Certificado digital</p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
-                  e-CNPJ cadastrado
-                  {validade ? (
-                    <>
-                      {" "}
-                      · válido até <span className="font-medium text-foreground">{validade}</span>
-                    </>
-                  ) : null}
+                  {expirado
+                    ? "Expirado — envie um novo para o Assistente"
+                    : "Opcional · ainda não conectado"}
                 </p>
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full gap-1.5 text-xs"
-                onClick={() => setDialogOpen(true)}
-              >
-                <Upload className="h-3.5 w-3.5" />
-                Atualizar
-              </Button>
-              <BotaoAssistente
-                cnpj={cnpj}
-                assistenteDisponivel={assistenteDisponivel}
-                onAssistenteBloqueado={onAssistenteBloqueado}
-                size="sm"
-              />
-            </div>
+            <Button
+              size="sm"
+              variant={expirado ? "destructive" : "default"}
+              className="w-full gap-1.5 text-xs"
+              onClick={() => setDialogOpen(true)}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              {expirado ? "Renovar certificado" : "Enviar certificado"}
+            </Button>
           </CardContent>
         </Card>
         {wizard}
