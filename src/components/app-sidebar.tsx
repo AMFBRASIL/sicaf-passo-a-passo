@@ -1,4 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +25,7 @@ import {
   FolderOpen,
   FileCheck2,
   Wallet,
+  ChevronDown,
 } from "lucide-react";
 import {
   Sidebar,
@@ -112,6 +114,31 @@ function NavGroup({
   );
 }
 
+function SidebarScrollHint({
+  visible,
+  onScrollDown,
+}: {
+  visible: boolean;
+  onScrollDown: () => void;
+}) {
+  if (!visible) return null;
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 group-data-[collapsible=icon]:hidden">
+      <div className="h-12 bg-gradient-to-t from-sidebar via-sidebar/90 to-transparent" />
+      <button
+        type="button"
+        onClick={onScrollDown}
+        className="pointer-events-auto absolute inset-x-0 bottom-0 flex flex-col items-center gap-0.5 pb-1.5 pt-6 text-sidebar-foreground/75 transition hover:text-sidebar-foreground"
+        aria-label="Ver mais itens do menu"
+      >
+        <ChevronDown className="h-4 w-4 animate-bounce" />
+        <span className="text-[10px] font-medium tracking-wide">Mais opções</span>
+      </button>
+    </div>
+  );
+}
+
 export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -120,6 +147,37 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const nomeUsuario = user?.nome?.trim() || "Usuário";
   const emailUsuario = user?.email?.trim();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  const updateScrollHint = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const hasOverflow = el.scrollHeight > el.clientHeight + 4;
+    const notAtBottom = el.scrollTop + el.clientHeight < el.scrollHeight - 8;
+    setCanScrollDown(hasOverflow && notAtBottom);
+  }, []);
+
+  const scrollMenuDown = useCallback(() => {
+    contentRef.current?.scrollBy({ top: 140, behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    updateScrollHint();
+    const observer = new ResizeObserver(updateScrollHint);
+    observer.observe(el);
+    el.addEventListener("scroll", updateScrollHint, { passive: true });
+    window.addEventListener("resize", updateScrollHint);
+
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("scroll", updateScrollHint);
+      window.removeEventListener("resize", updateScrollHint);
+    };
+  }, [updateScrollHint, collapsed]);
 
   const handleLogout = () => {
     logout();
@@ -142,12 +200,15 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
-        <NavGroup label="Visão geral" items={visaoGeral} pathname={pathname} collapsed={collapsed} />
-        <NavGroup label="SICAF & Cadastro" items={sicafCadastro} pathname={pathname} collapsed={collapsed} />
-        <NavGroup label="Licitações" items={licitacoes} pathname={pathname} collapsed={collapsed} />
-        <NavGroup label="Conta & Ajuda" items={contaAjuda} pathname={pathname} collapsed={collapsed} />
-      </SidebarContent>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <SidebarContent ref={contentRef}>
+          <NavGroup label="Visão geral" items={visaoGeral} pathname={pathname} collapsed={collapsed} />
+          <NavGroup label="SICAF & Cadastro" items={sicafCadastro} pathname={pathname} collapsed={collapsed} />
+          <NavGroup label="Licitações" items={licitacoes} pathname={pathname} collapsed={collapsed} />
+          <NavGroup label="Conta & Ajuda" items={contaAjuda} pathname={pathname} collapsed={collapsed} />
+        </SidebarContent>
+        <SidebarScrollHint visible={canScrollDown && !collapsed} onScrollDown={scrollMenuDown} />
+      </div>
 
       <SidebarFooter className="border-t border-sidebar-border">
         <div className="flex items-center gap-2 px-2 py-3">
