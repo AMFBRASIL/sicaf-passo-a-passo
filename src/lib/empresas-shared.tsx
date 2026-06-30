@@ -1943,6 +1943,7 @@ export function EmpresaDetalhesSheet({
       open={manutencaoModal !== null}
       onOpenChange={(v) => !v && setManutencaoModal(null)}
       empresa={empresaExibida}
+      painel={painel}
       mode={manutencaoModal ?? (manutencaoAtiva ? "gerenciar" : "ativar")}
       diaVencimento={diaVencimentoManut}
       onAtivar={handleAtivarManutencao}

@@ -3,8 +3,68 @@
  */
 const { getDb } = require('../database/connection');
 const { assertClienteAcessivel } = require('./client-access.service');
+const {
+  resolveSicafDisplayStatus,
+  isSicafAcessoLiberado,
+  resolveFinancialReleased,
+} = require('../utils/sicaf-status');
 
 const MANUTENCAO_STATUS_ATIVOS = ['Ativo', 'ativo', 'A Vencer', 'a vencer', 'Vencendo', 'vencendo'];
+
+function isPaidStatus(status) {
+  const s = String(status || '').toLowerCase();
+  return ['pago', 'paga', 'aprovado', 'aprovada', 'paid', 'quitado', 'liberado', 'liberada'].includes(s);
+}
+
+async function assertSicafVigenteParaManutencao(db, clienteId) {
+  const sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
+  if (!sicaf) {
+    return {
+      ok: false,
+      error: 'Cadastre e pague a taxa SICAF antes de ativar a manutenção.',
+    };
+  }
+
+  const taxasSicaf = await db('taxas_sicaf')
+    .where('cliente_id', clienteId)
+    .orderBy('id', 'desc')
+    .catch(() => []);
+
+  const hasPaidTaxRecord = (taxasSicaf || []).some(
+    (t) => isPaidStatus(t.status) || t.data_pagamento,
+  );
+  const financialReleased = resolveFinancialReleased({
+    hasSicaf: true,
+    sicafStatus: sicaf.status,
+    dataValidade: sicaf.data_validade,
+    taxaReleased: hasPaidTaxRecord,
+  });
+  const displayStatus = resolveSicafDisplayStatus(sicaf.status, sicaf.data_validade, true);
+  const liberado = isSicafAcessoLiberado({
+    hasSicaf: true,
+    status: displayStatus,
+    financialReleased,
+  });
+
+  if (liberado) return { ok: true };
+
+  if (displayStatus === 'Vencido') {
+    return {
+      ok: false,
+      error: 'Seu SICAF está vencido. Renove o cadastro para poder ativar a manutenção.',
+    };
+  }
+  if (!financialReleased) {
+    return {
+      ok: false,
+      error: 'Conclua o pagamento da taxa SICAF antes de ativar a manutenção.',
+    };
+  }
+  return {
+    ok: false,
+    error: 'É necessário ter o SICAF pago e vigente antes de ativar a manutenção.',
+  };
+}
 
 function isManutencaoStatusAtivo(status) {
   return MANUTENCAO_STATUS_ATIVOS.includes(String(status || '').trim());
@@ -82,6 +142,9 @@ async function ativarManutencao({ clienteId, usuarioId, diaVencimento, parcelame
 
   const cliente = await assertClienteAcessivel(db, clienteId, usuarioId, jwtTipo);
   if (!cliente) return { ok: false, error: 'Cliente não encontrado ou sem permissão' };
+
+  const sicafCheck = await assertSicafVigenteParaManutencao(db, clienteId);
+  if (!sicafCheck.ok) return sicafCheck;
 
   const { parcelas: qtdParcelas, intervaloMeses } = parseParcelamento(parcelamento);
   const dueDay = Math.max(1, Math.min(28, parseInt(String(diaVencimento), 10) || 10));

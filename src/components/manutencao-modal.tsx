@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -41,6 +42,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import type { EmpresaData } from "@/lib/empresas-shared";
+import type { EmpresaGerenciarPainel } from "@/lib/empresas-api";
+import {
+  getManutencaoBloqueioMotivo,
+  podeAtivarManutencaoFromEmpresa,
+  podeAtivarManutencaoFromPainel,
+} from "@/lib/sicaf-access-rules";
 import { PagamentoModal } from "@/components/pagamento-modal";
 import {
   ativarManutencao,
@@ -76,6 +83,7 @@ export function ManutencaoModal({
   open,
   onOpenChange,
   empresa,
+  painel,
   mode,
   diaVencimento,
   onAtivar,
@@ -85,6 +93,7 @@ export function ManutencaoModal({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   empresa: EmpresaData | null;
+  painel?: EmpresaGerenciarPainel | null;
   mode: Mode;
   diaVencimento?: number;
   onAtivar: (cnpj: string, dia: number) => void;
@@ -100,6 +109,19 @@ export function ManutencaoModal({
   const [planoAtivo, setPlanoAtivo] = useState(false);
   const [valorMensal, setValorMensal] = useState(155);
   const [parcelamento, setParcelamento] = useState<ParcelamentoManutencao>("12x");
+
+  const sicafElegivel = useMemo(() => {
+    if (!empresa) return false;
+    if (painel) return podeAtivarManutencaoFromPainel(painel);
+    return podeAtivarManutencaoFromEmpresa(empresa);
+  }, [empresa, painel]);
+
+  const bloqueioMotivo = useMemo(
+    () => (empresa ? getManutencaoBloqueioMotivo(painel, empresa) : null),
+    [painel, empresa],
+  );
+
+  const ativacaoBloqueada = effectiveMode === "ativar" && !sicafElegivel;
 
   useEffect(() => {
     if (!open || !empresa) return;
@@ -158,6 +180,10 @@ export function ManutencaoModal({
 
   const handleAtivar = async () => {
     if (!dia) return;
+    if (!sicafElegivel) {
+      toast.error(bloqueioMotivo || "É necessário ter o SICAF pago e vigente antes de ativar a manutenção.");
+      return;
+    }
     if (!empresa.clienteId) {
       toast.error("Empresa sem identificador. Recarregue a página.");
       return;
@@ -299,6 +325,14 @@ export function ManutencaoModal({
           <div className="flex flex-col min-h-0 bg-background">
             <ScrollArea className="flex-1 max-h-[80vh]">
               <div className="p-6 sm:p-8">
+                {ativacaoBloqueada ? (
+                  <ManutencaoSicafBloqueioStep
+                    motivo={bloqueioMotivo}
+                    cnpj={empresa.cnpj}
+                    onClose={() => onOpenChange(false)}
+                  />
+                ) : (
+                  <>
                 {effectiveMode === "ativar" && step === "plano" && (
                   <PlanoStep
                     valorMensal={valorMensal}
@@ -339,10 +373,12 @@ export function ManutencaoModal({
                     onPaymentGenerated={onPaymentGenerated}
                   />
                 )}
+                  </>
+                )}
               </div>
             </ScrollArea>
 
-            {effectiveMode === "ativar" && step !== "sucesso" && (
+            {effectiveMode === "ativar" && step !== "sucesso" && !ativacaoBloqueada && (
               <div className="border-t bg-muted/30 px-6 py-4 flex items-center justify-between gap-3">
                 <Button
                   variant="ghost"
@@ -378,6 +414,44 @@ export function ManutencaoModal({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ManutencaoSicafBloqueioStep({
+  motivo,
+  cnpj,
+  onClose,
+}: {
+  motivo: string | null;
+  cnpj: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="mx-auto flex max-w-lg flex-col items-center py-8 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-600">
+        <AlertTriangle className="h-7 w-7" />
+      </div>
+      <h3 className="mt-5 text-xl font-bold tracking-tight">SICAF precisa estar em dia</h3>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+        {motivo ||
+          "É necessário ter o SICAF pago e vigente antes de contratar a manutenção mensal."}
+      </p>
+      <p className="mt-3 text-xs text-muted-foreground">
+        A manutenção cuida da renovação do seu cadastro — ela só pode ser ativada depois que a taxa
+        SICAF estiver quitada e o cadastro estiver ativo.
+      </p>
+      <div className="mt-8 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+        <Button variant="outline" onClick={onClose}>
+          Fechar
+        </Button>
+        <Button asChild className="gap-1.5">
+          <Link to="/sicaf" search={{ cnpj }} onClick={onClose}>
+            Ir para Etapas SICAF
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 

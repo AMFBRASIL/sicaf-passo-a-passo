@@ -63,6 +63,58 @@ export function sicafTaxaLiberada(painel: PainelTaxaAccess): boolean {
   });
 }
 
+/** Manutenção só pode ser ativada com SICAF pago e vigente (Ativo ou Vencendo). */
+export function podeAtivarManutencaoFromPainel(painel: PainelTaxaAccess): boolean {
+  return sicafTaxaLiberada(painel);
+}
+
+export function podeAtivarManutencaoFromEmpresa(empresa: {
+  sicaf?: SicafDisplayStatus;
+  taxaPendente?: boolean;
+  sicafId?: number;
+}): boolean {
+  if (empresa.taxaPendente === true) return false;
+  const s = empresa.sicaf ?? "sem_cadastro";
+  if (s === "vencido" || s === "sem_cadastro") return false;
+  if (empresa.taxaPendente === false) return s === "ativo" || s === "atencao";
+  return !!empresa.sicafId && (s === "ativo" || s === "atencao");
+}
+
+export function getManutencaoBloqueioMotivo(
+  painel: PainelTaxaAccess | null | undefined,
+  empresa?: { sicaf?: SicafDisplayStatus; taxaPendente?: boolean; sicafId?: number },
+): string | null {
+  const elegivel = painel
+    ? podeAtivarManutencaoFromPainel(painel)
+    : empresa
+      ? podeAtivarManutencaoFromEmpresa(empresa)
+      : false;
+  if (elegivel) return null;
+
+  if (painel) {
+    const status = normalizeSicafStatus(painel.sicaf?.status);
+    if (!painel.sicaf?.id || status === "Sem SICAF") {
+      return "Cadastre e pague a taxa SICAF antes de ativar a manutenção.";
+    }
+    if (status === "Vencido") {
+      return "Seu SICAF está vencido. Renove o cadastro para poder ativar a manutenção.";
+    }
+    if (!painel.financeiro?.taxaPaga) {
+      return "Conclua o pagamento da taxa SICAF antes de ativar a manutenção.";
+    }
+    return "É necessário ter o SICAF pago e vigente antes de ativar a manutenção.";
+  }
+
+  const s = empresa?.sicaf ?? "sem_cadastro";
+  if (s === "vencido") {
+    return "Seu SICAF está vencido. Renove o cadastro para poder ativar a manutenção.";
+  }
+  if (s === "sem_cadastro" || !empresa?.sicafId) {
+    return "Cadastre e pague a taxa SICAF antes de ativar a manutenção.";
+  }
+  return "Conclua o pagamento da taxa SICAF antes de ativar a manutenção.";
+}
+
 export type SicafDisplayStatus = "ativo" | "atencao" | "vencido" | "sem_cadastro";
 
 /**

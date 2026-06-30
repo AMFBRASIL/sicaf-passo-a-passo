@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   Shield,
+  Check,
   CheckCircle2,
   AlertTriangle,
   KeyRound,
@@ -17,12 +18,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { ManutencaoModal } from "@/components/manutencao-modal";
 import { SaudeDocumentalCard } from "@/components/saude-documental-card";
 import { NivelDots } from "@/components/admin/nivel-dots";
@@ -33,10 +28,7 @@ import {
   formatCertValidade,
   type CertificadoDigitalInfo,
 } from "@/lib/certificado-api";
-import {
-  segmentoEmpresa,
-  type PipelineEtapa,
-} from "@/lib/sicaf-pipeline-ui";
+import type { PipelineEtapa } from "@/lib/sicaf-pipeline-ui";
 import type { EmpresaData } from "@/lib/empresas-shared";
 import {
   countNiveisAtivosExibicao,
@@ -54,12 +46,6 @@ function cnpjsMatch(a?: string, b?: string) {
   const na = normalizeCnpj(a);
   const nb = normalizeCnpj(b);
   return na.length > 0 && na === nb;
-}
-
-function truncarRazao(nome: string, max = 30) {
-  const trimmed = nome.trim();
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, max)}...`;
 }
 
 export const Route = createFileRoute("/sicaf")({
@@ -88,12 +74,6 @@ function SicafPage() {
   const pipelineEtapas = flow.pipelineEtapas;
   const progresso = flow.progresso;
   const proximaAcao = flow.proximaAcao;
-  const segmentoTexto = cliente
-    ? segmentoEmpresa({
-        niveis: cliente.niveis,
-        ramoAtividade: cliente.ramoAtividade,
-      })
-    : "";
 
   const [manutencaoModal, setManutencaoModal] = useState<"ativar" | "gerenciar" | null>(null);
 
@@ -212,42 +192,14 @@ function SicafPage() {
           ) : (
             <>
           <div className="rounded-2xl border border-border bg-card p-5">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">CNPJ {cliente.cnpj}</p>
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <h2 className="mt-1 cursor-default text-2xl font-bold tracking-tight">
-                        {truncarRazao(cliente.nome)}
-                      </h2>
-                    </TooltipTrigger>
-                    {cliente.nome.trim().length > 30 && (
-                      <TooltipContent side="bottom" align="start" className="max-w-md text-sm">
-                        {cliente.nome}
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <p className="mt-0.5 max-w-xl cursor-default truncate text-sm text-muted-foreground">
-                        {segmentoTexto}
-                      </p>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" align="start" className="max-w-md text-xs leading-relaxed">
-                      {segmentoTexto}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <div className="flex flex-wrap items-stretch gap-3 lg:gap-4 lg:justify-end shrink-0">
-                <div
-                  className={`max-w-[200px] shrink-0 rounded-xl border px-3 py-2.5 ${
-                    flow.tudoConcluido
-                      ? "border-success/30 bg-success/10"
-                      : "border-warning/30 bg-warning/10"
-                  }`}
-                >
+            <div className="flex flex-wrap items-stretch gap-3 lg:gap-4">
+              <div
+                className={`min-w-[200px] flex-1 rounded-xl border px-3 py-2.5 ${
+                  flow.tudoConcluido
+                    ? "border-success/30 bg-success/10"
+                    : "border-warning/30 bg-warning/10"
+                }`}
+              >
                   <div
                     className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider ${
                       flow.tudoConcluido ? "text-success" : "text-warning-foreground"
@@ -305,7 +257,6 @@ function SicafPage() {
                   certificado={flow.certificado}
                   onClick={() => flow.setCertificadoModal(true)}
                 />
-              </div>
             </div>
             <div className="mt-4 flex items-center gap-2">
               <div className="h-1.5 flex-1 rounded-full bg-muted">
@@ -422,6 +373,7 @@ function SicafPage() {
           open
           onOpenChange={(v) => !v && setManutencaoModal(null)}
           empresa={empresaAtual}
+          painel={flow.painel}
           mode={manutencaoModal}
           diaVencimento={diaVencimentoManut}
           onAtivar={() => void flow.recarregar()}
@@ -459,12 +411,20 @@ function EmpresaSidebarCard({
       }}
       aria-pressed={active}
       aria-current={active ? "true" : undefined}
-      className={`w-full cursor-pointer rounded-2xl border p-4 text-left transition ${
+      className={`relative w-full cursor-pointer rounded-2xl border p-4 pr-10 text-left transition ${
         active
           ? "border-black bg-black text-white shadow-lg ring-2 ring-black ring-offset-2 ring-offset-background"
           : "border-border bg-card hover:border-foreground/30 hover:shadow-sm"
       }`}
     >
+      {active && (
+        <span
+          className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-white text-black shadow-sm"
+          aria-hidden
+        >
+          <Check className="h-3 w-3 stroke-[3]" />
+        </span>
+      )}
       <div className="flex items-center gap-1.5 text-xs">
         <Shield className={`h-3.5 w-3.5 ${active ? "text-white/70" : "text-primary"}`} />
         <span className={active ? "text-white/70" : "text-muted-foreground"}>
@@ -629,7 +589,7 @@ function ManutencaoSicafCard({
 }) {
   return (
     <div
-      className={`flex min-w-[200px] max-w-[220px] flex-col rounded-xl border px-4 py-3 ${
+      className={`flex min-w-[200px] flex-1 flex-col rounded-xl border px-4 py-3 ${
         ativa
           ? "border-emerald-500/40 bg-emerald-500/10"
           : "border-slate-200/80 bg-slate-50/90 dark:border-slate-700/60 dark:bg-slate-900/40"
@@ -699,15 +659,13 @@ function CertificadoOpcionalCard({
   const statusLabel = conectado ? "Conectado" : expirado ? "Expirado" : "Não conectado";
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-xl border px-4 py-3 text-left max-w-[200px] transition hover:shadow-sm ${
+    <div
+      className={`flex min-w-[200px] flex-1 flex-col rounded-xl border px-4 py-3 ${
         conectado
-          ? "border-emerald-500/40 bg-emerald-500/10 hover:border-emerald-500/60 hover:bg-emerald-500/15"
+          ? "border-emerald-500/40 bg-emerald-500/10"
           : expirado
-            ? "border-destructive/30 bg-destructive/5 hover:border-destructive/50"
-            : "border-slate-200/80 bg-slate-50/90 hover:border-slate-300 hover:bg-slate-100/90 dark:border-slate-700/60 dark:bg-slate-900/40 dark:hover:border-slate-600"
+            ? "border-destructive/30 bg-destructive/5"
+            : "border-slate-200/80 bg-slate-50/90 dark:border-slate-700/60 dark:bg-slate-900/40"
       }`}
     >
       <div
@@ -747,8 +705,24 @@ function CertificadoOpcionalCard({
         </p>
       )}
       {!conectado && !expirado && (
-        <p className="mt-0.5 text-[11px] text-muted-foreground">Clique para validar</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          Valide ou envie seu certificado A1
+        </p>
       )}
-    </button>
+      <Button
+        type="button"
+        size="sm"
+        variant={conectado ? "outline" : "default"}
+        className={
+          conectado
+            ? "mt-3 h-8 w-full gap-1.5 rounded-full border-background/80 bg-background/90 text-xs font-semibold hover:bg-background"
+            : "mt-3 h-8 w-full gap-1.5 rounded-full text-xs font-semibold"
+        }
+        onClick={onClick}
+      >
+        {conectado ? "Gerenciar" : expirado ? "Renovar certificado" : "Validar certificado"}
+        <ArrowRight className="h-3.5 w-3.5" />
+      </Button>
+    </div>
   );
 }
