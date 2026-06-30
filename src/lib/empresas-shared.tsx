@@ -445,6 +445,34 @@ export function countNiveisAtivosExibicao(empresa: EmpresaData): number {
   return NIVEIS_SICAF.filter((n) => detalhesPara(empresa, n.num).status !== "nao_cadastrado").length;
 }
 
+export function niveisMapParaExibicao(empresa: EmpresaData): Record<number, NivelStatus> {
+  const out: Record<number, NivelStatus> = {};
+  for (const n of NIVEIS_SICAF) {
+    out[n.num] = detalhesPara(empresa, n.num).status;
+  }
+  return out;
+}
+
+export function segmentoEmpresaCard(empresa: EmpresaData): string {
+  const ativos = NIVEIS_SICAF.filter((n) => detalhesPara(empresa, n.num).status !== "nao_cadastrado");
+  const maxNivel = ativos.length ? Math.max(...ativos.map((n) => n.num)) : 0;
+  const roman = NIVEIS_SICAF.find((n) => n.num === maxNivel)?.roman;
+  if (maxNivel > 0) return `Nível I-${roman}`;
+  if (empresa.taxaPendente) return "Aguardando pagamento";
+  return "Sem níveis cadastrados";
+}
+
+export function progressoNiveisEmpresa(empresa: EmpresaData): number {
+  return Math.round((countNiveisAtivosExibicao(empresa) / NIVEIS_SICAF.length) * 100);
+}
+
+export function enriquecerEmpresaComPainel(
+  empresa: EmpresaData,
+  painel: EmpresaGerenciarPainel,
+): EmpresaData {
+  return mergeEmpresaComPainel(empresa, painel);
+}
+
 export function NiveisSicafBadges({ empresa, compact }: { empresa: EmpresaData; compact?: boolean }) {
   return (
     <div className={compact ? "" : "mt-3"}>

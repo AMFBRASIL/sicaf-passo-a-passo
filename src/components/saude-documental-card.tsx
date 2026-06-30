@@ -29,6 +29,8 @@ type SaudeDocumentalCardProps = {
   /** Quando false, o botão do Assistente não navega (ex.: pagamento pendente). */
   assistenteDisponivel?: boolean;
   onAssistenteBloqueado?: () => void;
+  /** Quando informado, abre o assistente sem navegar para outra rota. */
+  onAssistenteClick?: () => void;
   /** Link secundário (padrão: impacto no SICAF) */
   secondaryLink?: {
     to: string;
@@ -43,6 +45,7 @@ export function SaudeDocumentalCard({
   showPendentes = true,
   assistenteDisponivel = true,
   onAssistenteBloqueado,
+  onAssistenteClick,
   secondaryLink,
 }: SaudeDocumentalCardProps) {
   const sec = secondaryLink ?? {
@@ -100,11 +103,23 @@ export function SaudeDocumentalCard({
           </div>
         </div>
         <div className="flex flex-col gap-2 lg:items-end">
-          {assistenteDisponivel ? (
+          {onAssistenteClick ? (
+            <Button
+              size="lg"
+              className="gap-2"
+              variant={assistenteDisponivel ? "default" : "secondary"}
+              onClick={() =>
+                assistenteDisponivel ? onAssistenteClick() : onAssistenteBloqueado?.()
+              }
+            >
+              <Sparkles className="h-4 w-4" />
+              Atualizar meu SICAF agora
+            </Button>
+          ) : assistenteDisponivel ? (
             <Button asChild size="lg" className="gap-2">
               <Link to="/assistente" search={{ cnpj }}>
                 <Sparkles className="h-4 w-4" />
-                Renovar pendentes com IA
+                Atualizar meu SICAF agora
               </Link>
             </Button>
           ) : (
@@ -115,7 +130,7 @@ export function SaudeDocumentalCard({
               onClick={() => onAssistenteBloqueado?.()}
             >
               <Sparkles className="h-4 w-4" />
-              Renovar pendentes com IA
+              Atualizar meu SICAF agora
             </Button>
           )}
           <Button asChild variant="ghost" size="sm">

@@ -34,9 +34,11 @@ const statusMeta: Record<
 export interface NivelDotsProps {
   niveis: Record<number, NivelStatus>;
   size?: "sm" | "md";
+  /** Quando true, cliques nas bolinhas propagam para o container pai (ex.: card da empresa). */
+  bubbleClick?: boolean;
 }
 
-export function NivelDots({ niveis, size = "sm" }: NivelDotsProps) {
+export function NivelDots({ niveis, size = "sm", bubbleClick = false }: NivelDotsProps) {
   const dim = size === "sm" ? "h-5 w-5 text-[9px]" : "h-7 w-7 text-[11px]";
   return (
     <div className="flex items-center gap-1">
@@ -54,8 +56,8 @@ export function NivelDots({ niveis, size = "sm" }: NivelDotsProps) {
                   inativo ? "opacity-25 grayscale" : "shadow-sm"
                 }`}
                 style={{ backgroundColor: n.color }}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
+                onClick={bubbleClick ? undefined : (e) => e.stopPropagation()}
+                onKeyDown={bubbleClick ? undefined : (e) => e.stopPropagation()}
               >
                 {n.roman}
                 {!inativo && (

@@ -22,6 +22,7 @@ import {
   Loader2,
   CircleHelp,
   ExternalLink,
+  Building2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,7 @@ import {
   type PendenciaNivelResumo,
 } from "@/lib/assistente-api";
 import type { GerenciarItem, EmpresaGerenciarPainel } from "@/lib/empresas-api";
+import { fetchEmpresas } from "@/lib/empresas-api";
 import { countNiveisValidadosUi, mapNiveisFromEvidencias, mapSicafPainelStatus, nivelBolinhaVisual, todosNiveisValidadosUi } from "@/lib/nivel-status";
 import { pagamentoSicafConfirmado } from "@/lib/sicaf-page-api";
 
@@ -255,6 +257,7 @@ function AssistentePage() {
   const [launchOpen, setLaunchOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [selecionarEmpresaOpen, setSelecionarEmpresaOpen] = useState(false);
+  const [totalEmpresas, setTotalEmpresas] = useState(0);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState<string | undefined>();
   const [niveis, setNiveis] = useState<Record<number, NivelStatus>>(NIVEIS_VAZIOS);
@@ -321,6 +324,12 @@ function AssistentePage() {
     if (!hasSeenAssistenteOnboarding()) {
       setOnboardingOpen(true);
     }
+  }, []);
+
+  useEffect(() => {
+    void fetchEmpresas().then((res) => {
+      if (res.ok) setTotalEmpresas(res.empresas.length);
+    });
   }, []);
 
   useEffect(() => {
@@ -464,6 +473,17 @@ function AssistentePage() {
         }
         action={
           <div className="flex flex-wrap gap-2">
+            {cnpj && totalEmpresas > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setSelecionarEmpresaOpen(true)}
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                Trocar de Empresa
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -571,7 +591,7 @@ function AssistentePage() {
             <Bot className="h-10 w-10 text-muted-foreground/50" />
             <p className="text-sm font-medium">Selecione uma empresa para usar o Assistente</p>
             <Button size="sm" onClick={() => setSelecionarEmpresaOpen(true)}>
-              Ir para Minhas Empresas
+              Selecionar empresa
             </Button>
           </CardContent>
         </Card>
@@ -1173,8 +1193,13 @@ function AssistentePage() {
       <SelecionarEmpresaModal
         open={selecionarEmpresaOpen}
         onOpenChange={setSelecionarEmpresaOpen}
-        titulo="Selecionar empresa"
-        descricao="Escolha a empresa para usar o Assistente SICAF."
+        empresaAtualCnpj={cnpj}
+        titulo={cnpj ? "Trocar de Empresa" : "Selecionar empresa"}
+        descricao={
+          cnpj
+            ? "Escolha outra empresa para usar o Assistente SICAF."
+            : "Escolha a empresa para usar o Assistente SICAF."
+        }
         onSelect={(empresa) => {
           void navigate({ to: "/assistente", search: { cnpj: empresa.cnpj } });
         }}

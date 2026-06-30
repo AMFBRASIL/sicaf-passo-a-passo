@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SuporteRouteImport } from './routes/suporte'
+import { Route as Sicaf_oldRouteImport } from './routes/sicaf_old'
 import { Route as SicafAssistantChatRouteImport } from './routes/sicaf-assistant-chat'
 import { Route as SicafAssistantRouteImport } from './routes/sicaf-assistant'
 import { Route as SicafRouteImport } from './routes/sicaf'
@@ -65,6 +66,11 @@ import { Route as AdminSuporteTicketIdRouteImport } from './routes/admin.suporte
 const SuporteRoute = SuporteRouteImport.update({
   id: '/suporte',
   path: '/suporte',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const Sicaf_oldRoute = Sicaf_oldRouteImport.update({
+  id: '/sicaf_old',
+  path: '/sicaf_old',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SicafAssistantChatRoute = SicafAssistantChatRouteImport.update({
@@ -351,6 +357,7 @@ export interface FileRoutesByFullPath {
   '/sicaf': typeof SicafRoute
   '/sicaf-assistant': typeof SicafAssistantRoute
   '/sicaf-assistant-chat': typeof SicafAssistantChatRoute
+  '/sicaf_old': typeof Sicaf_oldRoute
   '/suporte': typeof SuporteRoute
   '/admin/alertas': typeof AdminAlertasRoute
   '/admin/atendimento': typeof AdminAtendimentoRoute
@@ -403,6 +410,7 @@ export interface FileRoutesByTo {
   '/sicaf': typeof SicafRoute
   '/sicaf-assistant': typeof SicafAssistantRoute
   '/sicaf-assistant-chat': typeof SicafAssistantChatRoute
+  '/sicaf_old': typeof Sicaf_oldRoute
   '/suporte': typeof SuporteRoute
   '/admin/alertas': typeof AdminAlertasRoute
   '/admin/atendimento': typeof AdminAtendimentoRoute
@@ -457,6 +465,7 @@ export interface FileRoutesById {
   '/sicaf': typeof SicafRoute
   '/sicaf-assistant': typeof SicafAssistantRoute
   '/sicaf-assistant-chat': typeof SicafAssistantChatRoute
+  '/sicaf_old': typeof Sicaf_oldRoute
   '/suporte': typeof SuporteRoute
   '/admin/alertas': typeof AdminAlertasRoute
   '/admin/atendimento': typeof AdminAtendimentoRoute
@@ -513,6 +522,7 @@ export interface FileRouteTypes {
     | '/sicaf'
     | '/sicaf-assistant'
     | '/sicaf-assistant-chat'
+    | '/sicaf_old'
     | '/suporte'
     | '/admin/alertas'
     | '/admin/atendimento'
@@ -565,6 +575,7 @@ export interface FileRouteTypes {
     | '/sicaf'
     | '/sicaf-assistant'
     | '/sicaf-assistant-chat'
+    | '/sicaf_old'
     | '/suporte'
     | '/admin/alertas'
     | '/admin/atendimento'
@@ -618,6 +629,7 @@ export interface FileRouteTypes {
     | '/sicaf'
     | '/sicaf-assistant'
     | '/sicaf-assistant-chat'
+    | '/sicaf_old'
     | '/suporte'
     | '/admin/alertas'
     | '/admin/atendimento'
@@ -673,6 +685,7 @@ export interface RootRouteChildren {
   SicafRoute: typeof SicafRoute
   SicafAssistantRoute: typeof SicafAssistantRoute
   SicafAssistantChatRoute: typeof SicafAssistantChatRoute
+  Sicaf_oldRoute: typeof Sicaf_oldRoute
   SuporteRoute: typeof SuporteRoute
   PayCodeRoute: typeof PayCodeRoute
 }
@@ -684,6 +697,13 @@ declare module '@tanstack/react-router' {
       path: '/suporte'
       fullPath: '/suporte'
       preLoaderRoute: typeof SuporteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sicaf_old': {
+      id: '/sicaf_old'
+      path: '/sicaf_old'
+      fullPath: '/sicaf_old'
+      preLoaderRoute: typeof Sicaf_oldRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sicaf-assistant-chat': {
@@ -1146,6 +1166,7 @@ const rootRouteChildren: RootRouteChildren = {
   SicafRoute: SicafRoute,
   SicafAssistantRoute: SicafAssistantRoute,
   SicafAssistantChatRoute: SicafAssistantChatRoute,
+  Sicaf_oldRoute: Sicaf_oldRoute,
   SuporteRoute: SuporteRoute,
   PayCodeRoute: PayCodeRoute,
 }
