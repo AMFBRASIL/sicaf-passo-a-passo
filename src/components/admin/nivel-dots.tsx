@@ -40,22 +40,28 @@ export interface NivelDotsProps {
 
 export function NivelDots({ niveis, size = "sm", bubbleClick = false }: NivelDotsProps) {
   const dim = size === "sm" ? "h-5 w-5 text-[9px]" : "h-7 w-7 text-[11px]";
+  const nenhumNivelFeito = NIVEIS_SICAF.every(
+    (n) => (niveis[n.num] ?? "nao_cadastrado") === "nao_cadastrado",
+  );
+
   return (
     <div className="flex items-center gap-1">
       {NIVEIS_SICAF.map((n) => {
         const status = niveis[n.num] ?? "nao_cadastrado";
         const inativo = status === "nao_cadastrado";
         const meta = statusMeta[status];
+        const semNiveis = nenhumNivelFeito && inativo;
+        const bubbleColor = semNiveis ? "#dc2626" : n.color;
         return (
           <HoverCard key={n.num} openDelay={120} closeDelay={60}>
             <HoverCardTrigger asChild>
               <span
                 role="img"
-                aria-label={`Nível ${n.roman} - ${meta.label}`}
+                aria-label={`Nível ${n.roman} - ${semNiveis ? "Não cadastrado" : meta.label}`}
                 className={`relative inline-flex items-center justify-center rounded-full font-bold text-white outline-none transition hover:scale-110 ${dim} ${
-                  inativo ? "opacity-25 grayscale" : "shadow-sm"
+                  semNiveis ? "shadow-sm" : inativo ? "opacity-25 grayscale" : "shadow-sm"
                 }`}
-                style={{ backgroundColor: n.color }}
+                style={{ backgroundColor: bubbleColor }}
                 onClick={bubbleClick ? undefined : (e) => e.stopPropagation()}
                 onKeyDown={bubbleClick ? undefined : (e) => e.stopPropagation()}
               >
@@ -71,7 +77,7 @@ export function NivelDots({ niveis, size = "sm", bubbleClick = false }: NivelDot
               <div className="flex items-center gap-2">
                 <span
                   className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                  style={{ backgroundColor: n.color }}
+                  style={{ backgroundColor: bubbleColor }}
                 >
                   {n.roman}
                 </span>
