@@ -58,9 +58,11 @@ import {
   flattenChecklistDocumentos,
   mapFinanceiroToFaturas,
   autorizarPagamentoComComprovante,
+  cancelarBoletoAdmin,
   novaValidadeSicafAposPagamento,
   diasAteNovaValidadeSicaf,
   parseTaxaIdFromFaturaId,
+  parsePagamentoIdFromFaturaId,
   mapHistoricoFromApi,
   mapTicketsToUi,
   mergeDetalheFromApi,
@@ -1184,6 +1186,7 @@ function FinanceiroTab({
   const [faturaAtiva, setFaturaAtiva] = useState<FaturaItem | null>(null);
   const [cancelarOpen, setCancelarOpen] = useState(false);
   const [faturaCancelId, setFaturaCancelId] = useState<string | null>(null);
+  const [cancelando, setCancelando] = useState(false);
   const [cobrancaOpen, setCobrancaOpen] = useState(false);
   const [cobrancaCliente, setCobrancaCliente] = useState<ClienteCobrancaPendente | null>(null);
   const [loadingCobranca, setLoadingCobranca] = useState(false);
@@ -1223,10 +1226,48 @@ function FinanceiroTab({
     setFaturaCancelId(id);
     setCancelarOpen(true);
   };
-  const confirmarCancelamento = (id: string, motivo: string) => {
-    setFaturas((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, status: "cancelado", motivoCancelamento: motivo } : f)),
-    );
+  const confirmarCancelamento = async (id: string, motivo: string) => {
+    const fatura = faturas.find((f) => f.id === id);
+    const pagamentoId = fatura?.pagamentoId ?? parsePagamentoIdFromFaturaId(id);
+    const clienteId = parseInt(cliente.id, 10);
+
+    if (!pagamentoId) {
+      toast.error("Não foi possível identificar o pagamento desta fatura.");
+      return;
+    }
+    if (!Number.isFinite(clienteId)) {
+      toast.error("Cliente inválido.");
+      return;
+    }
+    if (fatura?.forma === "PIX") {
+      toast.error("Cancelamento automático disponível apenas para boletos. PIX exige outro fluxo.");
+      return;
+    }
+
+    setCancelando(true);
+    try {
+      const res = await cancelarBoletoAdmin({
+        pagamentoId,
+        clienteId,
+        motivo: motivo.trim(),
+      });
+      if (!res.ok) {
+        toast.error(res.error || "Erro ao cancelar boleto");
+        return;
+      }
+
+      toast.success(res.message || "Boleto cancelado na Gerencianet e no sistema");
+      setFaturas((prev) =>
+        prev.map((f) =>
+          f.id === id ? { ...f, status: "cancelado", motivoCancelamento: motivo.trim() } : f,
+        ),
+      );
+      setCancelarOpen(false);
+      setFaturaCancelId(null);
+      onPagamentoAutorizado?.();
+    } finally {
+      setCancelando(false);
+    }
   };
   const confirmarAutorizacao = async (payload: { comprovante: File; observacoes?: string }) => {
     if (!faturaAtiva) return;
@@ -1492,9 +1533,12 @@ function FinanceiroTab({
       />
       <CancelarFaturaModal
         open={cancelarOpen}
-        onOpenChange={setCancelarOpen}
+        onOpenChange={(open) => {
+          if (!cancelando) setCancelarOpen(open);
+        }}
         faturaId={faturaCancelId}
-        onConfirmar={confirmarCancelamento}
+        loading={cancelando}
+        onConfirmar={(id, motivo) => void confirmarCancelamento(id, motivo)}
       />
       <CobrancaClienteModal
         cliente={cobrancaCliente}

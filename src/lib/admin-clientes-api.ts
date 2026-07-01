@@ -355,6 +355,17 @@ export function parseTaxaIdFromFaturaId(faturaId: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** ID do registro em `pagamentos` (fatura ex.: #P1297). */
+export function parsePagamentoIdFromFaturaId(faturaId: string): number | null {
+  const raw = String(faturaId).replace(/^#/, "").trim();
+  const m = raw.match(/^P(\d+)$/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
+}
+
 /** Mesma regra do backend: validade SICAF = hoje + 1 ano. */
 export function novaValidadeSicafAposPagamento(): string {
   const d = new Date();
@@ -465,6 +476,22 @@ export async function autorizarPagamentoComComprovante(payload: {
       para?: string;
       templateNome?: string;
     };
+  }>;
+}
+
+export async function cancelarBoletoAdmin(payload: {
+  pagamentoId: number;
+  clienteId: number;
+  motivo?: string;
+}) {
+  const res = await apiFetch("/api/admin/financeiro/cancelar-boleto", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.json() as Promise<{
+    ok: boolean;
+    error?: string;
+    message?: string;
   }>;
 }
 

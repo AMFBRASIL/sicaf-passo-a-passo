@@ -963,10 +963,11 @@ async function cancelarBoletoGerencianet(pagamentoId, opts = {}) {
 
     if (opts.usuarioId) {
       try {
+        const motivoTxt = opts.motivo ? ` Motivo: ${String(opts.motivo).trim()}` : '';
         await db('historico_acoes').insert({
           cliente_id: pgto.cliente_id || null,
           usuario_id: opts.usuarioId,
-          acao: `Boleto cancelado na Gerencianet e removido do portal (pagamento #${pagamentoId}, charge ${chargeId})`,
+          acao: `Boleto cancelado na Gerencianet e removido do portal (pagamento #${pagamentoId}, charge ${chargeId}).${motivoTxt}`,
           entidade: 'pagamentos',
           entidade_id: pagamentoId,
           created_at: db.fn.now(),

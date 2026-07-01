@@ -8,13 +8,14 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, Loader2, X } from "lucide-react";
 import { useState } from "react";
 
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   faturaId: string | null;
+  loading?: boolean;
   onConfirmar: (faturaId: string, motivo: string) => void;
 }
 
@@ -22,19 +23,25 @@ export function CancelarFaturaModal({
   open,
   onOpenChange,
   faturaId,
+  loading = false,
   onConfirmar,
 }: Props) {
   const [motivo, setMotivo] = useState("");
 
   const handleConfirmar = () => {
-    if (!faturaId) return;
+    if (!faturaId || !motivo.trim() || loading) return;
     onConfirmar(faturaId, motivo.trim());
     setMotivo("");
-    onOpenChange(false);
+  };
+
+  const handleOpenChange = (v: boolean) => {
+    if (loading) return;
+    if (!v) setMotivo("");
+    onOpenChange(v);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -54,19 +61,21 @@ export function CancelarFaturaModal({
             onChange={(e) => setMotivo(e.target.value)}
             placeholder="Ex: Cliente solicitou cancelamento, pagamento duplicado, erro na geração..."
             className="min-h-[80px] resize-none"
+            disabled={loading}
           />
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="gap-1.5">
+          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={loading} className="gap-1.5">
             <X className="h-4 w-4" /> Voltar
           </Button>
           <Button
             variant="destructive"
-            disabled={!motivo.trim()}
+            disabled={!motivo.trim() || loading}
             onClick={handleConfirmar}
             className="gap-1.5"
           >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Confirmar Cancelamento
           </Button>
         </DialogFooter>
