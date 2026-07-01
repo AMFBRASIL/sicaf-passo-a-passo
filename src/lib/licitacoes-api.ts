@@ -186,6 +186,26 @@ export function buildPncpUrlFromControle(numeroControle?: string | null): string
   return `https://pncp.gov.br/app/editais/${cnpj}/${ano}/${seq}`;
 }
 
+/** Corrige URLs PNCP no formato legado (/editais/CNPJ-1-SEQ/ANO → /editais/CNPJ/ANO/SEQ). */
+export function normalizePncpEditalUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (!u.hostname.includes("pncp.gov.br")) return null;
+
+    const canonical = u.pathname.match(/^\/app\/editais\/(\d{14})\/(\d{4})\/(\d+)\/?$/);
+    if (canonical) return url;
+
+    const malformed = u.pathname.match(/^\/app\/editais\/([^/]+)\/(\d{4})\/?$/);
+    if (malformed?.[1]?.includes("-1-")) {
+      return buildPncpUrlFromControle(`${malformed[1]}/${malformed[2]}`);
+    }
+
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 type LicitacaoLinkSource = Pick<
   ApiLicitacao | LicitacaoDisplay,
   "link_portal" | "link_edital" | "numero_controle_pncp"
@@ -193,18 +213,24 @@ type LicitacaoLinkSource = Pick<
 
 /** URL para participar da licitação no PNCP (página oficial da contratação). */
 export function resolveLicitacaoPncpUrl(item: LicitacaoLinkSource): string | null {
-  const portal = String(item.link_portal || "").trim();
-  if (isHttpUrl(portal)) {
-    if (portal.includes("pncp.gov.br")) return portal;
-  }
-
   const fromControle = buildPncpUrlFromControle(item.numero_controle_pncp);
   if (fromControle) return fromControle;
 
-  if (isHttpUrl(portal)) return portal;
+  const portal = String(item.link_portal || "").trim();
+  if (isHttpUrl(portal)) {
+    if (portal.includes("pncp.gov.br")) {
+      return normalizePncpEditalUrl(portal) ?? portal;
+    }
+    return portal;
+  }
 
   const edital = String(item.link_edital || "").trim();
-  if (isHttpUrl(edital)) return edital;
+  if (isHttpUrl(edital)) {
+    if (edital.includes("pncp.gov.br")) {
+      return normalizePncpEditalUrl(edital) ?? edital;
+    }
+    return edital;
+  }
 
   const controle = String(item.numero_controle_pncp || "").trim();
   if (controle) {
