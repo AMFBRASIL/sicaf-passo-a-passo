@@ -28,8 +28,10 @@ import {
   fetchClienteFinanceiro,
   formatFinanceBRL,
   formatFinanceDateBR,
+  isPagamentoSicafGerado,
   type ClienteFinanceiroPainel,
 } from "@/lib/cliente-financeiro-api";
+import { shouldGerenciarAbrirPagamentoFromEmpresa } from "@/lib/sicaf-access-rules";
 import { fetchValorManutencaoMensal } from "@/lib/manutencao-api";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { PagamentoSicafResumoModal } from "@/components/pagamento-sicaf-resumo-modal";
@@ -76,66 +78,109 @@ function extrairDiaVencimento(data: string | null | undefined): number | undefin
   return undefined;
 }
 
-function buildLinhaPag(
+/** SICAF: situação real (pago + vigência), não boleto órfão no financeiro. */
+function buildSicafLinha(
   empresa: EmpresaData,
   financeiro: ClienteFinanceiroPainel | null,
   valores: ValoresRef,
-): LinhaPag {
-  const sicafPendentes = financeiro?.sicaf?.pendentes ?? [];
-  const proximoSicaf = sicafPendentes[0];
-  const sicafTemVencido = sicafPendentes.some((p) => p.vencido);
-  const sicafTemAberto = sicafPendentes.length > 0 || !!empresa.taxaPendente;
+): LinhaPag["sicaf"] {
+  const precisaPagar = shouldGerenciarAbrirPagamentoFromEmpresa(empresa);
+  const status: PagStatus = precisaPagar ? "pendente" : "em_dia";
 
-  let sicafStatus: PagStatus = "em_dia";
-  if (sicafTemVencido || sicafTemAberto) {
-    sicafStatus = "pendente";
-  } else if (empresa.sicaf === "sem_cadastro" && !(financeiro?.sicaf?.pagos?.length ?? 0)) {
-    sicafStatus = "pendente";
+  const boletosAbertos = (financeiro?.sicaf?.pendentes ?? []).filter(isPagamentoSicafGerado);
+  const boletoRenovacao = boletosAbertos[0];
+  const ultimoPago = financeiro?.sicaf?.pagos?.[0];
+  const vigencia = empresa.validade?.replace(/^Vencido em /, "") ?? undefined;
+  const dias = empresa.diasValidade;
+
+  let descricao: string;
+  if (status === "em_dia") {
+    if (empresa.sicaf === "atencao" && vigencia) {
+      descricao =
+        dias != null && dias > 0
+          ? `Licença vence em ${dias} dia(s) · válida até ${vigencia}`
+          : `Licença vencendo · válida até ${vigencia}`;
+    } else if (vigencia) {
+      descricao = `Licença válida até ${vigencia}`;
+    } else {
+      descricao = "Taxa SICAF quitada · cadastro em dia";
+    }
+  } else if (empresa.sicaf === "vencido") {
+    descricao = empresa.validade
+      ? `SICAF vencido (${empresa.validade}) — renove para voltar a licitar`
+      : "SICAF vencido — renove para voltar a licitar";
+  } else if (empresa.sicaf === "sem_cadastro") {
+    descricao = "Sem cadastro SICAF — gere e pague a taxa anual";
+  } else if (boletoRenovacao) {
+    const sufixo = boletoRenovacao.vencido ? " · vencido" : "";
+    descricao = `${boletoRenovacao.descricao || "Taxa SICAF"} · aguardando pagamento · vence ${formatFinanceDateBR(boletoRenovacao.dataVencimento)}${sufixo}`;
+  } else {
+    descricao = "Taxa anual do SICAF em aberto — gere o boleto ou PIX";
   }
 
-  const manutPendentes = financeiro?.manutencao?.pendentes ?? [];
+  const valor =
+    status === "pendente"
+      ? (boletoRenovacao?.valor ?? valores.valorSicaf)
+      : (ultimoPago?.valor ?? valores.valorSicaf);
+
+  return {
+    status,
+    valor,
+    vencimento: status === "em_dia" ? vigencia : undefined,
+    descricao,
+  };
+}
+
+/** Manutenção: pendência só por boletos em aberto. */
+function buildManutencaoLinha(
+  empresa: EmpresaData,
+  financeiro: ClienteFinanceiroPainel | null,
+  valores: ValoresRef,
+): LinhaPag["manutencao"] {
+  const manutPendentes = (financeiro?.manutencao?.pendentes ?? []).filter(
+    (p) => p.pendente && !p.pago,
+  );
   const proximoManut = manutPendentes[0];
 
-  let manutStatus: PagStatus = empresa.manutencaoAtiva ? "em_dia" : "nao_contratado";
+  let status: PagStatus = empresa.manutencaoAtiva ? "em_dia" : "nao_contratado";
   if (manutPendentes.length > 0) {
-    manutStatus = "pendente";
+    status = "pendente";
   }
 
   const diaManut =
     extrairDiaVencimento(proximoManut?.dataVencimento) ??
     extrairDiaVencimento(financeiro?.manutencao?.pagos?.[0]?.dataVencimento);
 
+  let descricao: string;
+  if (proximoManut) {
+    const sufixo = proximoManut.vencido ? " · em atraso" : "";
+    descricao = `${proximoManut.descricao || "Manutenção"} · vence ${formatFinanceDateBR(proximoManut.dataVencimento)}${sufixo}`;
+  } else if (empresa.manutencaoAtiva) {
+    descricao = diaManut
+      ? `Plano ativo · mensalidade vence todo dia ${diaManut}`
+      : "Plano de manutenção ativo · sem boletos pendentes";
+  } else {
+    descricao = "Plano de manutenção não contratado";
+  }
+
+  return {
+    status,
+    valor: proximoManut?.valor ?? valores.valorManutencao,
+    diaVencimento: diaManut,
+    descricao,
+  };
+}
+
+function buildLinhaPag(
+  empresa: EmpresaData,
+  financeiro: ClienteFinanceiroPainel | null,
+  valores: ValoresRef,
+): LinhaPag {
   return {
     empresa,
     financeiro,
-    sicaf: {
-      status: sicafStatus,
-      valor: proximoSicaf?.valor ?? valores.valorSicaf,
-      vencimento: proximoSicaf
-        ? formatFinanceDateBR(proximoSicaf.dataVencimento)
-        : empresa.validade,
-      descricao: proximoSicaf
-        ? `${proximoSicaf.descricao || "Taxa SICAF"} · vence ${formatFinanceDateBR(proximoSicaf.dataVencimento)}`
-        : sicafStatus === "pendente"
-          ? empresa.taxaPendente
-            ? "Taxa anual do SICAF em aberto — gere o boleto ou PIX"
-            : "Regularize o cadastro SICAF"
-          : empresa.validade
-            ? `Licença válida até ${empresa.validade}`
-            : "Taxa anual quitada",
-    },
-    manutencao: {
-      status: manutStatus,
-      valor: proximoManut?.valor ?? valores.valorManutencao,
-      diaVencimento: diaManut,
-      descricao: proximoManut
-        ? `${proximoManut.descricao || "Manutenção"} · vence ${formatFinanceDateBR(proximoManut.dataVencimento)}`
-        : empresa.manutencaoAtiva
-          ? diaManut
-            ? `Mensalidade vence todo dia ${diaManut}`
-            : "Plano de manutenção ativo"
-          : "Plano de manutenção não contratado",
-    },
+    sicaf: buildSicafLinha(empresa, financeiro, valores),
+    manutencao: buildManutencaoLinha(empresa, financeiro, valores),
   };
 }
 
@@ -214,18 +259,18 @@ function MeusPagamentosPage() {
         l.sicaf.status === "pendente" || l.manutencao.status === "pendente";
       if (temPendencia) pendentes++;
 
-      for (const p of l.financeiro?.sicaf?.pendentes ?? []) {
-        emAberto += p.valor || 0;
+      if (l.sicaf.status === "pendente") {
+        const boletos = (l.financeiro?.sicaf?.pendentes ?? []).filter(isPagamentoSicafGerado);
+        if (boletos.length) {
+          emAberto += boletos.reduce((s, p) => s + (p.valor || 0), 0);
+        } else {
+          emAberto += l.sicaf.valor;
+        }
       }
-      for (const p of l.financeiro?.manutencao?.pendentes ?? []) {
-        emAberto += p.valor || 0;
-      }
-      if (
-        l.sicaf.status === "pendente" &&
-        !(l.financeiro?.sicaf?.pendentes?.length ?? 0) &&
-        l.empresa.taxaPendente
-      ) {
-        emAberto += l.sicaf.valor;
+      if (l.manutencao.status === "pendente") {
+        for (const p of l.financeiro?.manutencao?.pendentes ?? []) {
+          if (p.pendente && !p.pago) emAberto += p.valor || 0;
+        }
       }
 
       if (l.empresa.manutencaoAtiva) {
@@ -257,7 +302,7 @@ function MeusPagamentosPage() {
       return;
     }
     setEmpresaAcao(empresa);
-    setSicafValidade(sicaf.vencimento ?? empresa.validade ?? null);
+    setSicafValidade(empresa.validade ?? sicaf.vencimento ?? null);
 
     if (sicaf.status === "em_dia") {
       setSicafResumoOpen(true);
@@ -302,7 +347,7 @@ function MeusPagamentosPage() {
       <PageHeader
         icon={<Wallet className="h-5 w-5" />}
         title="Pagamentos"
-        subtitle="Acompanhe SICAF e Manutenção de todas as suas empresas. Regularize pendências em poucos cliques."
+        subtitle="SICAF conforme pagamento e vigência da licença. Manutenção conforme boletos mensais em aberto."
         action={
           <Button variant="outline" className="gap-1.5" asChild>
             <Link to="/empresas">
@@ -585,12 +630,15 @@ function EmpresaPagamentosCard({
   const temPendencia = sicaf.status === "pendente" || manutencao.status === "pendente";
   const fmt = formatFinanceBRL;
 
+  const sicafBoletosGerados = (financeiro?.sicaf?.pendentes ?? []).filter(isPagamentoSicafGerado);
   const sicafAcaoLabel =
     sicaf.status === "pendente"
-      ? financeiro?.sicaf?.pendentes?.length
+      ? sicafBoletosGerados.length
         ? "Ver cobrança"
-        : "Pagar agora"
-      : "Ver histórico";
+        : empresa.sicaf === "vencido"
+          ? "Renovar"
+          : "Pagar agora"
+      : "Ver situação";
 
   const handleSicafAcao = () => {
     onPagarSicaf();

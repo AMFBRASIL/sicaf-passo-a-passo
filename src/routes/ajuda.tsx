@@ -10,10 +10,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader, PageContainer } from "@/components/page-header";
-import { AjudaSituacaoFornecedorSlider, PASSOS_SITUACAO_FORNECEDOR } from "@/components/ajuda-situacao-fornecedor-slider";
 import { AjudaTutorialGovModal } from "@/components/ajuda-tutorial-gov-modal";
 import { TOPICOS_CADASTRO_SICAF, type TutorialGovTopico } from "@/lib/ajuda-tutoriais-sicaf";
-import { useRef, useState, Fragment } from "react";
+import { useRef, useState } from "react";
 import { perguntarAjuda } from "@/lib/ajuda-api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -49,27 +48,33 @@ type VideoAjuda = {
 const videos: VideoAjuda[] = [
   {
     id: "01",
-    titulo: "Instalação Assistente Cadbrasil - Inicial",
-    duracao: "Vídeo 01",
-    youtubeId: "9EdnP0bMHlg",
+    titulo: "Como usar o Assistente e atualizar SICAF",
+    duracao: "Etapa 01 · Inicial",
+    youtubeId: "ZG3csRrz1rQ",
   },
   {
     id: "02",
     titulo: "Como atualizar certidões",
-    duracao: "Vídeo 02",
+    duracao: "Etapa 01 · Vídeo 02",
     youtubeId: "HzfZo8MkLd0",
   },
   {
     id: "03",
     titulo: "Como enviar documentos",
-    duracao: "Vídeo 03",
-    youtubeId: "XF9oV31fOt4",
+    duracao: "Etapa 01 · Vídeo 03",
+    youtubeId: "W8sf1hRdI2g",
   },
   {
     id: "04",
-    titulo: "Como contratar Manutenção Mensal",
-    duracao: "Vídeo 04",
-    youtubeId: "tpVaxYwPhsc",
+    titulo: "Como contratar manutenção",
+    duracao: "Etapa 01 · Vídeo 04",
+    youtubeId: "EERC88Y_aMo",
+  },
+  {
+    id: "05",
+    titulo: "Como colocar situação Fornecedor",
+    duracao: "Etapa 01 · Vídeo 05",
+    youtubeId: "saruhhQWlPM",
   },
 ];
 
@@ -79,7 +84,6 @@ function HelpPage() {
   const [loading, setLoading] = useState(false);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [videoAtivo, setVideoAtivo] = useState<VideoAjuda | null>(null);
-  const [situacaoModalOpen, setSituacaoModalOpen] = useState(false);
   const [tutorialGovOpen, setTutorialGovOpen] = useState(false);
   const [tutorialGovAtivo, setTutorialGovAtivo] = useState<TutorialGovTopico | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -151,7 +155,8 @@ function HelpPage() {
                 key={s}
                 onClick={() => {
                   if (s === "Como colocar situação Fornecedor") {
-                    setSituacaoModalOpen(true);
+                    const video = videos.find((v) => v.id === "05");
+                    if (video) abrirVideo(video);
                     return;
                   }
                   ask(s);
@@ -186,35 +191,30 @@ function HelpPage() {
       )}
 
       <Card className="mt-6">
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold">Guias e vídeos explicativos</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Etapa 01 — tutoriais CADBRASIL · Etapa 02 — cadastramento oficial no Compras.gov.br
+          </p>
         </CardHeader>
-        <CardContent>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            <li className="sm:col-span-2">
-              <button
-                type="button"
-                onClick={() => setSituacaoModalOpen(true)}
-                className={cn(
-                  "group flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition",
-                  "hover:border-primary/40 hover:bg-primary/5 hover:shadow-soft cursor-pointer",
-                )}
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium leading-snug">Como colocar a Situação Fornecedor</p>
-                  <p className="text-xs text-muted-foreground">Clique para ver o passo a passo com imagens</p>
-                </div>
-              </button>
-            </li>
-            {videos.map((v, index) => {
-              const clicavel = Boolean(v.src || v.youtubeId);
-              const mostrarCadastramentoApos = index === 0;
-              return (
-                <Fragment key={v.id}>
-                  <li>
+        <CardContent className="space-y-8">
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="flex h-7 min-w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+                01
+              </span>
+              <div>
+                <p className="text-sm font-semibold">Etapa 01 — Portal CADBRASIL</p>
+                <p className="text-xs text-muted-foreground">
+                  Assistente, certidões, documentos, manutenção e situação do fornecedor
+                </p>
+              </div>
+            </div>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {videos.map((v) => {
+                const clicavel = Boolean(v.src || v.youtubeId);
+                return (
+                  <li key={v.id}>
                     <button
                       type="button"
                       disabled={!clicavel}
@@ -227,59 +227,72 @@ function HelpPage() {
                       )}
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
-                        <PlayCircle className="h-5 w-5" />
+                        <span className="text-xs font-bold">{v.id}</span>
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium leading-snug">{v.titulo}</p>
                         <p className="text-xs text-muted-foreground">
-                          {clicavel ? "Clique para assistir" : v.duracao}
+                          {clicavel ? "Clique para assistir no YouTube" : v.duracao}
                         </p>
+                      </div>
+                      {clicavel && (
+                        <PlayCircle className="h-5 w-5 shrink-0 text-primary opacity-70 transition group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="flex h-7 min-w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+                02
+              </span>
+              <div>
+                <p className="text-sm font-semibold">Etapa 02 — Cadastramento SICAF</p>
+                <p className="text-xs text-muted-foreground">
+                  Tutoriais oficiais do Compras.gov.br — clique para abrir no portal
+                </p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-primary/25 bg-gradient-to-br from-primary/5 to-card p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                  <BookOpen className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Cadastramento SICAF</p>
+                  <p className="text-xs text-muted-foreground">
+                    Cadastro, linha de fornecimento, CRC e situação no governo
+                  </p>
+                </div>
+              </div>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {TOPICOS_CADASTRO_SICAF.map((topico) => (
+                  <li key={topico.id}>
+                    <button
+                      type="button"
+                      onClick={() => abrirTutorialGov(topico)}
+                      className={cn(
+                        "group flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition",
+                        "hover:border-primary/40 hover:bg-primary/5 hover:shadow-soft cursor-pointer",
+                      )}
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-snug">{topico.titulo}</p>
+                        <p className="text-xs text-muted-foreground">{topico.subtitulo}</p>
                       </div>
                     </button>
                   </li>
-                  {mostrarCadastramentoApos && (
-                    <li key="cadastramento-sicaf" className="sm:col-span-2">
-                      <div className="rounded-xl border border-primary/25 bg-gradient-to-br from-primary/5 to-card p-4">
-                        <div className="mb-3 flex items-center gap-2">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                            <BookOpen className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold">Cadastramento SICAF</p>
-                            <p className="text-xs text-muted-foreground">
-                              Tutoriais oficiais do Compras.gov.br — clique para abrir no portal
-                            </p>
-                          </div>
-                        </div>
-                        <ul className="grid gap-2 sm:grid-cols-2">
-                          {TOPICOS_CADASTRO_SICAF.map((topico) => (
-                            <li key={topico.id}>
-                              <button
-                                type="button"
-                                onClick={() => abrirTutorialGov(topico)}
-                                className={cn(
-                                  "group flex w-full items-center gap-3 rounded-lg border border-border bg-card p-3 text-left transition",
-                                  "hover:border-primary/40 hover:bg-primary/5 hover:shadow-soft cursor-pointer",
-                                )}
-                              >
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
-                                  <FileText className="h-4 w-4" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium leading-snug">{topico.titulo}</p>
-                                  <p className="text-xs text-muted-foreground">{topico.subtitulo}</p>
-                                </div>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </li>
-                  )}
-                </Fragment>
-              );
-            })}
-          </ul>
+                ))}
+              </ul>
+            </div>
+          </section>
         </CardContent>
       </Card>
 
@@ -288,22 +301,6 @@ function HelpPage() {
         onOpenChange={setTutorialGovOpen}
         topico={tutorialGovAtivo}
       />
-
-      <Dialog open={situacaoModalOpen} onOpenChange={setSituacaoModalOpen}>
-        <DialogContent className="flex max-h-[90vh] w-[min(92vw,900px)] max-w-[92vw] flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl">
-          <DialogHeader className="shrink-0 border-b px-5 py-4 text-left">
-            <DialogTitle className="pr-8 text-base leading-snug sm:text-lg">
-              Como colocar a Situação Fornecedor
-            </DialogTitle>
-            <p className="text-xs text-muted-foreground">
-              Passo a passo visual — {PASSOS_SITUACAO_FORNECEDOR.length} etapas
-            </p>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-            {situacaoModalOpen && <AjudaSituacaoFornecedorSlider key="situacao-fornecedor-slider" />}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={videoModalOpen} onOpenChange={onVideoModalChange}>
         <DialogContent className="flex h-[80vh] w-[80vw] max-h-[80vh] max-w-[80vw] flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl">
