@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   Bot,
   ArrowRight,
+  Check,
   CheckCircle2,
   Lock,
   FileCheck,
@@ -1033,21 +1034,33 @@ function SicafPage() {
         <div>
 
 
-      {/* Empresa — só identificação */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/15 bg-muted/20 px-4 py-3">
+      {/* Empresa selecionada */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/35 bg-primary/5 px-4 py-3 shadow-sm ring-1 ring-primary/10">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Building2 className="h-4 w-4" />
+            <span
+              className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-success text-white shadow-sm"
+              aria-hidden
+            >
+              <Check className="h-2.5 w-2.5 stroke-[3]" />
+            </span>
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{cliente.nome}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate text-sm font-semibold">{cliente.nome}</p>
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success">
+                <CheckCircle2 className="h-3 w-3" />
+                Empresa selecionada
+              </span>
+            </div>
             <p className="text-xs text-muted-foreground">CNPJ {cliente.cnpj}</p>
           </div>
         </div>
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="h-8 shrink-0 text-xs"
+          className="h-8 shrink-0 border-primary/50 bg-background text-xs font-semibold text-primary shadow-sm hover:border-primary hover:bg-primary/10 hover:text-primary"
           onClick={() => setTrocarEmpresaOpen(true)}
         >
           Trocar empresa
