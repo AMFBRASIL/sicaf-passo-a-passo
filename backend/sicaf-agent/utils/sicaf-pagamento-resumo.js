@@ -135,6 +135,15 @@ function isClienteElegivelCobrancaSicaf(resumo) {
   return false;
 }
 
+/** Conta cancelada/inativa ou SICAF cancelado — não recebe cobrança (disparo em massa, régua, e-mail). */
+function isClienteBloqueadoCobranca({ clienteStatus, sicafStatus } = {}) {
+  const cs = String(clienteStatus || '').trim().toLowerCase();
+  if (['inativo', 'cancelado', 'cancelada'].includes(cs)) return true;
+  const ss = String(sicafStatus || '').trim().toLowerCase();
+  if (['cancelado', 'cancelada'].includes(ss)) return true;
+  return false;
+}
+
 const TAXA_SICAF_PAGA_WHERE =
   "(LOWER(TRIM(CAST(status AS CHAR))) IN ('pago','paga','aprovado','aprovada') OR status IN ('Pago','Paga','pago','paga','Aprovado','Aprovada','aprovado','aprovada'))";
 
@@ -145,5 +154,6 @@ module.exports = {
   isClienteSicafFinanceiroLiberado,
   derivePagamentoSicafResumo,
   isClienteElegivelCobrancaSicaf,
+  isClienteBloqueadoCobranca,
   TAXA_SICAF_PAGA_WHERE,
 };

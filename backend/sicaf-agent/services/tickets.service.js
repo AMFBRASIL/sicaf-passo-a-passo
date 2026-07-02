@@ -7,6 +7,192 @@
 const { getDb } = require('../database/connection');
 const emailService = require('./email.service');
 const sanitizeHtml = require('sanitize-html');
+const {
+  listClientesForUsuario,
+  normalizeDocumento,
+  extractCnpjFromText,
+} = require('./client-access.service');
+
+const CLIENTE_TICKET_SELECT = ['id', 'razao_social', 'nome_fantasia', 'documento'];
+
+function mapClienteTicketRow(row) {
+  if (!row) return null;
+  return {
+    clienteId: row.id,
+    clientName: row.razao_social || row.nome_fantasia || '',
+    clientDocumento: row.documento || '',
+  };
+}
+
+function clienteTemDocumento(row) {
+  return normalizeDocumento(row?.documento).length === 14;
+}
+
+function dedupeClientes(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows || []) {
+    if (!row?.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    out.push(row);
+  }
+  return out;
+}
+
+function pickMelhorCliente(rows) {
+  const list = dedupeClientes(rows);
+  if (!list.length) return null;
+  const comDoc = list.find(clienteTemDocumento);
+  return mapClienteTicketRow(comDoc || list[0]);
+}
+
+async function coletarClientesCandidatosTicket(db, ticket) {
+  const rows = [];
+
+  if (ticket.cliente_id) {
+    const direct = await db('clientes')
+      .where('id', ticket.cliente_id)
+      .select(...CLIENTE_TICKET_SELECT)
+      .first();
+    if (direct) rows.push(direct);
+  }
+
+  if (!ticket.criado_por) return rows;
+
+  const byOwner = await db('clientes')
+    .where('usuario_id', ticket.criado_por)
+    .select(...CLIENTE_TICKET_SELECT)
+    .orderBy('id', 'desc');
+  rows.push(...byOwner);
+
+  try {
+    if (await db.schema.hasTable('usuario_clientes')) {
+      const ids = await db('usuario_clientes')
+        .where('usuario_id', ticket.criado_por)
+        .pluck('cliente_id');
+      if (ids.length) {
+        const linked = await db('clientes').whereIn('id', ids).select(...CLIENTE_TICKET_SELECT);
+        rows.push(...linked);
+      }
+    }
+  } catch (_) {
+    /* vínculo opcional */
+  }
+
+  try {
+    const userClients = await listClientesForUsuario(db, ticket.criado_por);
+    rows.push(...userClients);
+  } catch (_) {
+    /* listagem opcional */
+  }
+
+  return dedupeClientes(rows);
+}
+
+async function buscarClientePorDocumentoDigits(db, digits) {
+  if (!digits || digits.length !== 14) return null;
+  return db('clientes')
+    .whereRaw(
+      "REPLACE(REPLACE(REPLACE(REPLACE(documento, '.', ''), '/', ''), '-', ''), ' ', '') = ?",
+      [digits],
+    )
+    .select(...CLIENTE_TICKET_SELECT)
+    .orderBy('id', 'desc')
+    .first();
+}
+
+async function resolverClienteDoTicket(db, ticket, mensagens = []) {
+  const candidatos = await coletarClientesCandidatosTicket(db, ticket);
+  let resolved = pickMelhorCliente(candidatos);
+  if (resolved && clienteTemDocumento({ documento: resolved.clientDocumento })) {
+    return resolved;
+  }
+
+  const textBlob = [
+    ticket.titulo,
+    ticket.descricao,
+    ...(mensagens || []).map((m) => m.mensagem),
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const cnpjFromText = extractCnpjFromText(textBlob);
+  const digitsFromText = normalizeDocumento(cnpjFromText);
+  if (digitsFromText.length === 14) {
+    const hit = candidatos.find((c) => normalizeDocumento(c.documento) === digitsFromText);
+    if (hit) return mapClienteTicketRow(hit);
+    const global = await buscarClientePorDocumentoDigits(db, digitsFromText);
+    if (global) return mapClienteTicketRow(global);
+    return {
+      clienteId: resolved?.clienteId || ticket.cliente_id || null,
+      clientName: resolved?.clientName || '',
+      clientDocumento: cnpjFromText || digitsFromText,
+    };
+  }
+
+  if (resolved?.clientName && !clienteTemDocumento({ documento: resolved.clientDocumento })) {
+    const byName = candidatos.find(
+      (c) =>
+        clienteTemDocumento(c) &&
+        String(c.razao_social || c.nome_fantasia || '').trim().toLowerCase() ===
+          String(resolved.clientName).trim().toLowerCase(),
+    );
+    if (byName) return mapClienteTicketRow(byName);
+  }
+
+  return resolved;
+}
+
+async function inferirClienteIdParaTicket(db, usuarioId, dados) {
+  if (dados.clienteId) return dados.clienteId;
+  if (!usuarioId) return null;
+
+  const candidatos = await coletarClientesCandidatosTicket(db, { criado_por: usuarioId, cliente_id: null });
+  if (!candidatos.length) return null;
+
+  const textBlob = [dados.titulo, dados.descricao].filter(Boolean).join('\n');
+  const cnpjFromText = extractCnpjFromText(textBlob);
+  const digits = normalizeDocumento(cnpjFromText);
+  if (digits.length === 14) {
+    const hit = candidatos.find((c) => normalizeDocumento(c.documento) === digits);
+    if (hit) return hit.id;
+  }
+
+  const comDoc = candidatos.find(clienteTemDocumento);
+  if (comDoc) return comDoc.id;
+  if (candidatos.length === 1) return candidatos[0].id;
+  return null;
+}
+
+async function persistirClienteDoTicketSeAusente(db, ticket, clienteId) {
+  if (!ticket?.id || ticket.cliente_id || !clienteId) return;
+  try {
+    await db('tickets').where('id', ticket.id).whereNull('cliente_id').update({
+      cliente_id: clienteId,
+      updated_at: db.fn.now(),
+    });
+    ticket.cliente_id = clienteId;
+  } catch (e) {
+    console.warn('[Tickets] Não foi possível persistir cliente_id:', e.message);
+  }
+}
+
+async function mapClientesPorUsuario(db, usuarioIds) {
+  const map = new Map();
+  if (!usuarioIds.length) return map;
+  const rows = await db('clientes')
+    .whereIn('usuario_id', usuarioIds)
+    .select('usuario_id', ...CLIENTE_TICKET_SELECT)
+    .orderBy('id', 'desc');
+  for (const row of rows) {
+    const uid = row.usuario_id;
+    if (!uid) continue;
+    const prev = map.get(uid);
+    if (!prev || (!clienteTemDocumento(prev) && clienteTemDocumento(row))) {
+      map.set(uid, row);
+    }
+  }
+  return map;
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -605,6 +791,7 @@ async function criarTicket(usuarioId, dados) {
     const sla = _calcSLA(dados.prioridade);
     const categoria = _normalizeCategoria(dados.categoria);
     const prioridade = _normalizePrioridade(dados.prioridade);
+    const clienteId = await inferirClienteIdParaTicket(db, usuarioId, dados);
 
     const [id] = await db('tickets').insert({
       codigo,
@@ -614,7 +801,7 @@ async function criarTicket(usuarioId, dados) {
       prioridade,
       categoria,
       criado_por: usuarioId,
-      cliente_id: dados.clienteId || null,
+      cliente_id: clienteId,
       atribuido_a: null,
       sla_prazo: sla.prazo,
       sla_minutos_restantes: sla.minutos,
@@ -629,7 +816,7 @@ async function criarTicket(usuarioId, dados) {
       mensagem: dados.descricao,
     });
 
-    console.log(`[Tickets] Ticket criado: ${codigo}, id=${id}, user=${usuarioId}, cliente=${dados.clienteId || 'N/A'}`);
+    console.log(`[Tickets] Ticket criado: ${codigo}, id=${id}, user=${usuarioId}, cliente=${clienteId || 'N/A'}`);
     return { ok: true, id, codigo, message: 'Chamado aberto com sucesso!' };
   } catch (e) {
     console.error('[Tickets] Erro criarTicket:', e.message);
@@ -837,7 +1024,8 @@ async function listarTicketsAdmin(opts = {}) {
         't.*',
         'criador.nome as criador_nome',
         'atribuido.nome as atribuido_nome',
-        'c.razao_social as cliente_nome'
+        'c.razao_social as cliente_nome',
+        'c.documento as cliente_documento',
       );
 
     try {
@@ -862,6 +1050,15 @@ async function listarTicketsAdmin(opts = {}) {
     }
 
     const tickets = await query.orderBy('t.created_at', 'desc');
+
+    const ownerIds = [
+      ...new Set(
+        tickets
+          .filter((t) => !t.cliente_documento && t.criado_por)
+          .map((t) => t.criado_por),
+      ),
+    ];
+    const clientesPorUsuario = await mapClientesPorUsuario(db, ownerIds);
 
     // Contagens de mensagens em batch
     const ticketIds = tickets.map(t => t.id);
@@ -922,6 +1119,16 @@ async function listarTicketsAdmin(opts = {}) {
         ultimoRemetente === 'support' &&
         temMsgCliente;
 
+      let clientName = t.cliente_nome || t.criador_nome || 'Desconhecido';
+      let clientDocumento = t.cliente_documento || '';
+      if (!clientDocumento && t.criado_por) {
+        const ownerClient = clientesPorUsuario.get(t.criado_por);
+        if (ownerClient) {
+          clientName = ownerClient.razao_social || ownerClient.nome_fantasia || clientName;
+          clientDocumento = ownerClient.documento || '';
+        }
+      }
+
       return {
         id: t.codigo || `TK-${String(t.id).padStart(3, '0')}`,
         dbId: t.id,
@@ -930,7 +1137,8 @@ async function listarTicketsAdmin(opts = {}) {
         status: t.status,
         priority: t.prioridade,
         category: t.categoria,
-        client: t.cliente_nome || t.criador_nome || 'Desconhecido',
+        client: clientName,
+        clientDocumento,
         assignee: t.atribuido_nome || 'Não atribuído',
         createdAt: _fmtDate(t.created_at),
         slaDeadline: _fmtDate(t.sla_prazo),
@@ -998,10 +1206,11 @@ async function getTicketAdmin(ticketId) {
     }
     let clientName = '';
     let clientDocumento = '';
-    if (ticket.cliente_id) {
-      const client = await db('clientes').where('id', ticket.cliente_id).select('razao_social', 'documento').first();
-      clientName = client?.razao_social || '';
-      clientDocumento = client?.documento || '';
+    const clienteResolvido = await resolverClienteDoTicket(db, ticket, mensagens);
+    if (clienteResolvido) {
+      clientName = clienteResolvido.clientName || '';
+      clientDocumento = clienteResolvido.clientDocumento || '';
+      await persistirClienteDoTicketSeAusente(db, ticket, clienteResolvido.clienteId);
     }
 
     // Calcular SLA em tempo real
@@ -1209,7 +1418,9 @@ async function atualizarTicket(ticketId, dados) {
 
     const updates = {};
     if (dados.status) updates.status = _normalizeStatusDb(dados.status);
-    if (dados.atribuido_a !== undefined) updates.atribuido_a = dados.atribuido_a || null;
+    const atribuidoRaw =
+      dados.atribuido_a !== undefined ? dados.atribuido_a : dados.atribuidoA;
+    if (atribuidoRaw !== undefined) updates.atribuido_a = atribuidoRaw || null;
     if (dados.prioridade) updates.prioridade = dados.prioridade;
     updates.updated_at = db.fn.now();
 
@@ -1240,6 +1451,8 @@ async function criarTicketAdmin(usuarioId, dados) {
     const sla = _calcSLA(dados.prioridade);
     const categoria = _normalizeCategoria(dados.categoria);
     const prioridade = _normalizePrioridade(dados.prioridade);
+    const clienteId =
+      dados.clienteId || (await inferirClienteIdParaTicket(db, usuarioId, dados));
 
     const [id] = await db('tickets').insert({
       codigo,
@@ -1249,7 +1462,7 @@ async function criarTicketAdmin(usuarioId, dados) {
       prioridade,
       categoria,
       criado_por: usuarioId,
-      cliente_id: dados.clienteId || null,
+      cliente_id: clienteId || null,
       atribuido_a: dados.atribuidoA || null,
       sla_prazo: sla.prazo,
       sla_minutos_restantes: sla.minutos,

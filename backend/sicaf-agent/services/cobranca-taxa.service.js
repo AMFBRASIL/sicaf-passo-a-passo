@@ -10,6 +10,15 @@ const {
   TAXA_SICAF_PAGA_WHERE,
 } = require('../utils/sicaf-pagamento-resumo');
 
+/** Conta cancelada/inativa ou SICAF cancelado — não recebe cobrança. */
+function isClienteBloqueadoCobranca({ clienteStatus, sicafStatus } = {}) {
+  const cs = String(clienteStatus || '').trim().toLowerCase();
+  if (['inativo', 'cancelado', 'cancelada'].includes(cs)) return true;
+  const ss = String(sicafStatus || '').trim().toLowerCase();
+  if (['cancelado', 'cancelada'].includes(ss)) return true;
+  return false;
+}
+
 const TAXA_ABERTA_STATUSES = [
   'Pendente', 'pendente', 'Aguardando', 'aguardando', 'Gerado', 'gerado',
   'Vencido', 'vencido', 'Atrasado', 'atrasado',
@@ -21,6 +30,14 @@ const PAGAMENTO_PENDENTE_STATUSES = [
 ];
 
 const PAY_CODE_RE = /^(t|p|c)-(\d+)$/i;
+
+/** Clientes com conta cancelada/inativa não entram em cobrança. */
+const CLIENTE_ATIVO_COBRANCA_SQL =
+  "(c.status IS NULL OR LOWER(TRIM(CAST(c.status AS CHAR))) NOT IN ('inativo','cancelado','cancelada'))";
+
+/** SICAF cancelado não recebe cobrança (mesmo com boleto legado em aberto). */
+const SICAF_NAO_CANCELADO_SQL =
+  "(s.id IS NULL OR LOWER(TRIM(CAST(s.status AS CHAR))) NOT IN ('cancelado','cancelada'))";
 
 function parsePayCode(code) {
   const raw = String(code || '').trim().toLowerCase();
@@ -331,6 +348,7 @@ async function loadClienteCobrancaElegibilidadeMap(db, clienteIds) {
   if (!clienteIds.length) return map;
 
   const sicafByCliente = new Map();
+  const clienteStatusById = new Map();
   try {
     const rows = await db('sicaf_cadastros')
       .whereIn('cliente_id', clienteIds)
@@ -338,6 +356,11 @@ async function loadClienteCobrancaElegibilidadeMap(db, clienteIds) {
     for (const r of rows) {
       sicafByCliente.set(r.cliente_id, r);
     }
+  } catch (_) {}
+
+  try {
+    const clientes = await db('clientes').whereIn('id', clienteIds).select('id', 'status');
+    for (const c of clientes) clienteStatusById.set(c.id, c.status);
   } catch (_) {}
 
   const taxaReleasedSet = new Set();
@@ -350,22 +373,19 @@ async function loadClienteCobrancaElegibilidadeMap(db, clienteIds) {
     for (const id of pagos) taxaReleasedSet.add(id);
   } catch (_) {}
 
-  const inativoSet = new Set();
-  try {
-    const inativos = await db('clientes')
-      .whereIn('id', clienteIds)
-      .where('status', 'Inativo')
-      .pluck('id');
-    for (const id of inativos) inativoSet.add(id);
-  } catch (_) {}
-
   for (const clienteId of clienteIds) {
-    if (inativoSet.has(clienteId)) {
-      map.set(clienteId, { elegivel: false, motivo: 'inativo' });
+    const clienteStatus = clienteStatusById.get(clienteId);
+    const sicaf = sicafByCliente.get(clienteId);
+
+    if (isClienteBloqueadoCobranca({ clienteStatus, sicafStatus: sicaf?.status })) {
+      map.set(clienteId, {
+        elegivel: false,
+        motivo: 'conta_ou_sicaf_cancelado',
+        resumo: null,
+      });
       continue;
     }
 
-    const sicaf = sicafByCliente.get(clienteId);
     const resumo = derivePagamentoSicafResumo({
       sicafStatus: sicaf?.status,
       sicafValidade: sicaf?.data_validade,
@@ -405,8 +425,11 @@ async function loadTaxasPendentesRows(db) {
 
   const rows = await db('taxas_sicaf as t')
     .leftJoin('clientes as c', 'c.id', 't.cliente_id')
+    .leftJoin('sicaf_cadastros as s', 's.cliente_id', 't.cliente_id')
     .whereIn('t.status', TAXA_ABERTA_STATUSES)
     .whereNotNull('t.cliente_id')
+    .whereRaw(CLIENTE_ATIVO_COBRANCA_SQL)
+    .whereRaw(SICAF_NAO_CANCELADO_SQL)
     .select(
       't.id as taxaId',
       't.cliente_id as clienteId',
@@ -474,12 +497,15 @@ async function loadPagamentosPendentesRows(db) {
 
   const rows = await db('pagamentos as p')
     .leftJoin('clientes as c', 'c.id', 'p.cliente_id')
+    .leftJoin('sicaf_cadastros as s', 's.cliente_id', 'p.cliente_id')
     .whereNull('p.deleted_at')
     .whereIn('p.status', ['aguardando', 'gerado', 'pendente', 'Pendente', 'Aguardando', 'Gerado'])
     .where(function () {
       this.where('p.origem', 'sicaf').orWhereNull('p.origem');
     })
     .whereNotNull('p.cliente_id')
+    .whereRaw(CLIENTE_ATIVO_COBRANCA_SQL)
+    .whereRaw(SICAF_NAO_CANCELADO_SQL)
     .select(
       'p.id as pagamentoId',
       'p.cliente_id as clienteId',
@@ -851,6 +877,12 @@ async function enviarCobrancaTaxa({
   const elegMap = await loadClienteCobrancaElegibilidadeMap(db, [cid]);
   const eleg = elegMap.get(cid);
   if (!eleg?.elegivel) {
+    if (eleg?.motivo === 'conta_ou_sicaf_cancelado') {
+      return {
+        ok: false,
+        error: 'Conta cancelada ou SICAF cancelado — cobrança não permitida',
+      };
+    }
     const status = eleg?.resumo?.pagamentoSicafStatus || 'em dia';
     return {
       ok: false,

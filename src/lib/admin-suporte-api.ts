@@ -137,11 +137,27 @@ export function statusDbParaColuna(
   const s = String(status || "").toLowerCase();
   if (s === "fechado") return "Fechado";
   if (s === "resolvido") return "Resolvido";
+  if (s === "aguardando_cliente") return "Aguardando Cliente";
   if (aguardandoResposta) return "Aguardando Cliente";
   if (s === "em_andamento") return "Em andamento";
   if (s === "aberto") return temAtribuido ? "Triagem" : "Novo";
-  if (s === "aguardando_cliente") return "Em andamento";
   return "Em andamento";
+}
+
+/** Payload PATCH ao mudar situação pelo modal (sem responder). */
+export function buildPayloadMudancaSituacao(
+  coluna: ColunaKanban | TicketSituacao,
+  usuarioId?: number,
+): { status: string; atribuidoA?: number | null } {
+  const payload: { status: string; atribuidoA?: number | null } = {
+    status: colunaParaStatusDb(coluna),
+  };
+  if (coluna === "Triagem" && usuarioId) {
+    payload.atribuidoA = usuarioId;
+  } else if (coluna === "Novo") {
+    payload.atribuidoA = null;
+  }
+  return payload;
 }
 
 /** Mapeia coluna do kanban para ENUM válido em `tickets.status`. */
@@ -406,7 +422,10 @@ export async function enviarRespostaAdminTicket(
   return { ok: true, emailNotificacao: emailRes.emailNotificacao };
 }
 
-export async function atualizarTicketAdmin(id: string, payload: { status?: string; prioridade?: string }) {
+export async function atualizarTicketAdmin(
+  id: string,
+  payload: { status?: string; prioridade?: string; atribuidoA?: number | null },
+) {
   const res = await apiFetch(`/api/tickets-admin/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),

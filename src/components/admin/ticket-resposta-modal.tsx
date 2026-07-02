@@ -13,23 +13,33 @@ import {
   FileText,
   Headphones,
   Image as ImageIcon,
+  Inbox,
+  Landmark,
   Loader2,
   Paperclip,
+  PlayCircle,
   Reply,
+  Search,
   Send,
   Tag,
   Upload,
   User,
+  UserRound,
   X,
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/page-header";
+import { CopyButton } from "@/components/copy-button";
 import {
   type AdminTicketAnexo,
   type AdminTicketDetalhe,
   type AdminTicketMensagem,
+  type ColunaKanban,
+  TICKET_SITUACOES,
+  atualizarTicketAdmin,
+  buildPayloadMudancaSituacao,
   colunaDoTicketDetalhe,
   coletarTodosAnexos,
   fetchAdminTicketDetalhe,
@@ -39,6 +49,7 @@ import {
   enviarRespostaAdminTicket,
   MAX_ANEXO_TICKET_BYTES,
 } from "@/lib/admin-suporte-api";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface TicketItem {
   id: string;
@@ -57,16 +68,77 @@ interface Props {
 
 type ReplyAnexo = { id: string; name: string; size: number; type: string; file: File };
 
+const SITUACAO_CARD: Record<
+  ColunaKanban,
+  { border: string; active: string; icon: React.ReactNode; short: string }
+> = {
+  Novo: {
+    border: "border-blue-500/40 hover:border-blue-500",
+    active: "border-blue-500 bg-blue-500/10 ring-2 ring-blue-500/30",
+    icon: <Inbox className="h-4 w-4 text-blue-600" />,
+    short: "Novo",
+  },
+  Triagem: {
+    border: "border-violet-500/40 hover:border-violet-500",
+    active: "border-violet-500 bg-violet-500/10 ring-2 ring-violet-500/30",
+    icon: <Search className="h-4 w-4 text-violet-600" />,
+    short: "Triagem",
+  },
+  "Em andamento": {
+    border: "border-amber-500/40 hover:border-amber-500",
+    active: "border-amber-500 bg-amber-500/10 ring-2 ring-amber-500/30",
+    icon: <PlayCircle className="h-4 w-4 text-amber-600" />,
+    short: "Andamento",
+  },
+  "Aguardando Cliente": {
+    border: "border-sky-500/40 hover:border-sky-500",
+    active: "border-sky-500 bg-sky-500/10 ring-2 ring-sky-500/30",
+    icon: <UserRound className="h-4 w-4 text-sky-600" />,
+    short: "Cliente",
+  },
+  "Aguardando Governo": {
+    border: "border-orange-500/40 hover:border-orange-500",
+    active: "border-orange-500 bg-orange-500/10 ring-2 ring-orange-500/30",
+    icon: <Landmark className="h-4 w-4 text-orange-600" />,
+    short: "Governo",
+  },
+  Resolvido: {
+    border: "border-emerald-500/40 hover:border-emerald-500",
+    active: "border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30",
+    icon: <CheckCircle2 className="h-4 w-4 text-emerald-600" />,
+    short: "Resolvido",
+  },
+  Fechado: {
+    border: "border-slate-400/40 hover:border-slate-500",
+    active: "border-slate-500 bg-slate-500/10 ring-2 ring-slate-500/30",
+    icon: <X className="h-4 w-4 text-slate-600" />,
+    short: "Fechado",
+  },
+};
+
 function formatBytes(b: number) {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatCnpj(doc: string | null | undefined): string {
+  const digits = String(doc || "").replace(/\D/g, "");
+  if (digits.length !== 14) return String(doc || "").trim();
+  return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+}
+
+function cnpjCopyValue(doc: string | null | undefined): string {
+  const digits = String(doc || "").replace(/\D/g, "");
+  return digits.length === 14 ? digits : String(doc || "").trim();
+}
+
 export function TicketRespostaModal({ open, onOpenChange, ticketId, onRespondido }: Props) {
+  const { user } = useAuth();
   const [responderOpen, setResponderOpen] = useState(false);
   const [ticket, setTicket] = useState<AdminTicketDetalhe | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mudandoSituacao, setMudandoSituacao] = useState<ColunaKanban | null>(null);
 
   const carregar = useCallback(async () => {
     if (!ticketId) {
@@ -118,6 +190,21 @@ export function TicketRespostaModal({ open, onOpenChange, ticketId, onRespondido
   const ultimaMsg = mensagens[mensagens.length - 1];
   const assignee = ticket?.assignee && ticket.assignee !== "Não atribuído" ? ticket.assignee : "Você";
 
+  const mudarSituacao = async (nova: ColunaKanban) => {
+    if (!ticket || nova === coluna || mudandoSituacao) return;
+    setMudandoSituacao(nova);
+    const payload = buildPayloadMudancaSituacao(nova, user?.id);
+    const res = await atualizarTicketAdmin(ticket.id, payload);
+    setMudandoSituacao(null);
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao atualizar situação");
+      return;
+    }
+    toast.success(`Situação alterada para ${nova}`);
+    await carregar();
+    onRespondido?.();
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -165,6 +252,12 @@ export function TicketRespostaModal({ open, onOpenChange, ticketId, onRespondido
                     </span>
                   </div>
                 </header>
+
+                <SituacaoCards
+                  colunaAtual={coluna}
+                  mudando={mudandoSituacao}
+                  onSelecionar={(s) => void mudarSituacao(s)}
+                />
 
                 <div className="flex-1 space-y-5 overflow-y-auto bg-muted/20 px-7 py-6">
                   {mensagens.length === 0 && (
@@ -250,7 +343,7 @@ export function TicketRespostaModal({ open, onOpenChange, ticketId, onRespondido
                       icon={<User className="h-4 w-4" />}
                       role="Cliente"
                       name={ticket.client || "—"}
-                      meta={ticket.clientDocumento || "Cliente"}
+                      documento={ticket.clientDocumento}
                     />
                     <PersonRow
                       color="success"
@@ -264,6 +357,27 @@ export function TicketRespostaModal({ open, onOpenChange, ticketId, onRespondido
                   <SectionTitle className="mt-7">Detalhes</SectionTitle>
                   <dl className="mt-3 space-y-2.5 rounded-xl border bg-card p-4 text-xs">
                     <DetailRow icon={<Building2 className="h-3.5 w-3.5" />} label="Cliente" value={ticket.client || "—"} />
+                    {ticket.clientDocumento ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <dt className="inline-flex items-center gap-1.5 text-muted-foreground">
+                          <Building2 className="h-3.5 w-3.5" />
+                          CNPJ
+                        </dt>
+                        <dd className="flex min-w-0 items-center gap-1">
+                          <span
+                            className="truncate font-mono text-[11px] font-semibold text-foreground"
+                            title={formatCnpj(ticket.clientDocumento)}
+                          >
+                            {formatCnpj(ticket.clientDocumento)}
+                          </span>
+                          <CopyButton
+                            value={cnpjCopyValue(ticket.clientDocumento)}
+                            label="CNPJ"
+                            className="h-6 w-6 shrink-0"
+                          />
+                        </dd>
+                      </div>
+                    ) : null}
                     <DetailRow icon={<Tag className="h-3.5 w-3.5" />} label="Categoria" value={ticket.category || "—"} />
                     <DetailRow icon={<Tag className="h-3.5 w-3.5" />} label="Status" value={coluna} />
                     <DetailRow icon={<Zap className="h-3.5 w-3.5" />} label="Prioridade" value={prio} />
@@ -357,6 +471,51 @@ export function TicketRespostaModal({ open, onOpenChange, ticketId, onRespondido
   );
 }
 
+function SituacaoCards({
+  colunaAtual,
+  mudando,
+  onSelecionar,
+}: {
+  colunaAtual: ColunaKanban;
+  mudando: ColunaKanban | null;
+  onSelecionar: (s: ColunaKanban) => void;
+}) {
+  return (
+    <div className="border-b bg-card px-7 py-4">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Situação</p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">Clique para mover o ticket — sem precisar responder</p>
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+        {TICKET_SITUACOES.map((situacao) => {
+          const cfg = SITUACAO_CARD[situacao];
+          const ativa = colunaAtual === situacao;
+          const loading = mudando === situacao;
+          return (
+            <button
+              key={situacao}
+              type="button"
+              disabled={ativa || !!mudando}
+              onClick={() => onSelecionar(situacao)}
+              className={cn(
+                "flex items-center gap-2 rounded-xl border bg-background px-3 py-2.5 text-left transition",
+                "disabled:cursor-default",
+                !ativa && !mudando && "hover:shadow-sm active:scale-[0.98]",
+                ativa ? cfg.active : cfg.border,
+                mudando && !loading && "opacity-50",
+              )}
+            >
+              <span className="shrink-0">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : cfg.icon}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold leading-tight">{cfg.short}</span>
+                <span className="hidden truncate text-[10px] text-muted-foreground sm:block">{situacao}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function SectionTitle({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <h4 className={cn("flex items-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground", className)}>
@@ -371,13 +530,18 @@ function PersonRow({
   role,
   name,
   meta,
+  documento,
 }: {
   color: "primary" | "success";
   icon: React.ReactNode;
   role: string;
   name: string;
-  meta: string;
+  meta?: string;
+  documento?: string | null;
 }) {
+  const cnpjFmt = documento ? formatCnpj(documento) : "";
+  const temCnpj = Boolean(cnpjFmt && cnpjFmt.replace(/\D/g, "").length >= 11);
+
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
       <div
@@ -392,7 +556,16 @@ function PersonRow({
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{role}</p>
         <p className="truncate text-sm font-semibold">{name}</p>
-        <p className="truncate text-[11px] text-muted-foreground">{meta}</p>
+        {temCnpj ? (
+          <div className="mt-1 flex items-center gap-1">
+            <span className="truncate font-mono text-[11px] text-muted-foreground">{cnpjFmt}</span>
+            <CopyButton value={cnpjCopyValue(documento)} label="CNPJ" className="h-6 w-6 shrink-0" />
+          </div>
+        ) : meta ? (
+          <p className="truncate text-[11px] text-muted-foreground">{meta}</p>
+        ) : (
+          <p className="truncate text-[11px] text-muted-foreground">CNPJ não informado</p>
+        )}
       </div>
     </div>
   );
@@ -497,9 +670,26 @@ function ResponderModal({
               Responder ao cliente
             </div>
             <h3 className="mt-2 text-xl font-bold tracking-tight">{ticket.title}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-muted-foreground">
               <span className="font-mono font-semibold text-primary">#{ticket.id}</span>
-              {" • "}Para: <strong className="text-foreground">{ticket.client || "Cliente"}</strong>
+              <span>•</span>
+              <span>
+                Para: <strong className="text-foreground">{ticket.client || "Cliente"}</strong>
+              </span>
+              {ticket.clientDocumento ? (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    CNPJ{" "}
+                    <strong className="font-mono text-foreground">{formatCnpj(ticket.clientDocumento)}</strong>
+                    <CopyButton
+                      value={cnpjCopyValue(ticket.clientDocumento)}
+                      label="CNPJ"
+                      className="h-6 w-6 shrink-0"
+                    />
+                  </span>
+                </>
+              ) : null}
             </p>
           </header>
 
