@@ -297,7 +297,7 @@ function ClientesPage() {
   const startIndex = total > 0 ? (page - 1) * itemsPerPage + 1 : 0;
   const endIndex = Math.min(page * itemsPerPage, total);
 
-  const { totalClientes: totalGrupos, totalCnpjs, emRisco: risco, mrr } = stats;
+  const { totalClientes: totalGrupos, totalCnpjs, emRisco: risco } = stats;
 
   const abrirGrupoDoCliente = async (c: ApiAdminClient) => {
     setOpenDetalhe(false);
@@ -351,11 +351,10 @@ function ClientesPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <MiniKpi label="Grupos" value={totalGrupos.toString()} hint="logins cadastrados" />
         <MiniKpi label="CNPJs" value={totalCnpjs.toString()} hint="empresas no portfólio" tone="emerald" />
         <MiniKpi label="Em risco" value={risco.toString()} hint="inadimplência ou SICAF vencido" tone="rose" />
-        <MiniKpi label="MRR estimado" value={`R$ ${mrr.toLocaleString("pt-BR")}`} hint="receita recorrente mensal" tone="violet" />
       </div>
 
       <Card className="mt-5 overflow-hidden p-3 sm:p-4">
