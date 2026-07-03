@@ -202,9 +202,13 @@ async function init() {
       );
 
       if (!autorizado) {
-        const motivo = 'Cliente sem elegibilidade ativa (SICAF válido, renovação ou manutenção ativa).';
+        const motivo = data.orientacaoUsuario
+          || data.message
+          || 'Cliente sem elegibilidade ativa (SICAF válido, renovação ou manutenção ativa).';
         setGateMessage(
-          `${motivo} Escolha uma opção abaixo para continuar.`
+          data.orientacaoUsuario
+            ? motivo
+            : `${motivo} Escolha uma opção abaixo para continuar.`,
         );
         showRegularizeLinks(true);
         dbg('Cliente não autorizado:', {

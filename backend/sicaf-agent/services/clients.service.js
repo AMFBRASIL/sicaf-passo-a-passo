@@ -2731,6 +2731,42 @@ async function getClientFinanceiro(clienteId) {
   }
 }
 
+/**
+ * Carrega os 6 níveis SICAF do cliente (certidões + sicaf_niveis).
+ */
+async function loadSicafNiveisCliente(clienteId) {
+  const db = getDb();
+  if (!db || !clienteId) return [];
+
+  try {
+    const sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
+    if (!sicaf) return [];
+
+    const certidoes = await db('certidoes as cert')
+      .leftJoin('tipo_certidoes as tc', 'cert.tipo_certidao_id', 'tc.id')
+      .where('cert.cliente_id', clienteId)
+      .select(
+        'cert.id',
+        'cert.nivel_sicaf',
+        'cert.data_validade',
+        'cert.status',
+        'tc.codigo as tipo_codigo',
+      );
+
+    let sicafNiveisDb = [];
+    try {
+      sicafNiveisDb = await db('sicaf_niveis')
+        .where('sicaf_id', sicaf.id)
+        .select('nivel', 'habilitado', 'status', 'observacao');
+    } catch (_) {}
+
+    return buildNiveisSicaf(certidoes, sicaf, sicafNiveisDb);
+  } catch (e) {
+    console.warn('[Clients] loadSicafNiveisCliente:', e.message);
+    return [];
+  }
+}
+
 module.exports = {
   listClients,
   getClientById,
@@ -2744,6 +2780,7 @@ module.exports = {
   consultClientByCnpj,
   consultPendingBoletosByCnpj,
   gerarOuObterBoletoSicafByCnpj,
+  loadSicafNiveisCliente,
   invalidateCitiesCache,
   ensureSicafTipoCertidoes,
 };
