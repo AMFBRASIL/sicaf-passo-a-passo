@@ -18,10 +18,11 @@ import {
   ScrollText,
   Settings2,
   Shield,
+  Kanban,
   Cog,
 } from "lucide-react";
 
-export type AdminMenuCategory = "Operação" | "Atendimento" | "Inteligência" | "Gestão";
+export type AdminMenuCategory = "Operação" | "Atendimento" | "Inteligência" | "Gestão" | "CRM";
 
 export type AdminMenuItem = {
   paginaId: string;
@@ -42,6 +43,7 @@ export const ADMIN_MENU_MANIFEST: AdminMenuItem[] = [
   { paginaId: "tickets-admin", title: "Suporte (Kanban)", url: "/admin/suporte", category: "Atendimento", icon: Ticket },
   { paginaId: "atendimento", title: "Central de Atendimento", url: "/admin/atendimento", category: "Atendimento", icon: PhoneCall },
   { paginaId: "alerts", title: "Central de Alertas", url: "/admin/alertas", category: "Atendimento", icon: BellRing },
+  { paginaId: "crm-clientes", title: "CRM Clientes", url: "/admin/crm-clientes", category: "CRM", icon: Kanban },
   { paginaId: "google-ads-tracking", title: "Google Ads", url: "/admin/google-ads", category: "Inteligência", icon: TrendingUp },
   { paginaId: "processos", title: "Processos", url: "/admin/processos", category: "Inteligência", icon: Cog },
   { paginaId: "funil", title: "Funil Comercial", url: "/admin/funil", category: "Inteligência", icon: Filter },
@@ -57,6 +59,7 @@ export const ADMIN_MENU_MANIFEST: AdminMenuItem[] = [
 export const ADMIN_MENU_CATEGORIES: AdminMenuCategory[] = [
   "Operação",
   "Atendimento",
+  "CRM",
   "Inteligência",
   "Gestão",
 ];

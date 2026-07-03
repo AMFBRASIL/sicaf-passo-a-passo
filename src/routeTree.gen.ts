@@ -53,6 +53,7 @@ import { Route as AdminFunilRouteImport } from './routes/admin.funil'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin.financeiro'
 import { Route as AdminEquipeRouteImport } from './routes/admin.equipe'
 import { Route as AdminDocumentosRouteImport } from './routes/admin.documentos'
+import { Route as AdminCrmClientesRouteImport } from './routes/admin.crm-clientes'
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
 import { Route as AdminCobrancaRouteImport } from './routes/admin.cobranca'
 import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
@@ -283,6 +284,11 @@ const AdminDocumentosRoute = AdminDocumentosRouteImport.update({
   path: '/documentos',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminCrmClientesRoute = AdminCrmClientesRouteImport.update({
+  id: '/crm-clientes',
+  path: '/crm-clientes',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminConfiguracoesRoute = AdminConfiguracoesRouteImport.update({
   id: '/configuracoes',
   path: '/configuracoes',
@@ -366,6 +372,7 @@ export interface FileRoutesByFullPath {
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/crm-clientes': typeof AdminCrmClientesRoute
   '/admin/documentos': typeof AdminDocumentosRoute
   '/admin/equipe': typeof AdminEquipeRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
@@ -419,6 +426,7 @@ export interface FileRoutesByTo {
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/crm-clientes': typeof AdminCrmClientesRoute
   '/admin/documentos': typeof AdminDocumentosRoute
   '/admin/equipe': typeof AdminEquipeRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
@@ -474,6 +482,7 @@ export interface FileRoutesById {
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/crm-clientes': typeof AdminCrmClientesRoute
   '/admin/documentos': typeof AdminDocumentosRoute
   '/admin/equipe': typeof AdminEquipeRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
@@ -531,6 +540,7 @@ export interface FileRouteTypes {
     | '/admin/clientes'
     | '/admin/cobranca'
     | '/admin/configuracoes'
+    | '/admin/crm-clientes'
     | '/admin/documentos'
     | '/admin/equipe'
     | '/admin/financeiro'
@@ -584,6 +594,7 @@ export interface FileRouteTypes {
     | '/admin/clientes'
     | '/admin/cobranca'
     | '/admin/configuracoes'
+    | '/admin/crm-clientes'
     | '/admin/documentos'
     | '/admin/equipe'
     | '/admin/financeiro'
@@ -638,6 +649,7 @@ export interface FileRouteTypes {
     | '/admin/clientes'
     | '/admin/cobranca'
     | '/admin/configuracoes'
+    | '/admin/crm-clientes'
     | '/admin/documentos'
     | '/admin/equipe'
     | '/admin/financeiro'
@@ -1000,6 +1012,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDocumentosRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/crm-clientes': {
+      id: '/admin/crm-clientes'
+      path: '/crm-clientes'
+      fullPath: '/admin/crm-clientes'
+      preLoaderRoute: typeof AdminCrmClientesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/configuracoes': {
       id: '/admin/configuracoes'
       path: '/configuracoes'
@@ -1088,6 +1107,7 @@ interface AdminRouteChildren {
   AdminClientesRoute: typeof AdminClientesRoute
   AdminCobrancaRoute: typeof AdminCobrancaRoute
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
+  AdminCrmClientesRoute: typeof AdminCrmClientesRoute
   AdminDocumentosRoute: typeof AdminDocumentosRoute
   AdminEquipeRoute: typeof AdminEquipeRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRoute
@@ -1110,6 +1130,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminClientesRoute: AdminClientesRoute,
   AdminCobrancaRoute: AdminCobrancaRoute,
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
+  AdminCrmClientesRoute: AdminCrmClientesRoute,
   AdminDocumentosRoute: AdminDocumentosRoute,
   AdminEquipeRoute: AdminEquipeRoute,
   AdminFinanceiroRoute: AdminFinanceiroRoute,
