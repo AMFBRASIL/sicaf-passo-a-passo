@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +39,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import { mascararInputReal } from "@/lib/money";
 import { CrmAnexosUploader, type CrmAnexo } from "./crm-anexos";
 import { Paperclip } from "lucide-react";
@@ -100,6 +101,14 @@ const STEPS = [
   { id: 4, titulo: "Revisão", subtitulo: "Confirme e envie ao Kanban", icon: Rocket },
 ];
 
+function resolveDefaultConsultorId(consultores: CrmConsultor[], userId?: number | null): string {
+  if (userId != null) {
+    const loggedIn = consultores.find((c) => c.id === String(userId));
+    if (loggedIn) return loggedIn.id;
+  }
+  return consultores[0]?.id ?? "";
+}
+
 export interface NovoCrmCard {
   cliente: CrmCliente;
   stage: CrmStage;
@@ -136,6 +145,7 @@ export function CrmClienteWizardModal({
   onBuscaCliente,
   buscandoClientes,
 }: Props) {
+  const { user } = useAuth();
   const [stepIdx, setStepIdx] = useState(0);
   const [busca, setBusca] = useState("");
   const [cliente, setCliente] = useState<CrmCliente | null>(null);
@@ -151,14 +161,31 @@ export function CrmClienteWizardModal({
   const [tags, setTags] = useState<string[]>([]);
   const [anexos, setAnexos] = useState<CrmAnexo[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const wasOpenRef = useRef(false);
 
   const clientesFiltrados = useMemo(() => clientes, [clientes]);
 
   useEffect(() => {
-    if (open && consultores.length && !consultorId) {
-      setConsultorId(consultores[0].id);
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
     }
-  }, [open, consultores, consultorId]);
+    if (!consultores.length) return;
+
+    const defaultId = resolveDefaultConsultorId(consultores, user?.id);
+    if (!defaultId) return;
+
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+
+    if (justOpened) {
+      setConsultorId(defaultId);
+      return;
+    }
+
+    // Consultores carregaram após abrir o modal
+    setConsultorId((current) => current || defaultId);
+  }, [open, consultores, user?.id]);
 
   const progresso = ((stepIdx + 1) / STEPS.length) * 100;
 
@@ -217,7 +244,7 @@ export function CrmClienteWizardModal({
     setBusca("");
     setCliente(null);
     setStage(stageInicial ?? "em_negociacao");
-    setConsultorId(consultores[0]?.id ?? "");
+    setConsultorId(resolveDefaultConsultorId(consultores, user?.id));
     setPrioridade("media");
     setCanal("whatsapp");
     setValor("");

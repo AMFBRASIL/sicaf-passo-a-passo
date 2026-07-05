@@ -24,6 +24,8 @@ const URL_CADASTRO_CADBRASIL =
 
 const WHATSAPP_NUMERO = process.env.CADBRASIL_WHATSAPP_NUMERO || "551121220202";
 const WHATSAPP_DISPLAY = process.env.CADBRASIL_WHATSAPP_DISPLAY || "(11) 2122-0202";
+const URL_VIDEO_ATUALIZAR_SICAF =
+  process.env.SICAF_VIDEO_ATUALIZACAO_URL || "https://www.youtube.com/watch?v=ZG3csRrz1rQ";
 
 const { getPublicPayBaseUrl } = require("../utils/pay-link.util");
 
@@ -298,6 +300,14 @@ function buildMensagensAtivo({
     ? `Há ${niveisComPendencia.length} nível(is) com pendência ou atenção: ${niveisComPendencia.map((n) => `Nível ${n.nivel} ${n.icone}`).join(", ")}. Verifique documentos e validades no portal.`
     : "Todos os níveis consultados estão em situação regular.";
 
+  const temCertidaoVencendoOuVencida = niveisSicaf.some(
+    (n) => n.status === "A Vencer" || n.status === "Vencido",
+  );
+
+  const videoAtualizacaoTexto = temCertidaoVencendoOuVencida
+    ? `Identificamos certidão(ões) a vencer ou vencida(s) nos seus níveis SICAF. Assista ao vídeo passo a passo de como atualizar seu credenciamento: ${URL_VIDEO_ATUALIZAR_SICAF}`
+    : `Caso tenha alguma certidão a vencer ou vencida, você também pode assistir ao vídeo de como atualizar o SICAF: ${URL_VIDEO_ATUALIZAR_SICAF}`;
+
   const orientacaoUsuario = [
     `Prezado Fornecedor ${nome}, ${saudacao.toLowerCase()}!`,
     `Seu cadastro encontra-se ${sicafStatus || "ATIVO"} na CADBRASIL`,
@@ -310,6 +320,7 @@ function buildMensagensAtivo({
     `Para emitir boletos ou acompanhar seu credenciamento, acesse ${portal}.`,
     `Você também pode solicitar o boleto pelo WhatsApp ${WHATSAPP_DISPLAY}.`,
     `Dúvidas para atualizar seu SICAF? Acesse a Central de Ajuda em ${ajuda} — lá você encontra vídeos práticos passo a passo.`,
+    videoAtualizacaoTexto,
   ]
     .filter(Boolean)
     .join(" ");
@@ -318,6 +329,8 @@ function buildMensagensAtivo({
     situacaoCadastro: "ativo",
     urlPortal: portal,
     urlAjuda: ajuda,
+    urlVideoAtualizacaoSicaf: URL_VIDEO_ATUALIZAR_SICAF,
+    certidaoVencendoOuVencida: temCertidaoVencendoOuVencida,
     urlWhatsApp: `https://wa.me/${WHATSAPP_NUMERO}`,
     whatsappDisplay: WHATSAPP_DISPLAY,
     saudacao,
@@ -338,6 +351,9 @@ function buildMensagensAtivo({
         ? `Níveis com pendência: ${niveisComPendencia.map((n) => n.nivel).join(", ")}.`
         : "Níveis em ordem.",
       renovacaoProxima ? "Renovação próxima do vencimento." : "",
+      temCertidaoVencendoOuVencida
+        ? `Certidões a vencer/vencidas — vídeo atualização SICAF: ${URL_VIDEO_ATUALIZAR_SICAF}.`
+        : `Vídeo como atualizar SICAF (se certidão vencer): ${URL_VIDEO_ATUALIZAR_SICAF}.`,
       `Portal: ${portal} | Ajuda: ${ajuda} | WhatsApp: ${WHATSAPP_DISPLAY}.`,
     ]
       .filter(Boolean)
