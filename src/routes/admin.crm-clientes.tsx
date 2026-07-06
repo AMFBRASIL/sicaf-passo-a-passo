@@ -71,6 +71,8 @@ function CrmClientesPage() {
   const [buscaDebounced, setBuscaDebounced] = useState("");
   const [consultorFiltro, setConsultorFiltro] = useState<string>("todos");
   const [kpis, setKpis] = useState({ emFunil: 0, pipeline: 0, liberado: 0, negociacao: 0 });
+  const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<CrmStage | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaDebounced(busca), 350);
@@ -199,6 +201,39 @@ function CrmClientesPage() {
     await carregar();
   }
 
+  async function moverCardParaEtapa(cardId: string, targetStage: CrmStage) {
+    const cardAtual = cards.find((c) => c.id === cardId);
+    if (!cardAtual || cardAtual.stage === targetStage) return;
+
+    const snapshot = cards;
+    const atualizadoLocal: CrmCardData = { ...cardAtual, stage: targetStage };
+    setCards((prev) => prev.map((c) => (c.id === cardId ? atualizadoLocal : c)));
+
+    const res = await atualizarCrmCard(cardId, {
+      stage: targetStage,
+      consultorId: cardAtual.consultorId,
+      prioridade: cardAtual.prioridade,
+      canal: cardAtual.canal,
+      valor: cardAtual.valor,
+      boleto: cardAtual.boleto,
+      proximaAcao: cardAtual.proximaAcao,
+      dataAcao: cardAtual.dataAcao,
+      notas: cardAtual.notas,
+      tags: cardAtual.tags,
+      progressoDocs: cardAtual.progressoDocs,
+    });
+
+    if (!res.ok || !res.card) {
+      setCards(snapshot);
+      toast.error(res.error || "Não foi possível mover o card de etapa");
+      return;
+    }
+
+    setCards((prev) => prev.map((c) => (c.id === cardId ? res.card! : c)));
+    toast.success(`Card #${cardId} movido para ${STAGES.find((s) => s.id === targetStage)?.titulo ?? targetStage}`);
+    await carregar();
+  }
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <PageHeader
@@ -277,7 +312,36 @@ function CrmClientesPage() {
             const Icon = s.icon;
             const items = byStage[s.id];
             return (
-              <div key={s.id} className="flex min-h-[240px] flex-col rounded-2xl border border-border bg-muted/30">
+              <div
+                key={s.id}
+                className={cn(
+                  "flex min-h-[240px] flex-col rounded-2xl border border-border bg-muted/30 transition",
+                  dragOverStage === s.id && "border-primary ring-2 ring-primary/30",
+                )}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragOverStage !== s.id) setDragOverStage(s.id);
+                }}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  if (dragOverStage !== s.id) setDragOverStage(s.id);
+                }}
+                onDragLeave={(e) => {
+                  const nextTarget = e.relatedTarget as Node | null;
+                  if (nextTarget && e.currentTarget.contains(nextTarget)) return;
+                  if (dragOverStage === s.id) setDragOverStage(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const rawId = e.dataTransfer.getData("text/plain");
+                  const cardId = rawId.trim();
+                  setDragOverStage(null);
+                  setDraggingCardId(null);
+                  if (!cardId) return;
+                  void moverCardParaEtapa(cardId, s.id);
+                }}
+              >
                 <div className={cn("flex items-center justify-between rounded-t-2xl bg-gradient-to-br px-4 py-3 text-white", s.cor)}>
                   <div className="flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20">
@@ -305,7 +369,20 @@ function CrmClientesPage() {
                       <button
                         key={c.id}
                         onClick={() => abrirDetalhe(c)}
-                        className="group rounded-xl border border-border bg-card p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggingCardId(c.id);
+                          e.dataTransfer.setData("text/plain", String(c.id));
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnd={() => {
+                          setDraggingCardId(null);
+                          setDragOverStage(null);
+                        }}
+                        className={cn(
+                          "group rounded-xl border border-border bg-card p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
+                          draggingCardId === c.id && "opacity-60",
+                        )}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
