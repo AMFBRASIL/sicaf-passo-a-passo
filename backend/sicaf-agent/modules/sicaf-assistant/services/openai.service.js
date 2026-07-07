@@ -4,6 +4,7 @@
  */
 const config = require('../../../config');
 const iaConfig = require('../../../services/ia-config.service');
+const { CERTIDAO_TIPO_MAP } = require('../constants');
 
 let openai = null;
 let _clientKey = '';
@@ -654,10 +655,11 @@ ${pdfText.substring(0, 6000)}`;
           };
         }
         if (hasVI) {
+          const viValidade = extractNivelVIValidade(pdfText);
           parsed.niveis_sicaf['VI'] = {
             situacao: parsed.niveis_sicaf['VI']?.situacao === 'Pendente' ? 'Pendente' : 'Regular',
             descricao: parsed.niveis_sicaf['VI']?.descricao || 'Qualificação Econômico-Financeira',
-            validade: parsed.niveis_sicaf['VI']?.validade || null,
+            validade: parsed.niveis_sicaf['VI']?.validade || viValidade || null,
           };
         }
         console.log('  [DB] Pós-processamento Situação do Fornecedor: níveis por cabeçalho regularizados');
@@ -697,6 +699,40 @@ function isDateExpired(dateStr, refDate = new Date()) {
   return d < today;
 }
 
+/**
+ * Extrai validade do Nível VI no PDF Situação do Fornecedor.
+ * O SICAF pode exibir a data em formatos diferentes:
+ *   - "Validade: 30/06/2027" (clássico)
+ *   - "30/06/2027\tValidade:" (coluna invertida — comum no PDF oficial)
+ *   - data sozinha na linha após o cabeçalho VI
+ */
+function extractNivelVIValidade(pdfText) {
+  if (!pdfText) return null;
+  const text = normalizeSituacaoPdfText(pdfText);
+
+  const patterns = [
+    // Coluna invertida: data antes de "Validade:" na linha seguinte ao cabeçalho VI
+    /VI\s*[-–][^\n]*Qualifica[çc][ãa]o\s+Econ[oô]mico[^\n]*\n\s*(\d{2}\/\d{2}\/\d{4})\s*(?:\t|\s)*(?:Validade:)?/i,
+    // Clássico: Validade: DD/MM/YYYY na linha após cabeçalho VI
+    /VI\s*[-–][^\n]*Qualifica[çc][ãa]o\s+Econ[oô]mico[^\n]*\n[^\n]*Validade:\s*(\d{2}\/\d{2}\/\d{4})/i,
+    // Data isolada na linha seguinte ao cabeçalho VI
+    /VI\s*[-–][^\n]*Qualifica[çc][ãa]o\s+Econ[oô]mico[^\n]*\n\s*(\d{2}\/\d{2}\/\d{4})/i,
+  ];
+
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]) return m[1];
+  }
+  return null;
+}
+
+function isNivelVIDateExpired(pdfText, dataValidade) {
+  if (!dataValidade) return false;
+  if (pdfText.includes(`${dataValidade} (*)`)) return true;
+  if (pdfText.includes(`Validade: ${dataValidade} (*)`)) return true;
+  return isDateExpired(dataValidade);
+}
+
 function guessNivelFromCertName(nome) {
   const n = String(nome || '').toLowerCase();
   if (/receita federal|pgfn|fgts|trabalhista|cndt|cnd conjunta/.test(n)) return 'III';
@@ -707,12 +743,89 @@ function guessNivelFromCertName(nome) {
   return null;
 }
 
+function mapCertidaoCodigoFromNome(nome) {
+  const lower = String(nome || '').toLowerCase();
+  for (const [key, val] of Object.entries(CERTIDAO_TIPO_MAP)) {
+    if (lower.includes(key)) return val;
+  }
+  return 'outro';
+}
+
+/** Normaliza texto extraído do PDF SICAF (remove colagem nome+data). */
+function normalizeSituacaoPdfText(text) {
+  return String(text || '')
+    .replace(/([A-Za-zÀ-ÿ])(\d{2}\/\d{2}\/\d{4})/g, '$1 $2')
+    .replace(/Validade:\s*(\d{2}\/\d{2}\/\d{4})/gi, 'Validade: $1')
+    .replace(/(\d{4})(Autom[aá]tica|Manual)/gi, '$1 $2');
+}
+
+/**
+ * Extrai TODAS as certidões com validade do PDF Situação do Fornecedor (oficial SICAF).
+ * Inclui certidões válidas e vencidas — fonte de verdade para alimentar a tabela certidoes.
+ */
+function extractCertidoesSituacaoFornecedor(pdfText) {
+  if (!pdfText) return [];
+  const normalized = normalizeSituacaoPdfText(pdfText);
+  const results = [];
+  const seen = new Set();
+
+  const push = (nome, dataValidade, hasAsterisk, tipoConsulta) => {
+    if (!nome || !dataValidade) return;
+    const codigo = mapCertidaoCodigoFromNome(nome);
+    const key = `${codigo}::${dataValidade}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const vencida = hasAsterisk || isDateExpired(dataValidade);
+    const nivel = guessNivelFromCertName(nome);
+    results.push({
+      nome: String(nome).trim().replace(/\s+/g, ' '),
+      situacao: vencida
+        ? hasAsterisk
+          ? 'Vencida (marcada com *)'
+          : 'Vencida'
+        : 'Válida',
+      data_validade: dataValidade,
+      nivel_sicaf: nivel,
+      orgao_emissor: null,
+      tipo_consulta: tipoConsulta || null,
+      fonte: 'Situação do Fornecedor SICAF',
+    });
+  };
+
+  // Formato: "Nome Validade: DD/MM/YYYY (Automática|Manual)"
+  const validadeRe =
+    /(Receita\s+Federal(?:\s+e\s+PGFN)?|FGTS|Trabalhista|Receita\s+Estadual(?:\/Distrital)?|Receita\s+Municipal|PGFN|Balan[çc]o(?:\s+Patrimonial)?|DRE|Certid[ãa]o[^\n:]{0,40})[^\n]*?Validade:\s*(\d{2}\/\d{2}\/\d{4})(?:\s*\((\*)\))?[^\n]*(?:\((Autom[aá]tica|Manual)\))?/gi;
+  let m;
+  while ((m = validadeRe.exec(normalized)) !== null) {
+    push(m[1], m[2], !!m[3], m[4]);
+  }
+
+  // Formato SICAF sem "Validade:" — data logo após o nome (ex: "FGTS 08/07/2026 Automática")
+  const inlineRe =
+    /^(Receita\s+Federal(?:\s+e\s+PGFN)?|FGTS|Trabalhista|Receita\s+Estadual(?:\/Distrital)?|Receita\s+Municipal)\s+(\d{2}\/\d{2}\/\d{4})(?:\s*\((\*)\))?(?:\s+(Autom[aá]tica|Manual))?/gim;
+  while ((m = inlineRe.exec(normalized)) !== null) {
+    push(m[1], m[2], !!m[3], m[4]);
+  }
+
+  // Balanço / Nível VI (layout colunar)
+  const viValidade = extractNivelVIValidade(normalized);
+  if (viValidade) {
+    const vencida = isNivelVIDateExpired(normalized, viValidade);
+    push('Balanço Patrimonial', viValidade, vencida && pdfText.includes(`${viValidade} (*)`), 'Manual');
+  }
+
+  return results;
+}
+
 function upsertCertidaoInJson(jsonData, cert) {
   if (!jsonData.certidoes) jsonData.certidoes = [];
-  const nomeNorm = String(cert.nome || '').toLowerCase().trim();
-  const idx = jsonData.certidoes.findIndex(
-    (c) => String(c.nome || '').toLowerCase().trim() === nomeNorm,
-  );
+  const codigo = mapCertidaoCodigoFromNome(cert.nome);
+  const idx = jsonData.certidoes.findIndex((c) => {
+    const cCodigo = mapCertidaoCodigoFromNome(c.nome);
+    if (codigo !== 'outro' && cCodigo === codigo) return true;
+    return String(c.nome || '').toLowerCase().trim() === String(cert.nome || '').toLowerCase().trim();
+  });
   if (idx >= 0) {
     jsonData.certidoes[idx] = { ...jsonData.certidoes[idx], ...cert };
   } else {
@@ -728,7 +841,7 @@ function enrichSicafJsonFromText(jsonData, pdfText) {
   if (!jsonData.niveis_sicaf) jsonData.niveis_sicaf = {};
   if (!jsonData.certidoes) jsonData.certidoes = [];
 
-  const text = pdfText;
+  const text = normalizeSituacaoPdfText(pdfText);
 
   // Cabeçalhos de nível com "(Possui Pendência)"
   const pendenciaHeaderRe =
@@ -745,57 +858,57 @@ function enrichSicafJsonFromText(jsonData, pdfText) {
     };
   }
 
-  // Certidões/documentos com validade e asterisco (*) = vencido (legenda do PDF SICAF)
-  const certValidadeRe =
-    /((?:Receita\s+(?:Federal(?:\s+e\s+PGFN)?|Estadual(?:\/Distrital)?|Municipal)|FGTS|Trabalhista|PGFN|Balan[çc]o(?:\s+Patrimonial)?|DRE|Certid[ãa]o[^\n:]{0,40}))[^\n]*?Validade:\s*(\d{2}\/\d{2}\/\d{4})(?:\s*\((\*)\))?[^\n]*(?:\((Autom[aá]tica|Manual)\))?/gi;
-  while ((m = certValidadeRe.exec(text)) !== null) {
-    const nome = m[1].trim().replace(/\s+/g, ' ');
-    const dataValidade = m[2];
-    const hasAsterisk = !!m[3];
-    const tipoConsulta = m[4] || null;
-    const vencida = hasAsterisk || isDateExpired(dataValidade);
-    if (!vencida) continue;
+  // Extrair TODAS as certidões do PDF oficial (válidas e vencidas) → alimenta tabela certidoes
+  const certsOficiais = extractCertidoesSituacaoFornecedor(text);
+  for (const cert of certsOficiais) {
+    upsertCertidaoInJson(jsonData, cert);
 
-    const nivel = guessNivelFromCertName(nome);
-    upsertCertidaoInJson(jsonData, {
-      nome,
-      situacao: hasAsterisk ? 'Vencida (marcada com *)' : 'Vencida',
-      data_validade: dataValidade,
-      orgao_emissor: nome.split(':')[0].trim(),
-      nivel_sicaf: nivel,
-      tipo_consulta: tipoConsulta,
-    });
-
-    if (nivel && jsonData.niveis_sicaf[nivel]?.situacao !== 'Pendente') {
+    const sit = String(cert.situacao || '').toLowerCase();
+    const vencida = sit.includes('venc');
+    const nivel = cert.nivel_sicaf || guessNivelFromCertName(cert.nome);
+    if (vencida && nivel && jsonData.niveis_sicaf[nivel]?.situacao !== 'Pendente') {
       jsonData.niveis_sicaf[nivel] = {
         ...(jsonData.niveis_sicaf[nivel] || {}),
         situacao: 'Vencido',
         descricao: jsonData.niveis_sicaf[nivel]?.descricao || NIVEL_NOMES[nivel],
-        validade: jsonData.niveis_sicaf[nivel]?.validade || dataValidade,
+        validade: jsonData.niveis_sicaf[nivel]?.validade || cert.data_validade,
       };
     }
   }
 
-  // Nível VI costuma ter "Validade: DD/MM/YYYY (*)" logo abaixo do cabeçalho
-  const viValidadeRe =
-    /VI\s*[-–][^\n]*Qualifica[çc][ãa]o\s+Econ[oô]mico[^\n]*\n[^\n]*Validade:\s*(\d{2}\/\d{2}\/\d{4})(?:\s*\(\*\))?/i;
-  const viMatch = text.match(viValidadeRe);
-  if (viMatch) {
-    const dataValidade = viMatch[1];
-    const vencida = text.includes(`Validade: ${dataValidade} (*)`) || isDateExpired(dataValidade);
+  // Nível VI: reforço do cabeçalho (validade em layout colunar)
+  const viDataValidade = extractNivelVIValidade(text);
+  const hasVIHeader = /(?:^|\n|\r|\s)VI\s*[-–]\s*Qualifica[çc][ãa]o\s+Econ[oô]mico/i.test(text);
+  if (hasVIHeader && viDataValidade) {
+    const vencida = isNivelVIDateExpired(text, viDataValidade);
     if (vencida) {
       jsonData.niveis_sicaf.VI = {
         ...(jsonData.niveis_sicaf.VI || {}),
         situacao: 'Pendente',
         descricao: `${NIVEL_NOMES.VI} (Possui Pendência)`,
-        validade: dataValidade,
+        validade: viDataValidade,
       };
       upsertCertidaoInJson(jsonData, {
         nome: 'Qualificação Econômico-Financeira (Balanço/DRE)',
         situacao: 'Vencida',
-        data_validade: dataValidade,
+        data_validade: viDataValidade,
         nivel_sicaf: 'VI',
         orgao_emissor: 'Contador / Portal SICAF',
+        tipo_consulta: 'Manual',
+      });
+    } else {
+      jsonData.niveis_sicaf.VI = {
+        ...(jsonData.niveis_sicaf.VI || {}),
+        situacao: 'Regular',
+        descricao: jsonData.niveis_sicaf.VI?.descricao || NIVEL_NOMES.VI,
+        validade: viDataValidade,
+      };
+      upsertCertidaoInJson(jsonData, {
+        nome: 'Balanço Patrimonial',
+        situacao: 'Válida',
+        data_validade: viDataValidade,
+        nivel_sicaf: 'VI',
+        orgao_emissor: 'Contabilidade / Empresa',
         tipo_consulta: 'Manual',
       });
     }
@@ -820,6 +933,32 @@ function enrichSicafJsonFromText(jsonData, pdfText) {
           };
         }
       }
+    }
+  }
+
+  // Cabeçalho válido do nível VI prevalece sobre registros antigos de balanço vencido no JSON
+  if (hasVIHeader && viDataValidade) {
+    const vencida = isNivelVIDateExpired(text, viDataValidade);
+    if (!vencida) {
+      jsonData.niveis_sicaf.VI = {
+        situacao: 'Regular',
+        descricao: NIVEL_NOMES.VI,
+        validade: viDataValidade,
+      };
+      upsertCertidaoInJson(jsonData, {
+        nome: 'Balanço Patrimonial',
+        situacao: 'Válida',
+        data_validade: viDataValidade,
+        nivel_sicaf: 'VI',
+        orgao_emissor: 'Contabilidade / Empresa',
+      });
+      jsonData.certidoes = jsonData.certidoes.filter((c) => {
+        const nivel = c.nivel_sicaf || guessNivelFromCertName(c.nome);
+        if (nivel !== 'VI') return true;
+        const sit = String(c.situacao || '').toLowerCase();
+        if (!sit.includes('venc')) return true;
+        return c.data_validade === viDataValidade;
+      });
     }
   }
 
@@ -963,5 +1102,7 @@ module.exports = {
   extractCertidoesJSON,
   enrichSicafJsonFromText,
   analyzeSicafProblema,
+  extractNivelVIValidade,
+  extractCertidoesSituacaoFornecedor,
   SYSTEM_PROMPT,
 };

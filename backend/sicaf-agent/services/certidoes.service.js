@@ -4,6 +4,11 @@
 const { getDb } = require('../database/connection');
 const { assertClienteAcessivel } = require('./client-access.service');
 const { getDiasAvisoAntecedencia } = require('./sicaf-config.service');
+const {
+  buildNiveisDetailFromRows,
+  nivelValidadoComValidadePdf,
+  extractValidadeFromObservacao,
+} = require('../utils/nivel-status');
 
 const ROMAN_TO_NUM = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
 
@@ -256,6 +261,18 @@ async function buildChecklistDocumentos(db, cliente) {
   const docsPorNivel = {};
   const now = new Date();
 
+  const sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
+
+  let niveisDetail = {};
+  if (sicaf?.id) {
+    try {
+      const nivelRows = await db('sicaf_niveis')
+        .where('sicaf_id', sicaf.id)
+        .select('nivel', 'habilitado', 'status', 'observacao');
+      niveisDetail = buildNiveisDetailFromRows(nivelRows);
+    } catch (_) {}
+  }
+
   for (const tipo of tipos) {
     const rules = resolveTipoUploadRules(tipo);
 
@@ -273,8 +290,24 @@ async function buildChecklistDocumentos(db, cliente) {
     );
 
     const status = resolveChecklistItemStatus(cert, docMatch, now, msAviso);
-    const dataValidadeRaw = cert?.data_validade || docMatch?.data_validade || null;
-    const validade = dataValidadeRaw ? fmtDate(dataValidadeRaw) : status === 'pendente' ? undefined : '—';
+    let dataValidadeRaw = cert?.data_validade || docMatch?.data_validade || null;
+    let resolvedStatus = status;
+
+    if (
+      tipo.codigo === 'balanco_patrimonial' &&
+      nivelValidadoComValidadePdf(niveisDetail, 'VI')
+    ) {
+      resolvedStatus = 'ok';
+      if (!dataValidadeRaw) {
+        const validadePdf = extractValidadeFromObservacao(niveisDetail.VI?.observacao);
+        if (validadePdf) {
+          const [dd, mm, yyyy] = validadePdf.split('/');
+          dataValidadeRaw = `${yyyy}-${mm}-${dd}`;
+        }
+      }
+    }
+
+    const validade = dataValidadeRaw ? fmtDate(dataValidadeRaw) : resolvedStatus === 'pendente' ? undefined : '—';
     const arquivoUrl = cert?.arquivo_url || docMatch?.arquivo_url || null;
     const codigoCertidao = cert?.numero || null;
 
@@ -287,7 +320,7 @@ async function buildChecklistDocumentos(db, cliente) {
       descricao: tipo.descricao || '',
       nivelSicaf: tipo.nivel_sicaf,
       orgaoEmissor: tipo.orgao_emissor || null,
-      status,
+      status: resolvedStatus,
       validade,
       dataValidade: dataValidadeRaw,
       codigoCertidao,
@@ -297,8 +330,6 @@ async function buildChecklistDocumentos(db, cliente) {
       uploadManual: rules.uploadManual,
     });
   }
-
-  const sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
 
   return {
     ok: true,

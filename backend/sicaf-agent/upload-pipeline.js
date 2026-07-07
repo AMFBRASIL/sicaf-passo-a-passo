@@ -4,6 +4,7 @@
 const pdfParse = require("pdf-parse");
 const { getDb } = require("./database/connection");
 const iaService = require("./services/ia.service");
+const { extractNivelVIValidade } = require("./modules/sicaf-assistant/services/openai.service");
 const { saveCertidoesToDB } = require("./modules/sicaf-assistant/services/certidoes.service");
 
 function buildAnalysisPrompt(fileName, truncatedText, isSituacaoFornecedor) {
@@ -14,8 +15,7 @@ function buildAnalysisPrompt(fileName, truncatedText, isSituacaoFornecedor) {
     const validadeCadastro = sfDateMatch ? sfDateMatch[1] : "";
     const hasNivelV = /V\s*[-–]\s*Qualifica/i.test(truncatedText);
     const hasNivelVI = /VI\s*[-–]\s*Qualifica/i.test(truncatedText);
-    const viDateMatch = truncatedText.match(/VI\s*[-–][^\n]*[\n\r]+(\d{2}\/\d{2}\/\d{4})/i);
-    const validadeVI = viDateMatch ? viDateMatch[1] : "";
+    const validadeVI = extractNivelVIValidade(truncatedText) || "";
 
     return `📄 **DOCUMENTO ANEXADO: ${fileName}**
 

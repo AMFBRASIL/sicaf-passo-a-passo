@@ -55,10 +55,58 @@ function buildNiveisDetailFromRows(rows) {
   return detail;
 }
 
+/** Extrai data DD/MM/AAAA da observação gravada pelo PDF Situação do Fornecedor. */
+function extractValidadeFromObservacao(observacao) {
+  if (!observacao?.trim()) return null;
+
+  const validadeExplicita = observacao.match(/validade[:\s]+(\d{2}\/\d{2}\/\d{4})/i);
+  if (validadeExplicita?.[1]) return validadeExplicita[1];
+
+  const valParenteses = observacao.match(/\(Val:\s*(\d{2}\/\d{2}\/\d{4})\)/i);
+  if (valParenteses?.[1]) return valParenteses[1];
+
+  const datas = [...observacao.matchAll(/(\d{2}\/\d{2}\/\d{4})/g)].map((m) => m[1]);
+  if (datas.length === 0) return null;
+  if (datas.length === 1) return datas[0];
+
+  const ordenadas = [...datas].sort((a, b) => {
+    const toTime = (d) => {
+      const [dd, mm, yyyy] = d.split('/').map(Number);
+      return new Date(yyyy, mm - 1, dd).getTime();
+    };
+    return toTime(a) - toTime(b);
+  });
+  return ordenadas[0];
+}
+
+function parseBrDate(dateStr) {
+  const m = String(dateStr || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+}
+
+function isValidadeFutura(dateStr) {
+  const d = parseBrDate(dateStr);
+  if (!d) return false;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  return d >= hoje;
+}
+
+/** Nível marcado como válido no PDF com validade futura na observação. */
+function nivelValidadoComValidadePdf(niveisDetail, nivelRoman) {
+  const det = niveisDetail?.[nivelRoman];
+  if (!det || det.status !== 'validado') return false;
+  const validade = extractValidadeFromObservacao(det.observacao);
+  return validade ? isValidadeFutura(validade) : false;
+}
+
 module.exports = {
   ENABLED_HEADER_LEVELS,
   nivelStatusToUi,
   rawStatusFromRow,
   buildNivelDetailFromRow,
   buildNiveisDetailFromRows,
+  extractValidadeFromObservacao,
+  nivelValidadoComValidadePdf,
 };

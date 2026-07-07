@@ -47,6 +47,8 @@ function certStatusToUi(status, diasRestantes) {
 
 const {
   buildNivelDetailFromRow,
+  extractValidadeFromObservacao,
+  nivelValidadoComValidadePdf,
 } = require('../utils/nivel-status');
 
 function isPaidStatus(status) {
@@ -391,6 +393,20 @@ async function getGerenciarPainel(clienteId, usuarioId) {
 
   const certVencidas = certidoesUi.filter((c) => c.status === 'danger').length;
 
+  /** Não gerar pendência falsa quando o PDF já validou o nível com validade futura. */
+  function deveIgnorarPendenciaDocNivel(item) {
+    const nivel = item.nivel || item.nivelSicaf;
+    if (!nivel || !nivelValidadoComValidadePdf(niveisDetail, nivel)) return false;
+    const titulo = String(item.titulo || item.nome || '').toLowerCase();
+    if (item.status === 'missing' || item.status === 'expired' || item.status === 'danger') {
+      return true;
+    }
+    if (titulo.includes('balanço') || titulo.includes('balanco') || titulo.includes('dre')) {
+      return true;
+    }
+    return false;
+  }
+
   const pendencias = [];
 
   if (ultimaAnalise?.analise_json) {
@@ -410,6 +426,7 @@ async function getGerenciarPainel(clienteId, usuarioId) {
 
   for (const c of certidoesUi) {
     if (c.status === 'danger' || c.status === 'warn') {
+      if (deveIgnorarPendenciaDocNivel(c)) continue;
       pushPendenciaUnica(pendencias, {
         titulo: c.titulo,
         descricao: c.descricao,
@@ -450,6 +467,10 @@ async function getGerenciarPainel(clienteId, usuarioId) {
         const dias = item.diasRestantes != null ? Number(item.diasRestantes) : null;
         descricao = dias != null ? `Vence em ${dias} dias` : 'Vencendo em breve';
         status = 'warn';
+      }
+
+      if (deveIgnorarPendenciaDocNivel({ ...item, titulo: item.nome, nivel: item.nivelSicaf })) {
+        continue;
       }
 
       pushPendenciaUnica(pendencias, {

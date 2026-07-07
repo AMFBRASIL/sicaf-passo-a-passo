@@ -6,6 +6,7 @@ import {
   mapNiveisFromDetail,
   mapNiveisFromEvidencias,
   mapSicafPainelStatus,
+  extractValidadeFromObservacao,
 } from "@/lib/nivel-status";
 
 const ROMAN_TO_NUM: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
@@ -314,6 +315,93 @@ export function certidoesPorNivel(
     out.push(item);
   }
   return out;
+}
+
+function parseBrDate(s: string): Date | null {
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+}
+
+/** Alinha status das certidões ao nível quando o PDF marcou o nível como válido. */
+export function harmonizeCertidoesComNivel(
+  certidoes: GerenciarItem[],
+  nivelStatus: NivelStatus,
+  observacao?: string,
+): GerenciarItem[] {
+  if (nivelStatus !== "validado") return certidoes;
+
+  const validadeObs = extractValidadeFromObservacao(observacao);
+  if (!validadeObs) return certidoes;
+
+  const validadeDate = parseBrDate(validadeObs);
+  if (!validadeDate) return certidoes;
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  if (validadeDate < hoje) return certidoes;
+
+  const diasRestantes = Math.ceil((validadeDate.getTime() - hoje.getTime()) / 86400000);
+  const tone: GerenciarItem["status"] = diasRestantes <= 30 ? "warn" : "ok";
+
+  return certidoes.map((c) => {
+    if (c.status === "ok") return c;
+    const titulo = c.titulo.toLowerCase();
+    const isDocNivel =
+      titulo.includes("balanço") ||
+      titulo.includes("balanco") ||
+      titulo.includes("patrimonial") ||
+      titulo.includes("dre") ||
+      titulo.includes("demonstração") ||
+      titulo.includes("demonstracao");
+
+    if (c.status === "danger" || c.status === "warn" || (c.status === "idle" && isDocNivel)) {
+      return {
+        ...c,
+        status: tone,
+        descricao: `Válida até ${validadeObs}`,
+        dataValidade: validadeObs,
+      };
+    }
+    return c;
+  });
+}
+
+/** Remove pendências falsas quando o PDF já validou o nível com validade futura. */
+export function harmonizePendenciasComNivel(
+  pendencias: PendenciaNivelResumo[],
+  nivelStatus: NivelStatus,
+  observacao?: string,
+): PendenciaNivelResumo[] {
+  if (nivelStatus !== "validado") return pendencias;
+
+  const validadeObs = extractValidadeFromObservacao(observacao);
+  if (!validadeObs) return pendencias;
+
+  const validadeDate = parseBrDate(validadeObs);
+  if (!validadeDate) return pendencias;
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  if (validadeDate < hoje) return pendencias;
+
+  return pendencias.filter((p) => {
+    if (p.tone !== "danger" && p.tone !== "warn") return true;
+    const text = `${p.titulo} ${p.descricao}`.toLowerCase();
+    const docFalsoPositivo =
+      text.includes("balanço") ||
+      text.includes("balanco") ||
+      text.includes("patrimonial") ||
+      text.includes("dre") ||
+      text.includes("demonstração") ||
+      text.includes("demonstracao") ||
+      text.includes("falência") ||
+      text.includes("falencia") ||
+      text.includes("não cadastrada") ||
+      text.includes("nao cadastrada") ||
+      text.includes("aguardando envio");
+    return !docFalsoPositivo;
+  });
 }
 
 export type PendenciaNivelResumo = {

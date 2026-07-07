@@ -6,6 +6,7 @@ const http = require('http');
 const pdfParse = require('pdf-parse');
 const config = require('../../../config');
 const iaService = require('../../../services/ia.service');
+const { extractNivelVIValidade } = require('../services/openai.service');
 const { saveCertidoesToDB } = require('../services/certidoes.service');
 const { executeAction } = require('../services/sicaf-navigator');
 const { buildAssistantHTML } = require('./assistant-view');
@@ -223,8 +224,7 @@ function startAssistantServer(options) {
             const validadeCadastro = dateMatch ? dateMatch[1] : '';
             const hasNivelV = /V\s*[-–]\s*Qualifica/i.test(truncatedText);
             const hasNivelVI = /VI\s*[-–]\s*Qualifica/i.test(truncatedText);
-            const viDateMatch = truncatedText.match(/VI\s*[-–][^\n]*[\n\r]+(\d{2}\/\d{2}\/\d{4})/i);
-            const validadeVI = viDateMatch ? viDateMatch[1] : '';
+            const validadeVI = extractNivelVIValidade(truncatedText) || '';
 
             analysisPrompt = `📄 **DOCUMENTO ANEXADO: ${fileName}**
 

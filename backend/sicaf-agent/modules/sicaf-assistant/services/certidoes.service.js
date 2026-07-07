@@ -44,8 +44,6 @@ function mapCertidaoCodigo(nome) {
 
 /**
  * Resolve o tipo_certidao_id e nivel_sicaf a partir do nome da certidão.
- * @param {string} nome - Nome da certidão (texto livre)
- * @returns {Promise<{id: number, nivel_sicaf: string|null}|null>}
  */
 async function resolveTipoCertidao(nome) {
   const codigo = mapCertidaoCodigo(nome);
@@ -55,9 +53,6 @@ async function resolveTipoCertidao(nome) {
 
 /**
  * Converte situação do documento para o ENUM do banco.
- * @param {string} situacao - Texto da situação
- * @param {number|null} dias - Dias para vencimento
- * @returns {string} 'Válida' | 'Vencendo' | 'Vencida'
  */
 function mapCertidaoStatus(situacao, dias) {
   const lower = (situacao || '').toLowerCase();
@@ -75,6 +70,77 @@ function mapCertidaoStatus(situacao, dias) {
   if (lower.includes('próxima') || lower.includes('proxima') || lower.includes('vencendo')) return 'Vencendo';
   if (lower.includes('regular') || lower.includes('negativa') || lower.includes('válida') || lower.includes('valida')) return 'Válida';
   return 'Válida';
+}
+
+/** Certidão principal por nível para sincronizar validade quando o PDF marca o nível como válido. */
+const NIVEL_CERT_SYNC = {
+  VI: 'balanco_patrimonial',
+};
+
+/**
+ * Atualiza certidão do nível no banco quando o PDF Situação do Fornecedor indica nível válido.
+ * Corrige casos em que sicaf_niveis está Válido mas a certidão antiga permanece Vencida.
+ */
+async function syncNivelCertidaoValidade(clienteId, sicafId, niveisResult) {
+  const db = getDb();
+  if (!db || !niveisResult) return;
+
+  await loadTipoCertidoesCache();
+
+  for (const [nivel, info] of Object.entries(niveisResult)) {
+    const codigo = NIVEL_CERT_SYNC[nivel];
+    if (!codigo) continue;
+
+    const validade = info.validade;
+    if (!validade) continue;
+
+    const dataValidade = parseDate(validade);
+    const dias = calcDiasVencimento(dataValidade);
+    if (dias !== null && dias < 0) continue;
+
+    const sit = String(info.status || '').toLowerCase();
+    const nivelValido =
+      sit.includes('regular') ||
+      sit.includes('válido') ||
+      sit.includes('valido') ||
+      sit.includes('habilitado') ||
+      sit.includes('credenciado');
+    if (!nivelValido) continue;
+
+    const tipoCert = (await loadTipoCertidoesCache())[codigo];
+    if (!tipoCert) continue;
+
+    const status = dias !== null && dias <= 30 ? 'Vencendo' : 'Válida';
+
+    const existing = await db('certidoes')
+      .where({ cliente_id: clienteId, tipo_certidao_id: tipoCert.id })
+      .first();
+
+    if (existing) {
+      await db('certidoes').where('id', existing.id).update({
+        nivel_sicaf: nivel,
+        data_validade: dataValidade || existing.data_validade,
+        status,
+        dias_restantes: dias ?? 0,
+        sicaf_id: sicafId,
+        observacoes: info.descricao || existing.observacoes,
+        updated_at: db.fn.now(),
+      });
+      console.log(`  [DB]   ↻ Certidão ${codigo} sincronizada (nível ${nivel} válido, val: ${validade})`);
+    } else {
+      await db('certidoes').insert({
+        cliente_id: clienteId,
+        sicaf_id: sicafId,
+        tipo_certidao_id: tipoCert.id,
+        nivel_sicaf: nivel,
+        data_validade: dataValidade,
+        status,
+        dias_restantes: dias ?? 0,
+        observacoes: info.descricao || null,
+      });
+      console.log(`  [DB]   ✚ Certidão ${codigo} criada (nível ${nivel} válido, val: ${validade})`);
+    }
+  }
 }
 
 /**
@@ -173,7 +239,9 @@ async function saveCertidoesToDB(data) {
           status,
           dias_restantes: dias || 0,
           sicaf_id: sicaf.id,
-          observacoes: cert.situacao || existing.observacoes,
+          observacoes: isSituacaoFornecedor
+            ? (cert.fonte || cert.situacao || 'Validado via Situação do Fornecedor SICAF')
+            : (cert.situacao || existing.observacoes),
           updated_at: db.fn.now(),
         });
         updated++;
@@ -188,7 +256,9 @@ async function saveCertidoesToDB(data) {
           data_validade: dataValidade,
           status,
           dias_restantes: dias || 0,
-          observacoes: cert.situacao,
+          observacoes: isSituacaoFornecedor
+            ? (cert.fonte || cert.situacao || 'Validado via Situação do Fornecedor SICAF')
+            : cert.situacao,
         });
         inserted++;
         console.log(`  [DB]   ✚ Inserido: ${cert.nome} → ${status} (val: ${dataValidade || '?'}, dias: ${dias || '?'})`);
@@ -343,6 +413,11 @@ async function saveCertidoesToDB(data) {
           console.log(`  [DB]   ✚ Nível ${nivel} criado como não informado`);
         }
       }
+    }
+
+    // 4b. Sincronizar certidões-chave quando o PDF marca o nível como válido (ex.: VI + balanço)
+    if (isSituacaoFornecedor && Object.keys(niveisResult).length > 0) {
+      await syncNivelCertidaoValidade(cliente.id, sicaf.id, niveisResult);
     }
 
     // 5. Recalcular completude e níveis.

@@ -61,6 +61,8 @@ import {
   fetchAnaliseDetalhe,
   fetchAssistentePainel,
   fetchHistoricoAnalises,
+  harmonizeCertidoesComNivel,
+  harmonizePendenciasComNivel,
   mapNiveisFromPainel,
   mapPendenciasFromAnalise,
   pendenciasPorNivel,
@@ -135,6 +137,12 @@ function nivelStatusTone(status: NivelStatus): "ok" | "warn" | "danger" | "idle"
   if (status === "vencendo" || status === "pendente") return "warn";
   if (status === "vencido") return "danger";
   return "idle";
+}
+
+function nivelHoverAlign(num: number): "start" | "center" | "end" {
+  if (num <= 2) return "start";
+  if (num >= 5) return "end";
+  return "center";
 }
 
 function AssistenteNivelHoverContent({
@@ -600,7 +608,7 @@ function AssistentePage() {
       {cnpj && (
         <>
           {/* HERO — Níveis em destaque */}
-          <Card className="mt-6 overflow-hidden border-primary/30 bg-gradient-to-br from-primary/10 via-card to-accent/40 shadow-lift">
+          <Card className="mt-6 overflow-visible border-primary/30 bg-gradient-to-br from-primary/10 via-card to-accent/40 shadow-lift">
             <CardContent className="p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
@@ -646,7 +654,7 @@ function AssistentePage() {
                 )}
               </div>
 
-              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              <div className="mt-6 grid grid-cols-2 gap-3 overflow-visible sm:grid-cols-3 lg:grid-cols-6">
                 {NIVEIS_SICAF.map((n) => {
                   const status = niveis[n.num];
                   const meta = {
@@ -661,9 +669,17 @@ function AssistentePage() {
                   }[status];
                   const visual = nivelBolinhaVisual(status, n.color);
                   const comDados = status !== "nao_cadastrado";
-                  const certidoesNivel = certidoesPorNivel(certidoes, documentos, n.roman);
-                  const pendenciasNivel = pendenciasPorNivel(pendencias, pendenciasPainel, n.roman);
                   const observacao = niveisDetail?.[n.roman]?.observacao;
+                  const certidoesNivel = harmonizeCertidoesComNivel(
+                    certidoesPorNivel(certidoes, documentos, n.roman),
+                    status,
+                    observacao,
+                  );
+                  const pendenciasNivel = harmonizePendenciasComNivel(
+                    pendenciasPorNivel(pendencias, pendenciasPainel, n.roman),
+                    status,
+                    observacao,
+                  );
                   return (
                     <div
                       key={n.num}
@@ -693,7 +709,14 @@ function AssistentePage() {
                             )}
                           </button>
                         </HoverCardTrigger>
-                        <HoverCardContent className="w-80 p-0" side="top" align="center">
+                        <HoverCardContent
+                          className="z-[200] w-80 max-w-[min(20rem,calc(100vw-2rem))] p-0 shadow-xl"
+                          side="top"
+                          align={nivelHoverAlign(n.num)}
+                          sideOffset={8}
+                          collisionPadding={16}
+                          avoidCollisions
+                        >
                           <AssistenteNivelHoverContent
                             nivel={n}
                             status={status}

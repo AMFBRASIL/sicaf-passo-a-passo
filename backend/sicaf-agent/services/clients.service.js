@@ -15,7 +15,7 @@ const {
   isSicafDisplayValid,
   enrichSicafRow,
 } = require('../utils/sicaf-status');
-const { buildNiveisDetailFromRows } = require('../utils/nivel-status');
+const { buildNiveisDetailFromRows, nivelValidadoComValidadePdf, extractValidadeFromObservacao } = require('../utils/nivel-status');
 const { fixMojibake } = require('../utils/text-encoding');
 const bcrypt = require('bcryptjs');
 
@@ -948,6 +948,16 @@ async function getCertidoesStatus(clienteId) {
     const tipoByCodigo = {};
     for (const tipo of tipos) tipoByCodigo[tipo.codigo] = tipo;
 
+    let niveisDetail = {};
+    if (sicaf?.id) {
+      try {
+        const nivelRows = await db('sicaf_niveis')
+          .where('sicaf_id', sicaf.id)
+          .select('nivel', 'habilitado', 'status', 'observacao');
+        niveisDetail = buildNiveisDetailFromRows(nivelRows);
+      } catch (_) {}
+    }
+
     const items = [];
     for (const [nivel, codigos] of Object.entries(SICAF_DOCS_BY_LEVEL)) {
       for (const codigo of codigos) {
@@ -955,6 +965,22 @@ async function getCertidoesStatus(clienteId) {
         if (!tipo) continue;
         const cert = certByTipo[tipo.id] || null;
         items.push(buildCertidaoItemFromTipo(tipo, cert, now));
+      }
+    }
+
+    // PDF Situação do Fornecedor validou o nível VI — não marcar balanço como ausente
+    if (nivelValidadoComValidadePdf(niveisDetail, 'VI')) {
+      const validadePdf = extractValidadeFromObservacao(niveisDetail.VI?.observacao);
+      for (const item of items) {
+        if (item.codigo !== 'balanco_patrimonial') continue;
+        if (item.status !== 'missing' && item.status !== 'expired') continue;
+        item.status = 'valid';
+        if (validadePdf) {
+          const [dd, mm, yyyy] = validadePdf.split('/');
+          item.dataValidade = `${yyyy}-${mm}-${dd}`;
+          const diffMs = new Date(item.dataValidade).getTime() - now.getTime();
+          item.diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        }
       }
     }
 
