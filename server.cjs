@@ -36,7 +36,7 @@ if (assetCount < 5) {
     "[cadbrasil-frontend] Build incompleto: .output/public/assets está ausente ou vazio.\n" +
       "  cd /www/wwwroot/sicaf-passo-a-passo\n" +
       "  npm install && npm run build\n" +
-      "  sudo -u www pm2 restart frontcadbrasilfornecedor --update-env",
+      "  sudo -u www pm2 restart FornecedorFrontend --update-env",
   );
   process.exit(1);
 }
