@@ -78,7 +78,7 @@ function AdminLayout() {
                   {user?.perfil?.nome ?? "Equipe"}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
-                  Central de Comando CADBRASIL
+                  Central de Licitações
                 </span>
               </div>
             </div>

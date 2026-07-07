@@ -70,17 +70,19 @@ export function AdminSidebar() {
   const groups = groupAdminMenu(visibleItems);
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-border">
-      <SidebarHeader className="border-b border-border">
+    <Sidebar collapsible="icon" className="border-r border-border bg-sidebar text-sidebar-foreground">
+      <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-2 px-2 py-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Building2 className="h-4 w-4" />
           </div>
           {!collapsed && (
-            <div className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold">CADBRASIL</span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Central de Comando
+            <div className="flex flex-col leading-tight text-white">
+              <span className="text-sm font-extrabold tracking-tight">
+                CADBRASIL | Oficial
+              </span>
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Central de Licitações
               </span>
             </div>
           )}

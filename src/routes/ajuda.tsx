@@ -76,6 +76,12 @@ const videos: VideoAjuda[] = [
     duracao: "Etapa 01 · Vídeo 05",
     youtubeId: "saruhhQWlPM",
   },
+  {
+    id: "06",
+    titulo: "Como atualizar o Balanço Nível VI do SICAF",
+    duracao: "Etapa 01 · Vídeo 06",
+    youtubeId: "qUk5KkQIJZA",
+  },
 ];
 
 function HelpPage() {

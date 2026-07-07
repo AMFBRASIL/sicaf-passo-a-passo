@@ -18,19 +18,21 @@ function WhatsAppIcon({ className }: { className?: string }) {
 
 type Props = {
   className?: string;
+  href?: string;
 };
 
-export function WhatsappFloatingButton({ className }: Props) {
+export function WhatsappFloatingButton({ className, href }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  const href = useMemo(() => {
+  const resolvedHref = useMemo(() => {
+    if (href) return href;
     const mensagem = getWhatsAppMensagemPorPath(pathname);
     return buildWhatsAppSuporteUrl(mensagem);
-  }, [pathname]);
+  }, [href, pathname]);
 
   return (
     <a
-      href={href}
+      href={resolvedHref}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Falar com suporte no WhatsApp"

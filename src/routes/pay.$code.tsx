@@ -26,6 +26,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { fetchPublicPayPage, type PublicPayGuia, type PublicPayPage } from "@/lib/public-pay-api";
 import { buildWhatsAppSuporteUrl } from "@/lib/whatsapp-suporte";
+import { WhatsappFloatingButton } from "@/components/whatsapp-floating-button";
 
 export const Route = createFileRoute("/pay/$code")({
   head: ({ params }) => ({
@@ -169,7 +170,7 @@ function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
             </div>
             <div className="leading-tight">
               <p className="text-sm font-bold tracking-tight text-slate-900">
-                CADBRASIL <span className="text-slate-400">360</span>
+                CADBRASIL <span className="font-semibold text-slate-500">| Oficial</span>
               </p>
               <p className="text-[11px] text-slate-500">Portal seguro de pagamento</p>
             </div>
@@ -409,14 +410,20 @@ function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
         </div>
 
         <footer className="mt-10 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
-          © {new Date().getFullYear()} CADBRASIL 360 · Sistema operacional para fornecedores do governo
+          © {new Date().getFullYear()} CADBRASIL | Oficial · Sistema operacional para fornecedores do governo
         </footer>
       </main>
+
+      <WhatsappFloatingButton href={whatsappUrl} />
     </div>
   );
 }
 
 function LinkInvalido({ mensagem }: { mensagem?: string }) {
+  const whatsappUrl = buildWhatsAppSuporteUrl(
+    "Olá! Estou na página de pagamento CADBRASIL e preciso de ajuda com minha cobrança.",
+  );
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <Card className="max-w-md border-slate-200 shadow-sm">
@@ -434,6 +441,8 @@ function LinkInvalido({ mensagem }: { mensagem?: string }) {
           </p>
         </CardContent>
       </Card>
+
+      <WhatsappFloatingButton href={whatsappUrl} />
     </div>
   );
 }

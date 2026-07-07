@@ -192,9 +192,13 @@ export function AppSidebar() {
             <ShieldCheck className="h-5 w-5" />
           </div>
           {!collapsed && (
-            <div className="flex flex-col leading-tight">
-              <span className="text-sm font-bold text-sidebar-foreground">CADBRASIL</span>
-              <span className="text-[11px] text-sidebar-foreground/70">Portal do Fornecedor</span>
+            <div className="flex flex-col leading-tight text-white">
+              <span className="text-sm font-extrabold tracking-tight">
+                CADBRASIL | Oficial
+              </span>
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Central de Licitações
+              </span>
             </div>
           )}
         </div>
