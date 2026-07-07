@@ -82,13 +82,42 @@ load_node() {
   log "Node: $(node -v) | npm: $(npm -v 2>/dev/null || echo '?')"
 }
 
+pm2_cmd() {
+  if [[ "$(id -un)" == "$PM2_USER" ]]; then
+    pm2 "$@"
+  else
+    sudo -u "$PM2_USER" pm2 "$@"
+  fi
+}
+
+pm2_has_process() {
+  local name="$1"
+  pm2_cmd describe "$name" >/dev/null 2>&1
+}
+
 pm2_restart() {
   local name="$1"
-  if sudo -u "$PM2_USER" pm2 describe "$name" >/dev/null 2>&1; then
-    log "PM2 restart: $name"
-    sudo -u "$PM2_USER" pm2 restart "$name" --update-env
-  else
-    log "AVISO: processo PM2 '$name' não encontrado (usuário $PM2_USER). Reinicie pelo aaPanel."
+  if pm2_has_process "$name"; then
+    log "PM2 restart: $name (usuário ${PM2_USER})"
+    pm2_cmd restart "$name" --update-env
+    return 0
+  fi
+
+  if [[ "$(id -un)" == "root" && "$PM2_USER" != "root" ]] && pm2 describe "$name" >/dev/null 2>&1; then
+    log "PM2 restart: $name (usuário root — defina DEPLOY_PM2_USER=root em scripts/deploy.env)"
+    pm2 restart "$name" --update-env
+    return 0
+  fi
+
+  log "AVISO: processo PM2 '$name' não encontrado (usuário ${PM2_USER} nem root). Reinicie pelo aaPanel."
+}
+
+pm2_save() {
+  if pm2_cmd save >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ "$(id -un)" == "root" && "$PM2_USER" != "root" ]]; then
+    pm2 save >/dev/null 2>&1 || true
   fi
 }
 
@@ -158,7 +187,7 @@ if [[ "$SKIP_FRONTEND_BUILD" != "1" ]]; then
   pm2_restart "$PM2_FRONTEND"
 fi
 
-sudo -u "$PM2_USER" pm2 save >/dev/null 2>&1 || true
+pm2_save
 
 log "── Verificação pós-deploy ──"
 if [[ -x "$SCRIPT_DIR/verify-vps.sh" ]]; then

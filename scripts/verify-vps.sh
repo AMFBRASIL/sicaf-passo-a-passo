@@ -47,6 +47,40 @@ http_code() {
   curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$1" 2>/dev/null || echo "000"
 }
 
+pm2_resolve_user() {
+  local name="$1"
+  if sudo -u "$PM2_USER" pm2 describe "$name" >/dev/null 2>&1; then
+    echo "$PM2_USER"
+    return 0
+  fi
+  if [[ "$(id -un)" == "root" ]] && pm2 describe "$name" >/dev/null 2>&1; then
+    echo "root"
+    return 0
+  fi
+  return 1
+}
+
+pm2_status_for() {
+  local user="$1"
+  local name="$2"
+  if [[ "$user" == "$(id -un)" ]]; then
+    pm2 jlist 2>/dev/null
+  else
+    sudo -u "$user" pm2 jlist 2>/dev/null
+  fi | node -e "
+    const name = process.argv[1];
+    let data = '';
+    process.stdin.on('data', c => data += c);
+    process.stdin.on('end', () => {
+      try {
+        const list = JSON.parse(data);
+        const p = list.find(x => x.name === name);
+        process.stdout.write(p?.pm2_env?.status || 'unknown');
+      } catch { process.stdout.write('unknown'); }
+    });
+  " "$name" 2>/dev/null || echo "unknown"
+}
+
 cd "$REPO_ROOT"
 
 section "Git"
@@ -122,26 +156,19 @@ fi
 
 section "PM2"
 for proc in "$PM2_FRONTEND" "$PM2_BACKEND"; do
-  if sudo -u "$PM2_USER" pm2 describe "$proc" >/dev/null 2>&1; then
-    STATUS="$(sudo -u "$PM2_USER" pm2 jlist 2>/dev/null | node -e "
-      const name = process.argv[1];
-      let data = '';
-      process.stdin.on('data', c => data += c);
-      process.stdin.on('end', () => {
-        try {
-          const list = JSON.parse(data);
-          const p = list.find(x => x.name === name);
-          process.stdout.write(p?.pm2_env?.status || 'unknown');
-        } catch { process.stdout.write('unknown'); }
-      });
-    " "$proc" 2>/dev/null || echo "unknown")"
+  PM2_OWNER=""
+  if PM2_OWNER="$(pm2_resolve_user "$proc")"; then
+    STATUS="$(pm2_status_for "$PM2_OWNER" "$proc")"
     if [[ "$STATUS" == "online" ]]; then
-      ok "PM2 ${proc}: online"
+      ok "PM2 ${proc}: online (usuário ${PM2_OWNER})"
+      if [[ "$PM2_OWNER" != "$PM2_USER" ]]; then
+        warn "Deploy usa PM2_USER=${PM2_USER}; processo está em ${PM2_OWNER} — crie scripts/deploy.env com DEPLOY_PM2_USER=${PM2_OWNER}"
+      fi
     else
-      fail "PM2 ${proc}: ${STATUS}"
+      fail "PM2 ${proc}: ${STATUS} (usuário ${PM2_OWNER})"
     fi
   else
-    fail "PM2 ${proc}: processo não encontrado (usuário ${PM2_USER})"
+    fail "PM2 ${proc}: processo não encontrado (usuário ${PM2_USER} nem root)"
   fi
 done
 
