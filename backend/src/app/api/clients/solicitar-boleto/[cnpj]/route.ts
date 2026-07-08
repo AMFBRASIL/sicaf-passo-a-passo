@@ -15,10 +15,16 @@ async function validateApiKey(request: Request): Promise<boolean> {
 }
 
 type ClientsService = {
-  gerarOuObterBoletoSicafByCnpj: (cnpj: string) => Promise<{
+  gerarOuObterBoletoSicafByCnpj: (
+    cnpj: string,
+    options?: { enviarEmail?: boolean },
+  ) => Promise<{
     ok: boolean;
     error?: string;
     possuiCadastro?: boolean;
+    emailEnviado?: boolean;
+    emailPara?: string | null;
+    emailErro?: string | null;
   }>;
 };
 
@@ -33,7 +39,7 @@ export async function GET(request: Request, context: RouteContext) {
   const { cnpj: cnpjParam } = await context.params;
   const cnpj = decodeURIComponent(cnpjParam || "");
   const svc = await getSicafAgentModule<ClientsService>("services/clients.service");
-  const result = await svc.gerarOuObterBoletoSicafByCnpj(cnpj);
+  const result = await svc.gerarOuObterBoletoSicafByCnpj(cnpj, { enviarEmail: true });
 
   if (!result.ok) {
     const status = (result.error || "").includes("inválido")

@@ -1923,6 +1923,43 @@ function pickBoletoSicafValido(pagamentos, taxasPendentes) {
   return null;
 }
 
+async function aplicarEnvioEmailSolicitarBoleto(result, { options, db, cliente, taxa }) {
+  if (!options?.enviarEmail || !result?.ok || result.pendentePagamento !== true) {
+    return result;
+  }
+
+  const urlPagamento = result.urlPagamento || result.URLpagamento || null;
+  const resultNormalizado = urlPagamento
+    ? { ...result, urlPagamento, URLpagamento: urlPagamento, linkBoleto: urlPagamento }
+    : result;
+
+  if (!urlPagamento) return resultNormalizado;
+
+  const taxaPayload = taxa || {
+    id: result.taxaId || null,
+    valor: result.valor,
+    data_vencimento: result.dataVencimento,
+    descricao: 'Taxa de cadastro/renovação SICAF — CADBRASIL',
+  };
+
+  const clienteEmail = {
+    ...cliente,
+    email: String(cliente?.responsavel_email || cliente?.email || '').trim(),
+  };
+
+  const { sendCobrancaTaxaEmail } = require('./cobranca-taxa-email.service');
+  const envio = await sendCobrancaTaxaEmail({ db, cliente: clienteEmail, taxa: taxaPayload });
+
+  return {
+    ...resultNormalizado,
+    emailEnviado: !!envio.ok,
+    emailPara: envio.para || null,
+    emailAssunto: envio.assunto || null,
+    emailSimulado: !!envio.simulado,
+    emailErro: envio.ok ? null : String(envio.error || 'Falha ao enviar e-mail'),
+  };
+}
+
 function mapBoletoSicafResposta({
   cliente,
   cnpjDigits,
@@ -1982,7 +2019,7 @@ function mapBoletoSicafResposta({
  * Por CNPJ: valida cadastro, confirma pendência de pagamento SICAF e retorna link PDF do boleto.
  * Reutiliza boleto vigente (não vencido) ou gera novo de R$ 985,00 (valor configurado no plano).
  */
-async function gerarOuObterBoletoSicafByCnpj(cnpj) {
+async function gerarOuObterBoletoSicafByCnpj(cnpj, options = {}) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
@@ -1991,10 +2028,20 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj) {
     return { ok: false, error: 'CNPJ inválido. Informe 14 dígitos.' };
   }
 
+  const emailCtx = { options, db };
+
   try {
     const cliente = await db('clientes as c')
       .whereRaw("REPLACE(REPLACE(REPLACE(c.documento, '.', ''), '/', ''), '-', '') = ?", [cnpjDigits])
-      .select('c.id', 'c.documento', 'c.razao_social', 'c.nome_fantasia', 'c.email')
+      .select(
+        'c.id',
+        'c.documento',
+        'c.razao_social',
+        'c.nome_fantasia',
+        'c.email',
+        'c.responsavel_nome',
+        'c.responsavel_email',
+      )
       .orderBy('c.id', 'desc')
       .first();
 
@@ -2044,17 +2091,20 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj) {
 
     if (aberto?.pagamento) {
       const { pagamento, taxa } = aberto;
-      return mapBoletoSicafResposta({
-        cliente,
-        cnpjDigits,
-        taxa,
-        pagamento,
-        valor: taxa?.valor ?? pagamento?.valor ?? valorTaxa,
-        reutilizado: true,
-        geradoAgora: false,
-        message: msgReutilizado,
-        ...metaPendencia,
-      });
+      return aplicarEnvioEmailSolicitarBoleto(
+        mapBoletoSicafResposta({
+          cliente,
+          cnpjDigits,
+          taxa,
+          pagamento,
+          valor: taxa?.valor ?? pagamento?.valor ?? valorTaxa,
+          reutilizado: true,
+          geradoAgora: false,
+          message: msgReutilizado,
+          ...metaPendencia,
+        }),
+        { ...emailCtx, cliente, taxa },
+      );
     }
 
     if (aberto?.taxa && !aberto.pagamento) {
@@ -2063,35 +2113,38 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj) {
         taxaId: taxa.id,
         clienteId: cliente.id,
       });
-      return {
-        ok: true,
-        possuiCadastro: true,
-        clienteId: cliente.id,
-        cnpj: cnpjDigits,
-        razaoSocial: cliente.razao_social || cliente.nome_fantasia || null,
-        pendentePagamento: true,
-        valor: taxa.valor != null ? Number(taxa.valor) : valorTaxa,
-        valorFormatado: (taxa.valor != null ? Number(taxa.valor) : valorTaxa).toLocaleString('pt-BR', {
-          style: 'currency',
-          currency: 'BRL',
-        }),
-        linkPdf: null,
-        linkBoleto: null,
-        codigoBarras: taxa.codigo_barras || null,
-        protocolo: null,
-        dataVencimento: null,
-        taxaId: taxa.id,
-        pagamentoId: null,
-        payCode,
-        urlPagamento,
-        URLpagamento: urlPagamento,
-        boletoReutilizado: true,
-        geradoAgora: false,
-        message: metaPendencia.renovacaoAntecipada
-          ? `Renovação antecipada (${metaPendencia.diasParaRenovacao} dias para vencer). Utilize a URL de pagamento online.`
-          : 'Taxa SICAF pendente localizada. Utilize a URL de pagamento online.',
-        ...metaPendencia,
-      };
+      return aplicarEnvioEmailSolicitarBoleto(
+        {
+          ok: true,
+          possuiCadastro: true,
+          clienteId: cliente.id,
+          cnpj: cnpjDigits,
+          razaoSocial: cliente.razao_social || cliente.nome_fantasia || null,
+          pendentePagamento: true,
+          valor: taxa.valor != null ? Number(taxa.valor) : valorTaxa,
+          valorFormatado: (taxa.valor != null ? Number(taxa.valor) : valorTaxa).toLocaleString('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+          }),
+          linkPdf: null,
+          linkBoleto: null,
+          codigoBarras: taxa.codigo_barras || null,
+          protocolo: null,
+          dataVencimento: null,
+          taxaId: taxa.id,
+          pagamentoId: null,
+          payCode,
+          urlPagamento,
+          URLpagamento: urlPagamento,
+          boletoReutilizado: true,
+          geradoAgora: false,
+          message: metaPendencia.renovacaoAntecipada
+            ? `Renovação antecipada (${metaPendencia.diasParaRenovacao} dias para vencer). Utilize a URL de pagamento online.`
+            : 'Taxa SICAF pendente localizada. Utilize a URL de pagamento online.',
+          ...metaPendencia,
+        },
+        { ...emailCtx, cliente, taxa },
+      );
     }
 
     const dataVencimento = getSicafBoletoVencimentoEmDias(5);
@@ -2150,17 +2203,21 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj) {
     if (!pagamento.gn_pdf && !pagamento.gn_link && !pagamento.link_boleto) {
       const taxaIdFinal = taxaId || pagamento.origem_id || geracao.dados?.taxaId;
       if (taxaIdFinal) {
-        return mapBoletoSicafResposta({
-          cliente,
-          cnpjDigits,
-          taxa: taxa || { id: taxaIdFinal, valor: geracao.dados?.valor },
-          pagamento,
-          valor: geracao.dados?.valor ?? valorTaxa,
-          reutilizado: false,
-          geradoAgora: true,
-          message: msgGerado,
-          ...metaPendencia,
-        });
+        const taxaFinal = taxa || { id: taxaIdFinal, valor: geracao.dados?.valor };
+        return aplicarEnvioEmailSolicitarBoleto(
+          mapBoletoSicafResposta({
+            cliente,
+            cnpjDigits,
+            taxa: taxaFinal,
+            pagamento,
+            valor: geracao.dados?.valor ?? valorTaxa,
+            reutilizado: false,
+            geradoAgora: true,
+            message: msgGerado,
+            ...metaPendencia,
+          }),
+          { ...emailCtx, cliente, taxa: taxaFinal },
+        );
       }
       return {
         ok: false,
@@ -2173,17 +2230,20 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj) {
       };
     }
 
-    return mapBoletoSicafResposta({
-      cliente,
-      cnpjDigits,
-      taxa,
-      pagamento,
-      valor: geracao.dados?.valor ?? valorTaxa,
-      reutilizado: false,
-      geradoAgora: true,
-      message: msgGerado,
-      ...metaPendencia,
-    });
+    return aplicarEnvioEmailSolicitarBoleto(
+      mapBoletoSicafResposta({
+        cliente,
+        cnpjDigits,
+        taxa,
+        pagamento,
+        valor: geracao.dados?.valor ?? valorTaxa,
+        reutilizado: false,
+        geradoAgora: true,
+        message: msgGerado,
+        ...metaPendencia,
+      }),
+      { ...emailCtx, cliente, taxa },
+    );
   } catch (e) {
     console.error('[Clients] Erro gerarOuObterBoletoSicafByCnpj:', e.message);
     return { ok: false, error: 'Erro interno no servidor' };
