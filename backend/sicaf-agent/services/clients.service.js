@@ -19,6 +19,10 @@ const { buildNiveisDetailFromRows, nivelValidadoComValidadePdf, extractValidadeF
 const { fixMojibake } = require('../utils/text-encoding');
 const bcrypt = require('bcryptjs');
 
+/** Janela de renovação antecipada SICAF (dias restantes de validade). */
+const RENOVACAO_ANTECIPADA_MIN_DIAS = 30;
+const RENOVACAO_ANTECIPADA_MAX_DIAS = 60;
+
 const CLIENT_TEXT_FIELDS = [
   'razao_social',
   'nome_fantasia',
@@ -1316,7 +1320,9 @@ async function createClient(data, usuarioId) {
       console.error('[Clients] Erro ao criar contrato digital (não bloqueante):', contratoErr.message);
     }
 
-    console.log(`[Clients] Novo cliente cadastrado: id=${clienteId}, SICAF id=${sicafId}, contrato=${contratoId}, doc=${data.documento}`);
+    console.log(
+      `[Clients] Novo cliente cadastrado: id=${clienteId}, SICAF id=${sicafId}, contrato=${contratoId}, doc=${data.documento}`,
+    );
 
     return {
       ok: true,
@@ -1536,7 +1542,11 @@ async function consultPendingBoletosByCnpj(cnpj) {
         dataValidade,
         diasParaVencer,
         statusValidade,
-        recomendacaoSolicitarBoleto: diasParaVencer != null ? diasParaVencer <= 30 : false,
+        recomendacaoSolicitarBoleto:
+          diasParaVencer != null
+            ? diasParaVencer <= RENOVACAO_ANTECIPADA_MAX_DIAS &&
+              diasParaVencer >= RENOVACAO_ANTECIPADA_MIN_DIAS
+            : false,
         completude: sicafCadastro.completude != null ? Number(sicafCadastro.completude) : null,
       };
     }
@@ -1748,10 +1758,80 @@ function isBoletoSicafReutilizavel(pg, taxa) {
   if (!pg) return false;
   if (String(pg.tipo || '').toLowerCase() !== 'boleto') return false;
   if (isPaidFinanceStatus(pg.status) || isPaidFinanceStatus(taxa?.status)) return false;
-  const pdf = pg.gn_pdf || null;
-  if (!pdf) return false;
   if (isOverdueFinance(pg.status, pg.data_vencimento)) return false;
+  const pdf = pg.gn_pdf || pg.link_pdf || null;
+  const link = pg.gn_link || pg.link_boleto || null;
+  if (!pdf && !link) return false;
   return true;
+}
+
+/** Vencimento padrão para boletos gerados via API externa (hoje + N dias). */
+function getSicafBoletoVencimentoEmDias(dias = 5) {
+  const n = Number(dias);
+  const offset = Number.isFinite(n) && n > 0 ? Math.floor(n) : 5;
+  const due = new Date();
+  due.setDate(due.getDate() + offset);
+  return due.toISOString().slice(0, 10);
+}
+
+function buildPayFieldsForTaxa({ taxaId, pagamentoId, clienteId }) {
+  const { buildPayLink, buildPayCode } = require('./cobranca-taxa.service');
+  const payCode = buildPayCode({
+    taxaId: taxaId || undefined,
+    pagamentoId: !taxaId ? pagamentoId || undefined : undefined,
+    clienteId: !taxaId && !pagamentoId ? clienteId || undefined : undefined,
+  });
+  const urlPagamento = buildPayLink({
+    taxaId: taxaId || undefined,
+    pagamentoId: !taxaId ? pagamentoId || undefined : undefined,
+    clienteId: !taxaId && !pagamentoId ? clienteId || undefined : undefined,
+  });
+  return { payCode, urlPagamento };
+}
+
+/** Janela de renovação antecipada: SICAF vigente com 30–60 dias para vencer. */
+async function getJanelaRenovacaoAntecipada(db, clienteId) {
+  let sicaf = null;
+  try {
+    sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
+  } catch (_) {}
+
+  if (!sicaf) return { elegivel: false };
+
+  const displayStatus = resolveSicafDisplayStatus(sicaf.status, sicaf.data_validade, true);
+  const vigente = ['Ativo', 'Vencendo'].includes(displayStatus);
+  if (!vigente) return { elegivel: false, diasRestantes: calcDaysRemaining(sicaf.data_validade) };
+
+  const diasRestantes = calcDaysRemaining(sicaf.data_validade);
+  if (diasRestantes === null) return { elegivel: false };
+
+  if (
+    diasRestantes >= RENOVACAO_ANTECIPADA_MIN_DIAS &&
+    diasRestantes <= RENOVACAO_ANTECIPADA_MAX_DIAS
+  ) {
+    const anoAtual = new Date().getFullYear();
+    return {
+      elegivel: true,
+      diasRestantes,
+      dataValidade: sicaf.data_validade || null,
+      anoReferencia: anoAtual + 1,
+      sicafStatus: displayStatus,
+    };
+  }
+
+  return { elegivel: false, diasRestantes };
+}
+
+function buildPendenciaRenovacaoAntecipada(janela) {
+  return {
+    pendente: true,
+    taxasPendentes: [],
+    anoReferencia: janela.anoReferencia,
+    motivo: 'renovacao_antecipada_30_60',
+    diasParaRenovacao: janela.diasRestantes,
+    sicafValidoAte: janela.dataValidade,
+    renovacaoAntecipada: true,
+  };
 }
 
 async function resolvePendenciaPagamentoSicaf(db, clienteId) {
@@ -1778,7 +1858,11 @@ async function resolvePendenciaPagamentoSicaf(db, clienteId) {
     (t) => Number(t.ano_referencia) === anoAtual && isPaidFinanceStatus(t.status),
   );
   if (pagoAnoAtual) {
-    return { pendente: false, taxasPendentes: [], anoReferencia: anoAtual };
+    const janela = await getJanelaRenovacaoAntecipada(db, clienteId);
+    if (janela.elegivel) {
+      return buildPendenciaRenovacaoAntecipada(janela);
+    }
+    return { pendente: false, taxasPendentes: [], anoReferencia: anoAtual, diasParaRenovacao: janela.diasRestantes ?? null };
   }
 
   let sicaf = null;
@@ -1795,7 +1879,12 @@ async function resolvePendenciaPagamentoSicaf(db, clienteId) {
     return { pendente: true, taxasPendentes: [], anoReferencia: anoAtual, motivo: 'taxa_nao_paga' };
   }
 
-  return { pendente: false, taxasPendentes: [], anoReferencia: anoAtual };
+  const janela = await getJanelaRenovacaoAntecipada(db, clienteId);
+  if (janela.elegivel) {
+    return buildPendenciaRenovacaoAntecipada(janela);
+  }
+
+  return { pendente: false, taxasPendentes: [], anoReferencia: anoAtual, diasParaRenovacao: janela.diasRestantes ?? null };
 }
 
 function pickBoletoSicafValido(pagamentos, taxasPendentes) {
@@ -1804,6 +1893,7 @@ function pickBoletoSicafValido(pagamentos, taxasPendentes) {
 
   const candidatos = pagamentos
     .filter((p) => p.origem === 'sicaf' && taxaIds.has(p.origem_id))
+    .filter((p) => String(p.tipo || '').toLowerCase() === 'boleto')
     .sort((a, b) => {
       const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
       const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -1816,6 +1906,20 @@ function pickBoletoSicafValido(pagamentos, taxasPendentes) {
       return { pagamento: pg, taxa };
     }
   }
+
+  for (const pg of candidatos) {
+    const taxa = taxaById[pg.origem_id];
+    if (isPaidFinanceStatus(pg.status) || isPaidFinanceStatus(taxa?.status)) continue;
+    if (isOverdueFinance(pg.status, pg.data_vencimento)) continue;
+    if (isPendingFinanceStatus(pg.status)) {
+      return { pagamento: pg, taxa };
+    }
+  }
+
+  if (taxasPendentes.length) {
+    return { pagamento: null, taxa: taxasPendentes[0] };
+  }
+
   return null;
 }
 
@@ -1829,9 +1933,20 @@ function mapBoletoSicafResposta({
   geradoAgora,
   pendentePagamento,
   message,
+  renovacaoAntecipada,
+  diasParaRenovacao,
+  sicafValidoAte,
 }) {
   const pg = pagamento || {};
   const valorNum = valor != null ? Number(valor) : pg.valor != null ? Number(pg.valor) : null;
+  const taxaId = taxa?.id || pg.origem_id || null;
+  const pagamentoId = pg.id || null;
+  const { payCode, urlPagamento } = buildPayFieldsForTaxa({
+    taxaId,
+    pagamentoId,
+    clienteId: cliente?.id,
+  });
+
   return {
     ok: true,
     possuiCadastro: true,
@@ -1849,10 +1964,16 @@ function mapBoletoSicafResposta({
     codigoBarras: pg.gn_barcode || pg.barcode || null,
     protocolo: pg.protocolo || null,
     dataVencimento: pg.data_vencimento || null,
-    taxaId: taxa?.id || pg.origem_id || null,
-    pagamentoId: pg.id || null,
+    taxaId,
+    pagamentoId,
+    payCode,
+    urlPagamento,
+    URLpagamento: urlPagamento,
     boletoReutilizado: !!reutilizado,
     geradoAgora: !!geradoAgora,
+    renovacaoAntecipada: !!renovacaoAntecipada,
+    diasParaRenovacao: diasParaRenovacao ?? null,
+    sicafValidoAte: sicafValidoAte || null,
     message: message || null,
   };
 }
@@ -1887,7 +2008,18 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj) {
     }
 
     const pendencia = await resolvePendenciaPagamentoSicaf(db, cliente.id);
+    const metaPendencia = {
+      renovacaoAntecipada: !!pendencia.renovacaoAntecipada,
+      diasParaRenovacao: pendencia.diasParaRenovacao ?? null,
+      sicafValidoAte: pendencia.sicafValidoAte || null,
+    };
+
     if (!pendencia.pendente) {
+      const dias = pendencia.diasParaRenovacao;
+      const msgRenovacao =
+        dias != null && dias > RENOVACAO_ANTECIPADA_MAX_DIAS
+          ? `Cliente em dia. Renovação antecipada disponível entre ${RENOVACAO_ANTECIPADA_MIN_DIAS} e ${RENOVACAO_ANTECIPADA_MAX_DIAS} dias antes do vencimento (${dias} dias restantes).`
+          : 'Cliente sem pendência de pagamento da taxa SICAF.';
       return {
         ok: true,
         possuiCadastro: true,
@@ -1895,35 +2027,81 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj) {
         cnpj: cnpjDigits,
         razaoSocial: cliente.razao_social || cliente.nome_fantasia || null,
         pendentePagamento: false,
+        diasParaRenovacao: dias ?? null,
         linkPdf: null,
         linkBoleto: null,
-        message: 'Cliente sem pendência de pagamento da taxa SICAF.',
+        message: msgRenovacao,
       };
     }
 
     const valorTaxa = await require('./planos.service').resolveValorTaxaSicaf(null);
     const allPagamentos = await loadAllPagamentosList(db, cliente.id);
-    const reutilizavel = pickBoletoSicafValido(allPagamentos, pendencia.taxasPendentes);
+    const aberto = pickBoletoSicafValido(allPagamentos, pendencia.taxasPendentes);
 
-    if (reutilizavel) {
-      const { pagamento, taxa } = reutilizavel;
+    const msgReutilizado = metaPendencia.renovacaoAntecipada
+      ? `Renovação antecipada (${metaPendencia.diasParaRenovacao} dias para vencer o SICAF). Boleto localizado.`
+      : 'Boleto ou pagamento pendente localizado. URL de pagamento online retornada.';
+
+    if (aberto?.pagamento) {
+      const { pagamento, taxa } = aberto;
       return mapBoletoSicafResposta({
         cliente,
         cnpjDigits,
         taxa,
         pagamento,
-        valor: taxa?.valor ?? valorTaxa,
+        valor: taxa?.valor ?? pagamento?.valor ?? valorTaxa,
         reutilizado: true,
         geradoAgora: false,
-        message: 'Boleto vigente localizado. Link PDF retornado.',
+        message: msgReutilizado,
+        ...metaPendencia,
       });
     }
 
+    if (aberto?.taxa && !aberto.pagamento) {
+      const taxa = aberto.taxa;
+      const { payCode, urlPagamento } = buildPayFieldsForTaxa({
+        taxaId: taxa.id,
+        clienteId: cliente.id,
+      });
+      return {
+        ok: true,
+        possuiCadastro: true,
+        clienteId: cliente.id,
+        cnpj: cnpjDigits,
+        razaoSocial: cliente.razao_social || cliente.nome_fantasia || null,
+        pendentePagamento: true,
+        valor: taxa.valor != null ? Number(taxa.valor) : valorTaxa,
+        valorFormatado: (taxa.valor != null ? Number(taxa.valor) : valorTaxa).toLocaleString('pt-BR', {
+          style: 'currency',
+          currency: 'BRL',
+        }),
+        linkPdf: null,
+        linkBoleto: null,
+        codigoBarras: taxa.codigo_barras || null,
+        protocolo: null,
+        dataVencimento: null,
+        taxaId: taxa.id,
+        pagamentoId: null,
+        payCode,
+        urlPagamento,
+        URLpagamento: urlPagamento,
+        boletoReutilizado: true,
+        geradoAgora: false,
+        message: metaPendencia.renovacaoAntecipada
+          ? `Renovação antecipada (${metaPendencia.diasParaRenovacao} dias para vencer). Utilize a URL de pagamento online.`
+          : 'Taxa SICAF pendente localizada. Utilize a URL de pagamento online.',
+        ...metaPendencia,
+      };
+    }
+
+    const dataVencimento = getSicafBoletoVencimentoEmDias(5);
     const sicafTaxaService = require('./sicaf-taxa.service');
     const geracao = await sicafTaxaService.gerarTaxa({
       clienteId: cliente.id,
       ano: pendencia.anoReferencia || new Date().getFullYear(),
       formaPagamento: 'boleto',
+      dataVencimento,
+      allowCustomDueDate: true,
     });
 
     if (!geracao.ok) {
@@ -1965,7 +2143,25 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj) {
       ? pendencia.taxasPendentes.find((t) => t.id === taxaId) || { id: taxaId, valor: geracao.dados?.valor }
       : null;
 
-    if (!pagamento.gn_pdf) {
+    const msgGerado = metaPendencia.renovacaoAntecipada
+      ? `Boleto de renovação antecipada gerado (${metaPendencia.diasParaRenovacao} dias para vencer o SICAF). Vencimento do boleto em 5 dias.`
+      : geracao.message || 'Novo boleto SICAF gerado com vencimento em 5 dias.';
+
+    if (!pagamento.gn_pdf && !pagamento.gn_link && !pagamento.link_boleto) {
+      const taxaIdFinal = taxaId || pagamento.origem_id || geracao.dados?.taxaId;
+      if (taxaIdFinal) {
+        return mapBoletoSicafResposta({
+          cliente,
+          cnpjDigits,
+          taxa: taxa || { id: taxaIdFinal, valor: geracao.dados?.valor },
+          pagamento,
+          valor: geracao.dados?.valor ?? valorTaxa,
+          reutilizado: false,
+          geradoAgora: true,
+          message: msgGerado,
+          ...metaPendencia,
+        });
+      }
       return {
         ok: false,
         possuiCadastro: true,
@@ -1985,7 +2181,8 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj) {
       valor: geracao.dados?.valor ?? valorTaxa,
       reutilizado: false,
       geradoAgora: true,
-      message: geracao.message || 'Novo boleto SICAF gerado com sucesso.',
+      message: msgGerado,
+      ...metaPendencia,
     });
   } catch (e) {
     console.error('[Clients] Erro gerarOuObterBoletoSicafByCnpj:', e.message);

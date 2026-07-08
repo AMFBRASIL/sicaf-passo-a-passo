@@ -169,6 +169,7 @@ function RootLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
   const isPublicPay = pathname === "/pay" || pathname.startsWith("/pay/");
+  const isOnboarding = pathname === "/onboarding" || pathname.startsWith("/onboarding/");
   const isAuth =
     pathname === "/auth" ||
     pathname === "/login" ||
@@ -177,7 +178,7 @@ function RootLayout() {
   const isIframeChat =
     pathname === "/sicaf-assistant-chat" || pathname === "/sicaf-assistant";
 
-  if (isAdmin || isAuth || isIframeChat || isPublicPay) {
+  if (isAdmin || isAuth || isIframeChat || isPublicPay || isOnboarding) {
     return (
       <ThemeProvider>
         <ClientOnly

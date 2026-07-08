@@ -4,7 +4,7 @@ import { readAuthToken } from "@/lib/auth-cookie";
 import { handleSessionExpired, invalidateAuthSession } from "@/lib/auth-session";
 import { isTokenExpired } from "@/lib/auth-token";
 
-const PUBLIC_PREFIXES = ["/auth", "/pay", "/sicaf-assistant", "/sicaf-assistant-chat"] as const;
+const PUBLIC_PREFIXES = ["/auth", "/pay", "/onboarding", "/sicaf-assistant", "/sicaf-assistant-chat"] as const;
 
 const PUBLIC_EXACT = new Set(["/login", "/esqueci-senha"]);
 
