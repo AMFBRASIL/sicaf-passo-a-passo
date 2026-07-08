@@ -418,13 +418,6 @@ async function enrichRespostaPagamentoPendente(base, cnpjDigits, row, sicafValid
     ? {
         totalPendentes,
         valorTotalPendente: valorPendente,
-        sicafPendentes: (pend.boletos?.sicafPendentes || []).map((item) => ({
-          valor: item.valor ?? null,
-          status: item.status || null,
-          dataVencimento: item.dataVencimento || null,
-          linkBoleto: item.linkBoleto || null,
-          pdfBoleto: item.pdfBoleto || null,
-        })),
         manutencaoPendentes: (pend.boletos?.manutencaoPendentes || []).map((item) => ({
           valor: item.valor ?? null,
           status: item.status || null,
