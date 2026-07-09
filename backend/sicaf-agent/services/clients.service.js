@@ -1763,18 +1763,17 @@ function getSicafBoletoVencimentoEmDias(dias = 5) {
   return due.toISOString().slice(0, 10);
 }
 
-function buildPayFieldsForTaxa({ taxaId, pagamentoId, clienteId }) {
+function buildPayFieldsForTaxa({ taxaId, pagamentoId, clienteId, preferPagamentoLink }) {
   const { buildPayLink, buildPayCode } = require('./cobranca-taxa.service');
-  const payCode = buildPayCode({
-    taxaId: taxaId || undefined,
-    pagamentoId: !taxaId ? pagamentoId || undefined : undefined,
-    clienteId: !taxaId && !pagamentoId ? clienteId || undefined : undefined,
-  });
-  const urlPagamento = buildPayLink({
-    taxaId: taxaId || undefined,
-    pagamentoId: !taxaId ? pagamentoId || undefined : undefined,
-    clienteId: !taxaId && !pagamentoId ? clienteId || undefined : undefined,
-  });
+  const opts = preferPagamentoLink && pagamentoId
+    ? { pagamentoId, clienteId: clienteId || undefined }
+    : {
+      taxaId: taxaId || undefined,
+      pagamentoId: !taxaId ? pagamentoId || undefined : undefined,
+      clienteId: !taxaId && !pagamentoId ? clienteId || undefined : undefined,
+    };
+  const payCode = buildPayCode(opts);
+  const urlPagamento = buildPayLink(opts);
   return { payCode, urlPagamento };
 }
 
@@ -1906,6 +1905,99 @@ function pickBoletoSicafValido(pagamentos, taxasPendentes) {
   return null;
 }
 
+async function consultarStatusBoletoProvedor(pg) {
+  const chargeId = pg?.provider_charge_id || pg?.gn_charge_id || null;
+  if (!chargeId) return null;
+
+  try {
+    const gerencianetService = require('./gerencianet.service');
+    const gnData = await gerencianetService.consultarCobranca(Number(chargeId));
+    const bStatus = String(gnData?.data?.status || gnData?.status || '').toLowerCase();
+    if (['paid', 'settled', 'pago', 'aprovado', 'aprovada'].includes(bStatus)) return 'pago';
+    if (['unpaid', 'expired', 'expirado', 'vencido', 'overdue'].includes(bStatus)) return 'expirado';
+    if (['canceled', 'cancelled', 'refunded', 'cancelado', 'cancelada'].includes(bStatus)) return 'cancelado';
+    return 'aguardando';
+  } catch (e) {
+    console.warn('[Clients] Falha ao consultar boleto no provedor:', e.message);
+    return null;
+  }
+}
+
+async function sincronizarStatusPagamentoProvedor(db, pg, providerStatus) {
+  if (!db || !pg?.id || !providerStatus || providerStatus === pg.status) return;
+  const update = { status: providerStatus };
+  try {
+    await db('pagamentos').where('id', pg.id).update(update);
+  } catch (_) {}
+  try {
+    await db('pagamentos_gerencianet').where('id', pg.id).update(update);
+  } catch (_) {}
+}
+
+async function isPagamentoBoletoSicafUtilizavelAsync(pg, taxa, db) {
+  if (!isPagamentoBoletoSicafUtilizavel(pg, taxa)) return false;
+
+  const providerStatus = await consultarStatusBoletoProvedor(pg);
+  if (!providerStatus) return true;
+
+  if (providerStatus === 'pago' || providerStatus === 'expirado' || providerStatus === 'cancelado') {
+    await sincronizarStatusPagamentoProvedor(db, pg, providerStatus);
+    return false;
+  }
+
+  return true;
+}
+
+async function pickBoletoSicafValidoAsync(pagamentos, taxasPendentes, db) {
+  const taxaIds = new Set(taxasPendentes.map((t) => t.id));
+  const taxaById = Object.fromEntries(taxasPendentes.map((t) => [t.id, t]));
+
+  const candidatos = pagamentos
+    .filter((p) => p.origem === 'sicaf' && taxaIds.has(p.origem_id))
+    .filter((p) => String(p.tipo || '').toLowerCase() === 'boleto')
+    .sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+
+  for (const pg of candidatos) {
+    const taxa = taxaById[pg.origem_id];
+    if (!(await isPagamentoBoletoSicafUtilizavelAsync(pg, taxa, db))) continue;
+    if (isBoletoSicafReutilizavel(pg, taxa)) {
+      return { pagamento: pg, taxa };
+    }
+  }
+
+  for (const pg of candidatos) {
+    const taxa = taxaById[pg.origem_id];
+    if (await isPagamentoBoletoSicafUtilizavelAsync(pg, taxa, db)) {
+      return { pagamento: pg, taxa };
+    }
+  }
+
+  return null;
+}
+
+async function marcarBoletosSicafSubstituidos(db, taxaId, novoPagamentoId) {
+  if (!db || !taxaId || !novoPagamentoId) return;
+  const substituivel = ['aguardando', 'gerado', 'expirado', 'vencido', 'pendente'];
+  try {
+    await db('pagamentos')
+      .where({ origem: 'sicaf', origem_id: taxaId, tipo: 'boleto' })
+      .whereNot('id', novoPagamentoId)
+      .whereIn('status', substituivel)
+      .update({ status: 'expirado' });
+  } catch (_) {}
+  try {
+    await db('pagamentos_gerencianet')
+      .where({ origem: 'sicaf', origem_id: taxaId, tipo: 'boleto' })
+      .whereNot('id', novoPagamentoId)
+      .whereIn('status', substituivel)
+      .update({ status: 'expirado' });
+  } catch (_) {}
+}
+
 function temBoletoSicafVencido(pagamentos, taxasPendentes) {
   const taxaIds = new Set(taxasPendentes.map((t) => t.id));
   return pagamentos.some(
@@ -1967,6 +2059,7 @@ function mapBoletoSicafResposta({
   renovacaoAntecipada,
   diasParaRenovacao,
   sicafValidoAte,
+  usarLinkPagamentoPorId,
 }) {
   const pg = pagamento || {};
   const valorNum = valor != null ? Number(valor) : pg.valor != null ? Number(pg.valor) : null;
@@ -1976,6 +2069,7 @@ function mapBoletoSicafResposta({
     taxaId,
     pagamentoId,
     clienteId: cliente?.id,
+    preferPagamentoLink: !!usarLinkPagamentoPorId,
   });
 
   return {
@@ -2077,7 +2171,7 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj, options = {}) {
 
     const valorTaxa = await require('./planos.service').resolveValorTaxaSicaf(null);
     const allPagamentos = await loadAllPagamentosList(db, cliente.id);
-    const aberto = pickBoletoSicafValido(allPagamentos, pendencia.taxasPendentes);
+    const aberto = await pickBoletoSicafValidoAsync(allPagamentos, pendencia.taxasPendentes, db);
 
     const msgReutilizado = metaPendencia.renovacaoAntecipada
       ? `Renovação antecipada (${metaPendencia.diasParaRenovacao} dias para vencer o SICAF). Boleto localizado.`
@@ -2136,6 +2230,10 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj, options = {}) {
       } catch (_) {}
     }
 
+    if (pagamentoGerado.pagamentoId && taxaId) {
+      await marcarBoletosSicafSubstituidos(db, taxaId, pagamentoGerado.pagamentoId);
+    }
+
     const pagamento = pagamentoDb || {
       id: pagamentoGerado.pagamentoId || null,
       origem_id: taxaId,
@@ -2171,6 +2269,7 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj, options = {}) {
             reutilizado: false,
             geradoAgora: true,
             message: msgGerado,
+            usarLinkPagamentoPorId: true,
             ...metaPendencia,
           }),
           { ...emailCtx, cliente, taxa: taxaFinal },
@@ -2197,6 +2296,7 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj, options = {}) {
         reutilizado: false,
         geradoAgora: true,
         message: msgGerado,
+        usarLinkPagamentoPorId: true,
         ...metaPendencia,
       }),
       { ...emailCtx, cliente, taxa },
@@ -2632,14 +2732,16 @@ function isPaidFinanceStatus(status) {
 function isPendingFinanceStatus(status) {
   const s = normPayStatus(status);
   if (isPaidFinanceStatus(s)) return false;
-  if (['cancelado', 'cancelada', 'estornado', 'erro', 'removido'].includes(s)) return false;
+  if (['cancelado', 'cancelada', 'estornado', 'erro', 'removido', 'expirado', 'expired', 'vencido', 'overdue'].includes(s)) {
+    return false;
+  }
   return true;
 }
 
 function isOverdueFinance(status, dueDate) {
   if (isPaidFinanceStatus(status)) return false;
   const s = normPayStatus(status);
-  if (['vencido', 'atrasado', 'overdue'].includes(s)) return true;
+  if (['vencido', 'atrasado', 'overdue', 'expirado', 'expired'].includes(s)) return true;
   const due = financeDueYmd(dueDate);
   if (!due) return false;
   const today = todayYmdBrazil();
@@ -2649,13 +2751,17 @@ function isOverdueFinance(status, dueDate) {
 function financeDueYmd(dueDate) {
   if (!dueDate) return null;
   const raw = String(dueDate).trim();
+  if (raw.includes('T')) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    }
+  }
   const iso = raw.slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return null;
-  const parts = d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }).split('-');
-  if (parts.length !== 3) return null;
-  return parts.join('-');
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 }
 
 function todayYmdBrazil() {
