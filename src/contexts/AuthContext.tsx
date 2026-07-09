@@ -9,12 +9,7 @@ import {
 } from "react";
 import { apiFetch } from "@/lib/api-fetch";
 import { persistAuthToken, readAuthToken } from "@/lib/auth-cookie";
-import {
-  handleSessionExpired,
-  invalidateAuthSession,
-  redirectToAuth,
-  registerAuthStateSync,
-} from "@/lib/auth-session";
+import { handleSessionExpired, invalidateAuthSession, redirectToAuth, registerAuthStateSync } from "@/lib/auth-session";
 import { isTokenExpired } from "@/lib/auth-token";
 import { isPortalRouteProtected } from "@/lib/require-portal-auth";
 
@@ -92,6 +87,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setIsLoading(false);
     setSessionChecked(true);
+    if (typeof window !== "undefined" && isPortalRouteProtected(window.location.pathname)) {
+      redirectToAuth(window.location.pathname);
+    }
   }, []);
 
   const verifyToken = useCallback(async (t: string, options?: { redirectOnFail?: boolean }) => {

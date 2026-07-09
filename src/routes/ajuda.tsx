@@ -82,6 +82,12 @@ const videos: VideoAjuda[] = [
     duracao: "Etapa 01 · Vídeo 06",
     youtubeId: "qUk5KkQIJZA",
   },
+  {
+    id: "07",
+    titulo: "Atualizar Níveis SICAF com Assistente",
+    duracao: "Etapa 01 · Vídeo 07",
+    youtubeId: "zFRPSquKXyk",
+  },
 ];
 
 function HelpPage() {

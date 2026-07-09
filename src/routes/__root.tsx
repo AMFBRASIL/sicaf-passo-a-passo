@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
-  Navigate,
   createRootRouteWithContext,
   useRouter,
   useRouterState,
@@ -220,6 +219,11 @@ function AuthenticatedShell({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const whatsappUrl = buildWhatsAppSuporteUrl(getWhatsAppMensagemPorPath(pathname));
 
+  useEffect(() => {
+    if (!sessionChecked || isLoading || isAuthenticated) return;
+    redirectToAuth(pathname);
+  }, [sessionChecked, isLoading, isAuthenticated, pathname]);
+
   if (!sessionChecked || isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -230,11 +234,9 @@ function AuthenticatedShell({
 
   if (!isAuthenticated) {
     return (
-      <Navigate
-        to="/auth"
-        replace
-        search={pathname !== "/" ? { from: pathname } : undefined}
-      />
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Redirecionando para o login...</p>
+      </div>
     );
   }
 

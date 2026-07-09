@@ -26,6 +26,6 @@ export function getTokenExpiresInSec(token: string): number | null {
 export function isTokenExpired(token: string | null | undefined, skewSec = 30): boolean {
   if (!token) return true;
   const left = getTokenExpiresInSec(token);
-  if (left === null) return false;
+  if (left === null) return true;
   return left <= skewSec;
 }

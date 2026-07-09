@@ -285,9 +285,10 @@ function AuthPageContent({
               </form>
 
               <p className="mt-6 text-center text-[11px] text-white/40">
-                <Link to="/" className="hover:text-white/70">
-                  Voltar ao início
-                </Link>
+                Precisa de ajuda?{" "}
+                <a href="https://fornecedor.cadbrasil.com.br/ajuda" className="hover:text-white/70">
+                  Central de Ajuda
+                </a>
               </p>
             </div>
           </div>
