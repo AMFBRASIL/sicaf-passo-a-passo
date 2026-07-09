@@ -388,8 +388,6 @@ export function harmonizePendenciasComNivel(
   return [];
 }
 
-const ROMAN_TO_NUM: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
-
 function extractRomanFromPendenciaNivel(nivel: string): string | null {
   const raw = nivel.replace(/^nível\s*/i, "").trim().toUpperCase();
   if (["I", "II", "III", "IV", "V", "VI"].includes(raw)) return raw;
