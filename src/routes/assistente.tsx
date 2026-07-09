@@ -65,6 +65,7 @@ import {
   harmonizePendenciasComNivel,
   mapNiveisFromPainel,
   mapPendenciasFromAnalise,
+  filterPendenciasAssistenteVisiveis,
   pendenciasPorNivel,
   type AssistenteHistoricoItem,
   type AssistentePendencia,
@@ -455,7 +456,12 @@ function AssistentePage() {
     setUltimaMensagem(res.historico.resumo || "Análise histórica carregada.");
   };
 
-  const temPendencias = pendencias.length > 0;
+  const pendenciasVisiveis = useMemo(
+    () => filterPendenciasAssistenteVisiveis(pendencias, pendenciasPainel, niveis, niveisDetail),
+    [pendencias, pendenciasPainel, niveis, niveisDetail],
+  );
+
+  const temPendencias = pendenciasVisiveis.length > 0;
   const niveisAtivos = countNiveisValidadosUi(niveis);
   const todosNiveisValidados = todosNiveisValidadosUi(niveis);
 
@@ -880,7 +886,7 @@ function AssistentePage() {
                             <div className="text-sm">
                               <p className="font-semibold">
                                 {temPendencias
-                                  ? `Encontramos ${pendencias.length} ponto(s) de atenção.`
+                                  ? `Encontramos ${pendenciasVisiveis.length} ponto(s) de atenção.`
                                   : "Nenhuma pendência crítica — níveis em ordem."}
                               </p>
                               <p className="text-xs text-muted-foreground">
@@ -967,12 +973,12 @@ function AssistentePage() {
                     Pendências detectadas
                   </span>
                   <Badge className={temPendencias ? "bg-danger text-danger-foreground" : "bg-muted text-muted-foreground"}>
-                    {pendencias.length}
+                    {pendenciasVisiveis.length}
                   </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {pendencias.length === 0 ? (
+                {pendenciasVisiveis.length === 0 ? (
                   <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed bg-muted/20 px-4 py-10 text-center">
                     <Sparkles className="h-8 w-8 text-muted-foreground/60" />
                     <p className="text-sm font-medium text-muted-foreground">
@@ -988,7 +994,7 @@ function AssistentePage() {
                   </div>
                 ) : (
                   <ul className="space-y-3">
-                    {pendencias.map((p) => {
+                    {pendenciasVisiveis.map((p) => {
                       const meta = severidadeMeta[p.severidade];
                       return (
                         <li

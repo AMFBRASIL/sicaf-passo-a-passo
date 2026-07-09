@@ -367,7 +367,7 @@ export function harmonizeCertidoesComNivel(
   });
 }
 
-/** Remove pendências falsas quando o PDF já validou o nível com validade futura. */
+/** Remove pendências de níveis já validados pelo assistente (PDF / cadastro). */
 export function harmonizePendenciasComNivel(
   pendencias: PendenciaNivelResumo[],
   nivelStatus: NivelStatus,
@@ -376,31 +376,49 @@ export function harmonizePendenciasComNivel(
   if (nivelStatus !== "validado") return pendencias;
 
   const validadeObs = extractValidadeFromObservacao(observacao);
-  if (!validadeObs) return pendencias;
+  if (validadeObs) {
+    const validadeDate = parseBrDate(validadeObs);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    if (validadeDate && validadeDate < hoje) {
+      return pendencias;
+    }
+  }
 
-  const validadeDate = parseBrDate(validadeObs);
-  if (!validadeDate) return pendencias;
+  return [];
+}
 
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  if (validadeDate < hoje) return pendencias;
+const ROMAN_TO_NUM: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6 };
 
+function extractRomanFromPendenciaNivel(nivel: string): string | null {
+  const raw = nivel.replace(/^nível\s*/i, "").trim().toUpperCase();
+  if (["I", "II", "III", "IV", "V", "VI"].includes(raw)) return raw;
+  const m = nivel.toUpperCase().match(/\b(I{1,3}|IV|V|VI)\b/);
+  return m ? m[1] : null;
+}
+
+/** Pendências da análise ainda relevantes conforme status atual dos níveis no painel. */
+export function filterPendenciasAssistenteVisiveis(
+  pendencias: AssistentePendencia[],
+  pendenciasPainel: GerenciarItem[],
+  niveis: Record<number, NivelStatus>,
+  niveisDetail?: EmpresaGerenciarPainel["niveisDetail"],
+): AssistentePendencia[] {
   return pendencias.filter((p) => {
-    if (p.tone !== "danger" && p.tone !== "warn") return true;
-    const text = `${p.titulo} ${p.descricao}`.toLowerCase();
-    const docFalsoPositivo =
-      text.includes("balanço") ||
-      text.includes("balanco") ||
-      text.includes("patrimonial") ||
-      text.includes("dre") ||
-      text.includes("demonstração") ||
-      text.includes("demonstracao") ||
-      text.includes("falência") ||
-      text.includes("falencia") ||
-      text.includes("não cadastrada") ||
-      text.includes("nao cadastrada") ||
-      text.includes("aguardando envio");
-    return !docFalsoPositivo;
+    const roman = extractRomanFromPendenciaNivel(p.nivel);
+    if (!roman) return true;
+
+    const num = ROMAN_TO_NUM[roman];
+    if (!num) return true;
+
+    const status = niveis[num];
+    const observacao = niveisDetail?.[roman]?.observacao;
+    const resumo = harmonizePendenciasComNivel(
+      pendenciasPorNivel([p], pendenciasPainel, roman),
+      status,
+      observacao,
+    );
+    return resumo.length > 0;
   });
 }
 
