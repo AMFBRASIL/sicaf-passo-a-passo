@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ShieldCheck,
   Receipt,
@@ -23,10 +23,25 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { fetchPublicPayPage, type PublicPayGuia, type PublicPayPage } from "@/lib/public-pay-api";
+import {
+  fetchPublicPayGate,
+  verifyPublicPayAccess,
+  type PublicPayGate,
+  type PublicPayGuia,
+  type PublicPayPage,
+} from "@/lib/public-pay-api";
+import { formatCnpjInput } from "@/lib/concorrencia-api";
 import { buildWhatsAppSuporteUrl } from "@/lib/whatsapp-suporte";
 import { WhatsappFloatingButton } from "@/components/whatsapp-floating-button";
+
+const PAY_CNPJ_STORAGE_PREFIX = "pay-cnpj-verified:";
+
+function payCnpjStorageKey(code: string) {
+  return `${PAY_CNPJ_STORAGE_PREFIX}${code}`;
+}
 
 export const Route = createFileRoute("/pay/$code")({
   head: ({ params }) => ({
@@ -66,44 +81,195 @@ function statusBadge(s: PublicPayGuia["status"]) {
 
 function PayPageRoute() {
   const { code } = Route.useParams();
-  const [loading, setLoading] = useState(true);
+  const [loadingGate, setLoadingGate] = useState(true);
+  const [verifying, setVerifying] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [gate, setGate] = useState<PublicPayGate | null>(null);
   const [cobranca, setCobranca] = useState<PublicPayPage | null>(null);
+  const [cnpjInput, setCnpjInput] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const cnpjDigits = useMemo(() => cnpjInput.replace(/\D/g, ""), [cnpjInput]);
+
+  const carregarPagamento = useCallback(
+    async (cnpj: string, opts?: { silent?: boolean }) => {
+      setVerifying(true);
+      if (!opts?.silent) setAuthError(null);
+      const res = await verifyPublicPayAccess(code, cnpj);
+      setVerifying(false);
+      if (!res.ok || !res.guias) {
+        const msg = res.error || "Não foi possível validar o acesso";
+        if (opts?.silent) {
+          sessionStorage.removeItem(payCnpjStorageKey(code));
+        } else {
+          setAuthError(msg);
+        }
+        return false;
+      }
+      sessionStorage.setItem(payCnpjStorageKey(code), cnpj.replace(/\D/g, ""));
+      setCobranca(res as PublicPayPage);
+      setAuthError(null);
+      return true;
+    },
+    [code],
+  );
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    setLoadingGate(true);
     setErro(null);
-    void fetchPublicPayPage(code).then((res) => {
+    setGate(null);
+    setCobranca(null);
+    setAuthError(null);
+
+    void fetchPublicPayGate(code).then(async (res) => {
       if (cancelled) return;
-      setLoading(false);
-      if (!res.ok || !res.guias) {
+      setLoadingGate(false);
+      if (!res.ok || !res.codigo) {
         setErro(res.error || "Link inválido ou expirado");
-        setCobranca(null);
         return;
       }
-      setCobranca(res as PublicPayPage);
+      setGate({
+        codigo: res.codigo,
+        requiresCnpj: res.requiresCnpj !== false,
+        empresa: res.empresa || { razao: "Empresa", cnpjMascarado: "***" },
+        message: res.message,
+      });
+
+      const savedCnpj = sessionStorage.getItem(payCnpjStorageKey(code));
+      if (savedCnpj && savedCnpj.length === 14) {
+        setCnpjInput(formatCnpjInput(savedCnpj));
+        await carregarPagamento(savedCnpj, { silent: true });
+      }
     });
+
     return () => {
       cancelled = true;
     };
-  }, [code]);
+  }, [code, carregarPagamento]);
 
-  if (loading) {
+  const confirmarCnpj = async () => {
+    if (cnpjDigits.length !== 14) {
+      setAuthError("Informe o CNPJ completo da empresa (14 dígitos).");
+      return;
+    }
+    await carregarPagamento(cnpjDigits);
+  };
+
+  if (loadingGate) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="flex items-center gap-2 text-sm text-slate-600">
-          <Loader2 className="h-5 w-5 animate-spin" /> Carregando pagamento...
+          <Loader2 className="h-5 w-5 animate-spin" /> Carregando...
         </div>
       </div>
     );
   }
 
-  if (erro || !cobranca) {
+  if (erro || !gate) {
     return <LinkInvalido mensagem={erro || undefined} />;
   }
 
+  if (!cobranca) {
+    return (
+      <PayCnpjAccessGate
+        gate={gate}
+        cnpjInput={cnpjInput}
+        onCnpjChange={setCnpjInput}
+        onConfirm={() => void confirmarCnpj()}
+        verifying={verifying}
+        authError={authError}
+      />
+    );
+  }
+
   return <PayPage cobranca={cobranca} />;
+}
+
+function PayCnpjAccessGate({
+  gate,
+  cnpjInput,
+  onCnpjChange,
+  onConfirm,
+  verifying,
+  authError,
+}: {
+  gate: PublicPayGate;
+  cnpjInput: string;
+  onCnpjChange: (v: string) => void;
+  onConfirm: () => void;
+  verifying: boolean;
+  authError: string | null;
+}) {
+  const whatsappUrl = buildWhatsAppSuporteUrl(
+    `Olá! Estou tentando acessar a página de pagamento CADBRASIL (${gate.codigo}) e preciso de ajuda.`,
+  );
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-slate-100 px-4 py-10">
+      <Card className="w-full max-w-md border-slate-200 shadow-lg">
+        <CardHeader className="space-y-3 pb-2 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-white">
+            <Lock className="h-6 w-6" />
+          </div>
+          <div>
+            <CardTitle className="text-lg">Acesso seguro ao pagamento</CardTitle>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {gate.message || "Informe o CNPJ da empresa para visualizar as guias de pagamento."}
+            </p>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border bg-slate-50/80 p-3 text-sm">
+            <p className="font-semibold text-slate-900">{gate.empresa.razao}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              CNPJ cadastrado: <span className="font-mono">{gate.empresa.cnpjMascarado}</span>
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Cobrança #{gate.codigo}</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="pay-cnpj">CNPJ da empresa</Label>
+            <Input
+              id="pay-cnpj"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="00.000.000/0000-00"
+              value={cnpjInput}
+              onChange={(e) => onCnpjChange(formatCnpjInput(e.target.value))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onConfirm();
+              }}
+              disabled={verifying}
+              className="font-mono"
+            />
+            {authError ? (
+              <p className="flex items-start gap-1.5 text-xs text-red-600">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {authError}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Por segurança, apenas o titular da cobrança pode acessar boleto e PIX.
+              </p>
+            )}
+          </div>
+
+          <Button className="w-full gap-2" onClick={onConfirm} disabled={verifying || cnpjInput.replace(/\D/g, "").length < 14}>
+            {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+            {verifying ? "Validando..." : "Acessar pagamento"}
+          </Button>
+
+          <p className="text-center text-[11px] text-muted-foreground">
+            Dúvidas?{" "}
+            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline">
+              Fale com o suporte CADBRASIL
+            </a>
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function PayPage({ cobranca }: { cobranca: PublicPayPage }) {

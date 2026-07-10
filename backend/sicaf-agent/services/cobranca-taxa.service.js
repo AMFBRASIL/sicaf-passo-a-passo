@@ -84,6 +84,124 @@ function maskDocument(doc) {
   return '***';
 }
 
+function normalizeDocumentDigits(doc) {
+  return String(doc || '').replace(/\D/g, '');
+}
+
+async function resolvePublicPayContext(code) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const parsed = parsePayCode(code);
+  if (!parsed) return { ok: false, error: 'Link de pagamento inválido' };
+
+  const clienteId = await resolveClienteIdFromPayCode(db, parsed);
+  if (!clienteId) return { ok: false, error: 'Cobrança não encontrada' };
+
+  const cliente = await db('clientes').where('id', clienteId).first();
+  if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
+
+  const clientsService = require('./clients.service');
+  const fin = await clientsService.getClientFinanceiro(clienteId);
+  if (!fin.ok) return { ok: false, error: fin.error || 'Erro ao carregar pendências' };
+
+  const pendencias = fin.financeiro?.pendencias || [];
+  if (!pendencias.length) {
+    return { ok: false, error: 'Não há pagamentos pendentes para este link' };
+  }
+
+  return { ok: true, db, parsed, clienteId, cliente, pendencias };
+}
+
+async function getPublicPayGate(code) {
+  const ctx = await resolvePublicPayContext(code);
+  if (!ctx.ok) return ctx;
+
+  const { parsed, cliente } = ctx;
+  return {
+    ok: true,
+    codigo: parsed.code,
+    requiresCnpj: true,
+    empresa: {
+      razao: cliente.razao_social || cliente.nome_fantasia || 'Empresa',
+      cnpjMascarado: maskDocument(cliente.documento),
+    },
+    message: 'Informe o CNPJ da empresa para acessar a página de pagamento.',
+  };
+}
+
+async function verifyPublicPayAccess(code, cnpjInput) {
+  const digits = normalizeDocumentDigits(cnpjInput);
+  if (digits.length !== 14) {
+    return { ok: false, error: 'Informe um CNPJ válido com 14 dígitos.' };
+  }
+
+  const ctx = await resolvePublicPayContext(code);
+  if (!ctx.ok) return ctx;
+
+  const clienteDigits = normalizeDocumentDigits(ctx.cliente.documento);
+  if (!clienteDigits || clienteDigits !== digits) {
+    return { ok: false, error: 'CNPJ não confere com o cadastro desta cobrança.' };
+  }
+
+  return buildPublicPayPagePayload(ctx);
+}
+
+function buildPublicPayPagePayload(ctx) {
+  const { parsed, cliente, pendencias } = ctx;
+  const guias = pendencias.map(mapPendenciaToGuia);
+  const focusGuiaId =
+    parsed.type === 'taxa'
+      ? `sicaf-${parsed.id}`
+      : parsed.type === 'pagamento'
+        ? guias.find((g) => g.pagamentoId === parsed.id)?.id || guias[0]?.id
+        : guias[0]?.id;
+
+  const guiasAbertas = guias.filter((g) => g.status !== 'pago');
+  const totalAberto = guiasAbertas.reduce((acc, g) => acc + g.valor, 0);
+
+  const focusGuia = guias.find((g) => g.id === focusGuiaId) || guiasAbertas[0] || guias[0];
+  const pixGuia = guiasAbertas.find((g) => g.pixCopiaCola) || focusGuia;
+  const boletoGuia = guiasAbertas.find((g) => g.linhaDigitavel || g.linkPdf) || focusGuia;
+
+  const cidade = [cliente.cidade, cliente.estado].filter(Boolean).join('/') || '';
+
+  return {
+    ok: true,
+    codigo: parsed.code,
+    payLink: `${getPublicPayBaseUrl()}/pay/${parsed.code}`,
+    cliente: {
+      nome: cliente.responsavel_nome || cliente.razao_social || 'Cliente',
+      nomeMascarado: cliente.responsavel_nome
+        ? `${cliente.responsavel_nome.split(' ')[0]} ***`
+        : 'Cliente',
+      documento: maskDocument(cliente.documento),
+      email: maskEmail(cliente.email),
+    },
+    empresa: {
+      razao: cliente.razao_social || cliente.nome_fantasia || 'Empresa',
+      cnpj: cliente.documento || '',
+    },
+    cidade,
+    guias,
+    focusGuiaId,
+    resumo: {
+      totalGuias: guias.length,
+      totalAberto: Math.round(totalAberto * 100) / 100,
+      qtdVencidas: guiasAbertas.filter((g) => g.status === 'vencido').length,
+    },
+    pagamento: {
+      pixCopiaCola: pixGuia?.pixCopiaCola || null,
+      pixQrImage: pixGuia?.pixQrImage || null,
+      linhaDigitavel: boletoGuia?.linhaDigitavel || null,
+      linkBoleto: boletoGuia?.linkBoleto || null,
+      linkPdf: boletoGuia?.linkPdf || null,
+      formaPagamento: focusGuia?.formaPagamento || null,
+    },
+    expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),
+  };
+}
+
 function mapGuiaStatus(item) {
   if (!item.pendente) return 'pago';
   if (item.vencido) return 'vencido';
@@ -1080,78 +1198,9 @@ function mapPendenciaToGuia(item) {
 }
 
 async function getPublicPayPage(code) {
-  const db = getDb();
-  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
-
-  const parsed = parsePayCode(code);
-  if (!parsed) return { ok: false, error: 'Link de pagamento inválido' };
-
-  const clienteId = await resolveClienteIdFromPayCode(db, parsed);
-  if (!clienteId) return { ok: false, error: 'Cobrança não encontrada' };
-
-  const cliente = await db('clientes').where('id', clienteId).first();
-  if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
-
-  const clientsService = require('./clients.service');
-  const fin = await clientsService.getClientFinanceiro(clienteId);
-  if (!fin.ok) return { ok: false, error: fin.error || 'Erro ao carregar pendências' };
-
-  const pendencias = fin.financeiro?.pendencias || [];
-  if (!pendencias.length) {
-    return { ok: false, error: 'Não há pagamentos pendentes para este link' };
-  }
-
-  const guias = pendencias.map(mapPendenciaToGuia);
-  const focusGuiaId =
-    parsed.type === 'taxa'
-      ? `sicaf-${parsed.id}`
-      : parsed.type === 'pagamento'
-        ? guias.find((g) => g.pagamentoId === parsed.id)?.id || guias[0]?.id
-        : guias[0]?.id;
-
-  const guiasAbertas = guias.filter((g) => g.status !== 'pago');
-  const totalAberto = guiasAbertas.reduce((acc, g) => acc + g.valor, 0);
-
-  const focusGuia = guias.find((g) => g.id === focusGuiaId) || guiasAbertas[0] || guias[0];
-  const pixGuia = guiasAbertas.find((g) => g.pixCopiaCola) || focusGuia;
-  const boletoGuia = guiasAbertas.find((g) => g.linhaDigitavel || g.linkPdf) || focusGuia;
-
-  const cidade = [cliente.cidade, cliente.estado].filter(Boolean).join('/') || '';
-
-  return {
-    ok: true,
-    codigo: parsed.code,
-    payLink: `${getPublicPayBaseUrl()}/pay/${parsed.code}`,
-    cliente: {
-      nome: cliente.responsavel_nome || cliente.razao_social || 'Cliente',
-      nomeMascarado: cliente.responsavel_nome
-        ? `${cliente.responsavel_nome.split(' ')[0]} ***`
-        : 'Cliente',
-      documento: maskDocument(cliente.documento),
-      email: maskEmail(cliente.email),
-    },
-    empresa: {
-      razao: cliente.razao_social || cliente.nome_fantasia || 'Empresa',
-      cnpj: cliente.documento || '',
-    },
-    cidade,
-    guias,
-    focusGuiaId,
-    resumo: {
-      totalGuias: guias.length,
-      totalAberto: Math.round(totalAberto * 100) / 100,
-      qtdVencidas: guiasAbertas.filter((g) => g.status === 'vencido').length,
-    },
-    pagamento: {
-      pixCopiaCola: pixGuia?.pixCopiaCola || null,
-      pixQrImage: pixGuia?.pixQrImage || null,
-      linhaDigitavel: boletoGuia?.linhaDigitavel || null,
-      linkBoleto: boletoGuia?.linkBoleto || null,
-      linkPdf: boletoGuia?.linkPdf || null,
-      formaPagamento: focusGuia?.formaPagamento || null,
-    },
-    expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),
-  };
+  const ctx = await resolvePublicPayContext(code);
+  if (!ctx.ok) return ctx;
+  return buildPublicPayPagePayload(ctx);
 }
 
 module.exports = {
@@ -1160,6 +1209,8 @@ module.exports = {
   enviarCobrancaTaxa,
   ensureCobrancasTable,
   listCobrancaHistorico,
+  getPublicPayGate,
+  verifyPublicPayAccess,
   getPublicPayPage,
   buildPayLink,
   buildPayCode,

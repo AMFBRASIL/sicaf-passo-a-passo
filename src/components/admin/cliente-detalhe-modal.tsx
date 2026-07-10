@@ -43,6 +43,7 @@ import {
   Loader2,
   HandCoins,
   Ban,
+  Link2,
 } from "lucide-react";
 import { AcoesTab } from "./cliente-acoes";
 import { SituacaoTab } from "./cliente-situacao-tab";
@@ -79,6 +80,7 @@ import { Check, X as XIcon } from "lucide-react";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-modal";
 import { CancelarFaturaModal } from "@/components/admin/cancelar-fatura-modal";
+import { LinkPagamentoFaturaModal, type LinkPagamentoFaturaDados } from "@/components/admin/link-pagamento-fatura-modal";
 import { TicketRespostaModal, type TicketItem } from "@/components/admin/ticket-resposta-modal";
 import { RenovarSicafModal } from "@/components/admin/renovar-sicaf-modal";
 import { EditarClienteModal } from "@/components/admin/editar-cliente-modal";
@@ -1108,17 +1110,27 @@ function buildPayLinks(opts: {
   taxaId?: number | null;
   pagamentoId?: number | null;
   clienteId: number;
+  preferPagamentoLink?: boolean;
 }) {
-  const code = opts.taxaId
-    ? `t-${opts.taxaId}`
-    : opts.pagamentoId
-      ? `p-${opts.pagamentoId}`
-      : `c-${opts.clienteId}`;
+  const code = opts.preferPagamentoLink && opts.pagamentoId
+    ? `p-${opts.pagamentoId}`
+    : opts.taxaId
+      ? `t-${opts.taxaId}`
+      : opts.pagamentoId
+        ? `p-${opts.pagamentoId}`
+        : `c-${opts.clienteId}`;
   const base =
     typeof window !== "undefined"
       ? window.location.origin.replace(/\/$/, "")
       : "https://fornecedor.cadbrasil.com.br";
   return { payCode: code, payLink: `${base}/pay/${code}` };
+}
+
+function buildPayLinksForFatura(f: Pick<FaturaItem, "taxaId" | "pagamentoId">, clienteId: number) {
+  if (f.pagamentoId) {
+    return buildPayLinks({ pagamentoId: f.pagamentoId, clienteId, preferPagamentoLink: true });
+  }
+  return buildPayLinks({ taxaId: f.taxaId, clienteId });
 }
 
 function buildCobrancaPendenteFallback(
@@ -1190,6 +1202,8 @@ function FinanceiroTab({
   const [cobrancaOpen, setCobrancaOpen] = useState(false);
   const [cobrancaCliente, setCobrancaCliente] = useState<ClienteCobrancaPendente | null>(null);
   const [loadingCobranca, setLoadingCobranca] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkDados, setLinkDados] = useState<LinkPagamentoFaturaDados | null>(null);
 
   const faturasSicaf = useMemo(
     () => faturasIniciais.filter((f) => !/^manuten[cç][aã]o\b/i.test(f.desc.trim())),
@@ -1221,6 +1235,24 @@ function FinanceiroTab({
   const abrirAutorizar = (f: FaturaItem) => {
     setFaturaAtiva(f);
     setAutorizarOpen(true);
+  };
+  const abrirLinkPagamento = (f: FaturaItem) => {
+    const clienteId = parseInt(cliente.id, 10);
+    if (!Number.isFinite(clienteId)) {
+      toast.error("Cliente inválido.");
+      return;
+    }
+    const links = buildPayLinksForFatura(f, clienteId);
+    setLinkDados({
+      faturaId: f.id,
+      descricao: f.desc,
+      valor: f.valor,
+      vencimento: f.venc,
+      payCode: links.payCode,
+      payLink: links.payLink,
+      cliente: cliente.razao,
+    });
+    setLinkOpen(true);
   };
   const abrirCancelar = (id: string) => {
     setFaturaCancelId(id);
@@ -1418,7 +1450,7 @@ function FinanceiroTab({
               <col className="w-[68px]" />
               <col className="w-[64px]" />
               <col className="w-[72px]" />
-              <col className="w-[118px]" />
+              <col className="w-[158px]" />
             </colgroup>
             <thead>
               <tr className="border-b bg-muted/30 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -1479,6 +1511,20 @@ function FinanceiroTab({
                   <td className="px-2 py-2 align-middle">
                     {f.status === "aberto" ? (
                       <div className="flex flex-nowrap justify-end gap-1">
+                        {f.forma === "Boleto" && (f.pagamentoId || f.taxaId) ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            title="Link de pagamento"
+                            aria-label="Link de pagamento"
+                            className="h-7 shrink-0 px-2 text-[10px] gap-1 border-sky-500/30 text-sky-700 hover:bg-sky-500/10 dark:text-sky-300"
+                            onClick={() => abrirLinkPagamento(f)}
+                          >
+                            <Link2 className="h-3 w-3 shrink-0" />
+                            Link
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           size="sm"
@@ -1539,6 +1585,11 @@ function FinanceiroTab({
         faturaId={faturaCancelId}
         loading={cancelando}
         onConfirmar={(id, motivo) => void confirmarCancelamento(id, motivo)}
+      />
+      <LinkPagamentoFaturaModal
+        open={linkOpen}
+        onOpenChange={setLinkOpen}
+        dados={linkDados}
       />
       <CobrancaClienteModal
         cliente={cobrancaCliente}

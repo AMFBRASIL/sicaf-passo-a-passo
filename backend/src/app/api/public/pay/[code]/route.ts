@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type CobrancaTaxaService = {
-  getPublicPayPage: (code: string) => Promise<{ ok: boolean; error?: string }>;
+  getPublicPayGate: (code: string) => Promise<{ ok: boolean; error?: string }>;
 };
 
 export async function GET(
@@ -15,7 +15,7 @@ export async function GET(
   try {
     const { code } = await context.params;
     const svc = await getSicafAgentModule<CobrancaTaxaService>("services/cobranca-taxa.service");
-    const result = await svc.getPublicPayPage(code);
+    const result = await svc.getPublicPayGate(code);
     return NextResponse.json(result, { status: result.ok ? 200 : 404 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao carregar link de pagamento";

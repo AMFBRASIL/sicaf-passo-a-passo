@@ -52,6 +52,41 @@ export type PublicPayPage = {
   expiraEm: string;
 };
 
+export type PublicPayGate = {
+  codigo: string;
+  requiresCnpj: boolean;
+  empresa: {
+    razao: string;
+    cnpjMascarado: string;
+  };
+  message?: string;
+};
+
+export async function fetchPublicPayGate(code: string): Promise<{
+  ok: boolean;
+  error?: string;
+} & Partial<PublicPayGate>> {
+  const res = await apiFetch(`/api/public/pay/${encodeURIComponent(code)}`, { auth: false });
+  return (await res.json()) as { ok: boolean; error?: string } & Partial<PublicPayGate>;
+}
+
+export async function verifyPublicPayAccess(
+  code: string,
+  cnpj: string,
+): Promise<{
+  ok: boolean;
+  error?: string;
+} & Partial<PublicPayPage>> {
+  const res = await apiFetch(`/api/public/pay/${encodeURIComponent(code)}/verify`, {
+    method: "POST",
+    auth: false,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cnpj }),
+  });
+  return (await res.json()) as { ok: boolean; error?: string } & Partial<PublicPayPage>;
+}
+
+/** @deprecated Use fetchPublicPayGate + verifyPublicPayAccess */
 export async function fetchPublicPayPage(code: string): Promise<{
   ok: boolean;
   error?: string;
