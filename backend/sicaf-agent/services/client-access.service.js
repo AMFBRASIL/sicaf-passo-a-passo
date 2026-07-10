@@ -13,11 +13,49 @@ function formatCnpj(digits) {
   return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
 }
 
+function formatCpf(digits) {
+  const d = normalizeDocumento(digits);
+  if (d.length !== 11) return digits || "";
+  return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+}
+
+function formatDocumento(doc) {
+  const d = normalizeDocumento(doc);
+  if (d.length === 14) return formatCnpj(d);
+  if (d.length === 11) return formatCpf(d);
+  return String(doc || "").trim();
+}
+
+function isCpfDigits(digits) {
+  const d = normalizeDocumento(digits);
+  if (d.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(d)) return false;
+  return true;
+}
+
+function extractCpfFromText(text) {
+  const src = String(text || "");
+  const patterns = [
+    /CPF(?:\/CNPJ)?[:\s]*(\d{3}\.?\d{3}\.?\d{3}-?\d{2})/i,
+    /(\d{3}\.\d{3}\.\d{3}-\d{2})/,
+    /CPF[:\s]*(\d{11})/i,
+  ];
+  for (const re of patterns) {
+    const m = src.match(re);
+    if (m?.[1]) {
+      const digits = normalizeDocumento(m[1]);
+      if (isCpfDigits(digits)) return formatCpf(digits);
+    }
+  }
+  return null;
+}
+
 function extractCnpjFromText(text) {
   const src = String(text || "");
   const patterns = [
-    /CNPJ[:\s]*(\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2})/i,
+    /CNPJ(?:\/CPF)?[:\s]*(\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2})/i,
     /(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/,
+    /CNPJ[:\s]*(\d{14})/i,
     /(\d{14})/,
   ];
   for (const re of patterns) {
@@ -28,6 +66,80 @@ function extractCnpjFromText(text) {
     }
   }
   return null;
+}
+
+function extractDocumentoFromText(text) {
+  const src = String(text || "");
+
+  const cpfCnpjHeader = src.match(/CPF\/CNPJ[:\s]*([\d.\-\/]+)/i);
+  if (cpfCnpjHeader?.[1]) {
+    const digits = normalizeDocumento(cpfCnpjHeader[1]);
+    if (digits.length === 11 && isCpfDigits(digits)) {
+      return { documento: formatCpf(digits), tipo: "CPF" };
+    }
+    if (digits.length === 14) {
+      return { documento: formatCnpj(digits), tipo: "CNPJ" };
+    }
+  }
+
+  const cnpj = extractCnpjFromText(text);
+  if (cnpj) return { documento: cnpj, tipo: "CNPJ" };
+  const cpf = extractCpfFromText(text);
+  if (cpf) return { documento: cpf, tipo: "CPF" };
+  return { documento: null, tipo: null };
+}
+
+function resolveDocumentoFromPdf(jsonData, pdfText) {
+  const fromText = extractDocumentoFromText(pdfText);
+  const iaCnpj = jsonData?.cnpj ? formatDocumento(jsonData.cnpj) : null;
+  const iaCpf = jsonData?.cpf ? formatDocumento(jsonData.cpf) : null;
+  const iaDoc = jsonData?.documento ? formatDocumento(jsonData.documento) : null;
+
+  const pick = (doc, metodo) => {
+    const digits = normalizeDocumento(doc);
+    if (digits.length !== 11 && digits.length !== 14) return null;
+    return { documento: formatDocumento(doc), metodo, tipo: digits.length === 11 ? "CPF" : "CNPJ" };
+  };
+
+  if (iaCpf && normalizeDocumento(iaCpf).length === 11) {
+    return pick(iaCpf, "extração via IA (CPF)");
+  }
+  if (iaCnpj && normalizeDocumento(iaCnpj).length === 14) {
+    return pick(iaCnpj, "extração via IA (CNPJ)");
+  }
+  if (iaDoc) {
+    const digits = normalizeDocumento(iaDoc);
+    return pick(iaDoc, `extração via IA (${digits.length === 11 ? "CPF" : "CNPJ"})`);
+  }
+  if (fromText.documento) {
+    return {
+      documento: fromText.documento,
+      metodo: `regex no texto do PDF (${fromText.tipo})`,
+      tipo: fromText.tipo,
+    };
+  }
+
+  return { documento: null, metodo: null, tipo: null };
+}
+
+function applyDocumentoToPdfJson(jsonData, pdfText) {
+  const resolved = resolveDocumentoFromPdf(jsonData, pdfText);
+  if (resolved.documento && jsonData) {
+    jsonData.documento = resolved.documento;
+    if (resolved.tipo === "CPF") {
+      jsonData.cpf = resolved.documento;
+      delete jsonData.cnpj;
+    } else {
+      jsonData.cnpj = resolved.documento;
+      delete jsonData.cpf;
+    }
+  }
+  return resolved;
+}
+
+function getDocumentoFromPdfJson(jsonData) {
+  const doc = jsonData?.documento || jsonData?.cpf || jsonData?.cnpj;
+  return doc ? formatDocumento(doc) : null;
 }
 
 async function getTipoUsuario(db, usuarioId) {
@@ -174,7 +286,14 @@ module.exports = {
   checkUsuarioIsStaff,
   normalizeDocumento,
   formatCnpj,
+  formatCpf,
+  formatDocumento,
   extractCnpjFromText,
+  extractCpfFromText,
+  extractDocumentoFromText,
+  resolveDocumentoFromPdf,
+  applyDocumentoToPdfJson,
+  getDocumentoFromPdfJson,
   listClientesForUsuario,
   findClienteByDocumentoForUsuario,
 };

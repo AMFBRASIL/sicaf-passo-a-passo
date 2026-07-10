@@ -368,14 +368,19 @@ async function getGerenciarPainel(clienteId, usuarioId) {
   const acessoLiberado = isSicafAcessoLiberado(taxaAccessParams);
   const ultimaTaxa = taxasSicaf[0] || null;
 
+  const { buildPayLink } = require('./cobranca-taxa.service');
+
   const pagamentosHistorico = pagamentos.map((p) => ({
     id: p.id,
     titulo: p.descricao || `${p.origem || 'Pagamento'} ${p.tipo || ''}`.trim(),
     descricao: `${isPaidStatus(p.status) ? 'Pago' : 'Pendente'}${p.data_pagamento ? ` em ${fmtDate(p.data_pagamento)}` : ''}${p.tipo ? ` · ${String(p.tipo).toUpperCase()}` : ''}`,
     status: isPaidStatus(p.status) ? 'ok' : 'warn',
     valor: Number(p.valor),
-    linkPdf: p.link_pdf,
-    linkBoleto: p.link_boleto,
+    linkBoleto: buildPayLink({
+      taxaId: p.origem === 'sicaf' ? p.origem_id : undefined,
+      pagamentoId: p.id,
+      clienteId,
+    }),
   }));
 
   const proximoBoletoManut = manutencao

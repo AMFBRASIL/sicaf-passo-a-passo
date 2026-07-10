@@ -153,8 +153,9 @@ async function syncNivelCertidaoValidade(clienteId, sicafId, niveisResult) {
  */
 async function saveCertidoesToDB(data) {
   const db = getDb();
-  if (!db || !data || !data.cnpj) {
-    return { saved: false, reason: 'Sem conexão MySQL ou CNPJ ausente' };
+  const docRaw = data?.documento || data?.cpf || data?.cnpj;
+  if (!db || !data || !docRaw) {
+    return { saved: false, reason: 'Sem conexão MySQL ou documento (CPF/CNPJ) ausente' };
   }
 
   try {
@@ -162,8 +163,8 @@ async function saveCertidoesToDB(data) {
     const isSituacaoFornecedor = tipoDocumentoLower.includes('situação do fornecedor') || tipoDocumentoLower.includes('situacao do fornecedor');
 
     // Limpar documento (remover formatação)
-    const docClean = data.cnpj.replace(/[.\-\/]/g, '').trim();
-    const docFormatted = data.cnpj.trim();
+    const docClean = String(docRaw).replace(/[.\-\/]/g, '').trim();
+    const docFormatted = String(docRaw).trim();
 
     // Garantir que o cache está carregado
     await loadTipoCertidoesCache();

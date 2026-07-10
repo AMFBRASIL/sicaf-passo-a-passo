@@ -6,6 +6,7 @@ const { getDb } = require("./database/connection");
 const iaService = require("./services/ia.service");
 const { extractNivelVIValidade } = require("./modules/sicaf-assistant/services/openai.service");
 const { saveCertidoesToDB } = require("./modules/sicaf-assistant/services/certidoes.service");
+const { applyDocumentoToPdfJson } = require("./services/client-access.service");
 
 function buildAnalysisPrompt(fileName, truncatedText, isSituacaoFornecedor) {
   if (isSituacaoFornecedor) {
@@ -145,7 +146,8 @@ async function processPdfUpload(fileBuffer, fileName) {
   if (db && (await iaService.isReady())) {
     try {
       const jsonData = await iaService.extractCertidoesJSON(extractedText);
-      if (jsonData?.cnpj) {
+      const { documento: docPdf } = applyDocumentoToPdfJson(jsonData, truncatedText);
+      if (docPdf) {
         if (isSituacaoFornecedor) jsonData.tipo_documento = "Situação do Fornecedor";
         const result = await saveCertidoesToDB(jsonData);
         if (result.saved) {
@@ -155,6 +157,7 @@ async function processPdfUpload(fileBuffer, fileName) {
             clienteNome: result.clienteNome,
             clienteEmail: result.clienteEmail,
             cnpj: result.cnpj,
+            documento: docPdf,
             tipoDocumento: jsonData.tipo_documento || null,
             certidoesInserted: result.certidoesInserted,
             certidoesUpdated: result.certidoesUpdated,
@@ -168,7 +171,7 @@ async function processPdfUpload(fileBuffer, fileName) {
           dbResult = { saved: false, reason: result.reason };
         }
       } else {
-        dbResult = { saved: false, reason: "Não foi possível extrair CNPJ do documento" };
+        dbResult = { saved: false, reason: "Não foi possível extrair CPF/CNPJ do documento" };
       }
     } catch (e) {
       dbResult = { saved: false, reason: e.message };

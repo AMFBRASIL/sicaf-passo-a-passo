@@ -1658,6 +1658,13 @@ async function consultPendingBoletosByCnpj(cnpj) {
       const isGenericPending = ['pendente', 'aguardando', 'gerado', 'atrasado'].includes(statusLower);
       const statusFinal = isGenericPending ? (statusPrazo || statusBase || 'Pendente') : (statusBase || statusPrazo || 'Pendente');
 
+      const { payCode, urlPagamento } = buildConsultaBoletoPayFields({
+        tipo: 'sicaf',
+        taxaId: taxa.id,
+        pagamentoId: pg?.id || null,
+        clienteId: cliente.id,
+      });
+
       return {
         pagamentoId: pg?.id || null,
         taxaId: taxa.id,
@@ -1673,8 +1680,8 @@ async function consultPendingBoletosByCnpj(cnpj) {
         dataVencimento,
         chargeId: pg?.provider_charge_id || pg?.gn_charge_id || null,
         codigoBarras: pg?.gn_barcode || taxa.codigo_barras || null,
-        linkBoleto: pg?.gn_link || null,
-        pdfBoleto: pg?.gn_pdf || null,
+        payCode,
+        urlPagamento,
         createdAt: pg?.created_at || taxa.created_at || null,
       };
     });
@@ -1710,6 +1717,12 @@ async function consultPendingBoletosByCnpj(cnpj) {
       const isGenericPending = ['pendente', 'aguardando', 'gerado', 'atrasado'].includes(statusLower);
       const statusFinal = isGenericPending ? (statusPrazo || statusBase || 'Pendente') : (statusBase || statusPrazo || 'Pendente');
 
+      const { payCode, urlPagamento } = buildConsultaBoletoPayFields({
+        tipo: 'manutencao',
+        pagamentoId: pg?.id || null,
+        clienteId: cliente.id,
+      });
+
       return {
         pagamentoId: pg?.id || null,
         boletoId: boleto.id,
@@ -1724,8 +1737,8 @@ async function consultPendingBoletosByCnpj(cnpj) {
         dataVencimento,
         chargeId: pg?.provider_charge_id || pg?.gn_charge_id || boleto.numero_boleto || null,
         codigoBarras: pg?.gn_barcode || boleto.codigo_barras || null,
-        linkBoleto: pg?.gn_link || null,
-        pdfBoleto: pg?.gn_pdf || null,
+        payCode,
+        urlPagamento,
         createdAt: pg?.created_at || boleto.created_at || null,
       };
     });
@@ -1775,6 +1788,31 @@ function buildPayFieldsForTaxa({ taxaId, pagamentoId, clienteId, preferPagamento
   const payCode = buildPayCode(opts);
   const urlPagamento = buildPayLink(opts);
   return { payCode, urlPagamento };
+}
+
+function resolvePayLinkForCobranca({ tipo, taxaId, pagamentoId, clienteId, preferPagamentoLink }) {
+  const { buildPayLink } = require('./cobranca-taxa.service');
+  if (preferPagamentoLink && pagamentoId) {
+    return buildPayLink({ pagamentoId, clienteId: clienteId || undefined });
+  }
+  if (tipo === 'sicaf' && taxaId) {
+    return buildPayLink({ taxaId });
+  }
+  if (pagamentoId) {
+    return buildPayLink({ pagamentoId, clienteId: clienteId || undefined });
+  }
+  if (clienteId) {
+    return buildPayLink({ clienteId });
+  }
+  return null;
+}
+
+function buildConsultaBoletoPayFields({ tipo, taxaId, pagamentoId, clienteId }) {
+  return buildPayFieldsForTaxa({
+    taxaId: tipo === 'sicaf' ? taxaId : undefined,
+    pagamentoId: tipo === 'sicaf' ? undefined : pagamentoId || undefined,
+    clienteId: tipo === 'sicaf' ? undefined : !pagamentoId ? clienteId : undefined,
+  });
 }
 
 /** Janela de renovação antecipada: SICAF vigente com 30–60 dias para vencer. */
@@ -2084,8 +2122,7 @@ function mapBoletoSicafResposta({
       valorNum != null
         ? valorNum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
         : null,
-    linkPdf: pg.gn_pdf || pg.link_pdf || null,
-    linkBoleto: pg.gn_link || pg.link_boleto || null,
+    linkBoleto: urlPagamento,
     codigoBarras: pg.gn_barcode || pg.barcode || null,
     protocolo: pg.protocolo || null,
     dataVencimento: pg.data_vencimento || null,
@@ -2163,7 +2200,6 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj, options = {}) {
         razaoSocial: cliente.razao_social || cliente.nome_fantasia || null,
         pendentePagamento: false,
         diasParaRenovacao: dias ?? null,
-        linkPdf: null,
         linkBoleto: null,
         message: msgRenovacao,
       };
@@ -2280,7 +2316,7 @@ async function gerarOuObterBoletoSicafByCnpj(cnpj, options = {}) {
         possuiCadastro: true,
         clienteId: cliente.id,
         cnpj: cnpjDigits,
-        error: 'Boleto gerado, mas o link PDF não foi retornado pelo provedor de pagamento.',
+        error: 'Boleto gerado, mas o link de pagamento não pôde ser montado.',
         taxaId,
         pagamentoId: pagamento.id,
       };
@@ -2784,12 +2820,18 @@ function isBoletoSicafReutilizavel(pg, taxa) {
   return !!(pdf || link);
 }
 
-function mapFinanceRow(row, tipo) {
+function mapFinanceRow(row, tipo, clienteId) {
   const valor = row.valor != null ? Number(row.valor) : 0;
   const status = row.status || row.statusBoleto || '—';
   const venc = row.data_vencimento || row.dataVencimento || null;
   const formaRaw = String(row.forma_pagamento || row.tipoPagamento || row.tipo || '').toLowerCase();
   const formaPagamento = formaRaw.includes('pix') ? 'PIX' : formaRaw.includes('boleto') ? 'Boleto' : row.forma_pagamento || row.tipoPagamento || row.tipo || null;
+  const payLink = resolvePayLinkForCobranca({
+    tipo,
+    taxaId: tipo === 'sicaf' ? row.id : null,
+    pagamentoId: row.pagamentoId || (tipo === 'personalizado' ? row.id : null) || null,
+    clienteId,
+  });
   return {
     id: row.id,
     tipo,
@@ -2806,8 +2848,7 @@ function mapFinanceRow(row, tipo) {
     pago: isPaidFinanceStatus(status),
     pendente: isPendingFinanceStatus(status),
     vencido: isOverdueFinance(status, venc),
-    linkPdf: row.gn_pdf || row.linkPdf || row.link_pdf || null,
-    linkBoleto: row.gn_link || row.linkBoleto || row.link_boleto || null,
+    linkBoleto: payLink,
     protocolo: row.protocolo || null,
     barcode: row.gn_barcode || row.barcode || null,
     qrcodeText: row.qrcode_text || row.gnQrcodeText || null,
@@ -2909,7 +2950,7 @@ async function loadAllPagamentosList(db, clienteId) {
   });
 }
 
-function buildSicafFinanceRows(taxasSicaf, allPagamentos) {
+function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
   const taxasById = Object.fromEntries(taxasSicaf.map((t) => [t.id, t]));
   const rows = [];
 
@@ -2946,7 +2987,7 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos) {
       provider_txid: p.provider_txid,
       provider_charge_id: p.provider_charge_id,
       protocolo: p.protocolo,
-    }, 'sicaf'));
+    }, 'sicaf', clienteId));
   }
 
   for (const t of taxasSicaf) {
@@ -2963,7 +3004,7 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos) {
       ano_referencia: t.ano_referencia,
       created_at: t.created_at,
       pagamentoId: null,
-    }, 'sicaf'));
+    }, 'sicaf', clienteId));
   }
 
   return rows;
@@ -3017,7 +3058,7 @@ async function getClientFinanceiro(clienteId) {
     const pgByOrigem = await loadPagamentosClienteFinanceiro(db, clienteId);
     const allPagamentos = await loadAllPagamentosList(db, clienteId);
 
-    const sicafRows = buildSicafFinanceRows(taxasSicaf, allPagamentos);
+    const sicafRows = buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId);
     const sicafPagos = sicafRows.filter((i) => i.pago);
     const sicafPendentes = sicafRows.filter((i) => i.pendente);
 
@@ -3037,10 +3078,9 @@ async function getClientFinanceiro(clienteId) {
         mes_referencia: b.mes_referencia,
         ano_referencia: b.ano_referencia,
         created_at: b.created_at,
-        gn_pdf: pg?.gn_pdf,
-        gn_link: pg?.gn_link,
+        pagamentoId: pg?.id || null,
         protocolo: pg?.protocolo,
-      }, 'manutencao');
+      }, 'manutencao', clienteId);
       if (item.pago) manutPagos.push(item);
       else if (item.pendente) manutPendentes.push(item);
     }
@@ -3056,10 +3096,9 @@ async function getClientFinanceiro(clienteId) {
         forma_pagamento: p.tipo,
         descricao: p.descricao || 'Cobrança personalizada',
         created_at: p.created_at,
-        gn_pdf: p.gn_pdf,
-        gn_link: p.gn_link,
+        pagamentoId: p.id,
         protocolo: p.protocolo,
-      }, 'personalizado'));
+      }, 'personalizado', clienteId));
 
     const pendencias = [
       ...sicafPendentes.filter((i) => i.vencido),
@@ -3097,8 +3136,12 @@ async function getClientFinanceiro(clienteId) {
           descricao: p.descricao,
           dataVencimento: p.data_vencimento,
           dataPagamento: p.data_pagamento,
-          gnPdf: p.gn_pdf,
-          gnLink: p.gn_link,
+          linkBoleto: resolvePayLinkForCobranca({
+            tipo: p.origem === 'sicaf' ? 'sicaf' : p.origem === 'manutencao' ? 'manutencao' : 'personalizado',
+            taxaId: p.origem === 'sicaf' ? p.origem_id : null,
+            pagamentoId: p.id,
+            clienteId,
+          }),
           createdAt: p.created_at,
         })),
       },

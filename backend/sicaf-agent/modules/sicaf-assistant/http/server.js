@@ -8,6 +8,7 @@ const config = require('../../../config');
 const iaService = require('../../../services/ia.service');
 const { extractNivelVIValidade } = require('../services/openai.service');
 const { saveCertidoesToDB } = require('../services/certidoes.service');
+const { applyDocumentoToPdfJson } = require('../../../services/client-access.service');
 const { executeAction } = require('../services/sicaf-navigator');
 const { buildAssistantHTML } = require('./assistant-view');
 
@@ -305,10 +306,12 @@ ${truncatedText}`;
                 broadcastSSE({ type: 'processing', message: 'Analisando documento e extraindo dados...' });
 
                 const jsonData = await iaService.extractCertidoesJSON(extractedText);
-                if (jsonData && jsonData.cnpj) {
+                const truncatedForDoc = extractedText.substring(0, 4000);
+                const { documento: docPdf } = applyDocumentoToPdfJson(jsonData, truncatedForDoc);
+                if (jsonData && docPdf) {
                   if (isSituacaoFornecedor) jsonData.tipo_documento = 'Situação do Fornecedor';
-                  console.log(`  [DB] CNPJ: ${jsonData.cnpj} — ${(jsonData.certidoes || []).length} certidões`);
-                  broadcastSSE({ type: 'processing', message: `CNPJ identificado: ${jsonData.cnpj}. Buscando cliente no sistema...` });
+                  console.log(`  [DB] Documento: ${docPdf} — ${(jsonData.certidoes || []).length} certidões`);
+                  broadcastSSE({ type: 'processing', message: `CPF/CNPJ identificado: ${docPdf}. Buscando cliente no sistema...` });
 
                   const result = await saveCertidoesToDB(jsonData);
                   if (result.saved) {
@@ -343,7 +346,7 @@ ${truncatedText}`;
                 } else {
                   broadcastSSE({
                     type: 'db-error',
-                    data: { message: 'Não foi possível extrair CNPJ do documento' },
+                    data: { message: 'Não foi possível extrair CPF/CNPJ do documento' },
                   });
                   console.log('  [DB] ⚠ Não foi possível extrair JSON estruturado');
                 }

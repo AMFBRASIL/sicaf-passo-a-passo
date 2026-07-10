@@ -6,8 +6,8 @@ const { getDb } = require('../database/connection');
 const {
   assertClienteAcessivel,
   normalizeDocumento,
-  formatCnpj,
-  extractCnpjFromText,
+  formatDocumento,
+  applyDocumentoToPdfJson,
   findClienteByDocumentoForUsuario,
 } = require('./client-access.service');
 const iaService = require('./ia.service');
@@ -92,20 +92,19 @@ async function processarTextoExtracao({ clienteId, extractedText, fileName, usua
     };
   }
 
-  const cnpjPdf = jsonData.cnpj || extractCnpjFromText(truncatedText);
-  if (!cnpjPdf) {
+  const { documento: docPdf, metodo: metodoExtracao } = applyDocumentoToPdfJson(jsonData, truncatedText);
+  if (!docPdf) {
     return {
       ok: false,
-      error: 'Não foi possível identificar o CNPJ no PDF. Envie a Situação do Fornecedor completa.',
+      error: 'Não foi possível identificar o CPF/CNPJ no PDF. Envie a Situação do Fornecedor completa.',
     };
   }
-  if (normalizeDocumento(cnpjPdf) !== normalizeDocumento(cliente.documento)) {
+  if (normalizeDocumento(docPdf) !== normalizeDocumento(cliente.documento)) {
     return {
       ok: false,
-      error: `O CNPJ do PDF (${formatCnpj(cnpjPdf)}) não corresponde ao cadastro selecionado (${formatCnpj(cliente.documento)}).`,
+      error: `O documento do PDF (${formatDocumento(docPdf)}) não corresponde ao cadastro selecionado (${formatDocumento(cliente.documento)}).`,
     };
   }
-  jsonData.cnpj = formatCnpj(cnpjPdf);
   jsonData.razao_social = jsonData.razao_social || cliente.razao_social;
   if (isSituacaoFornecedor || /situa[çc][ãa]o do fornecedor/i.test(truncatedText)) {
     jsonData.tipo_documento = 'Situação do Fornecedor';
@@ -119,7 +118,7 @@ async function processarTextoExtracao({ clienteId, extractedText, fileName, usua
   if (Number(result.clienteId) !== Number(clienteId)) {
     return {
       ok: false,
-      error: 'O CNPJ do PDF não corresponde a este cliente. Envie o documento da empresa correta.',
+      error: 'O documento do PDF não corresponde a este cliente. Envie o documento do fornecedor correto.',
     };
   }
 
@@ -253,10 +252,11 @@ function buildAnaliseFallback(jsonData, pdfText = '') {
   return {
     resumo:
       pendencias.length > 0
-        ? `CNPJ ${jsonData?.cnpj || '—'}: foram identificadas ${pendencias.length} pendência(s). Níveis regulares: ${niveisOk.join(', ') || '—'}. Com problema: ${niveisProblema.join(', ') || '—'}.`
-        : `CNPJ ${jsonData?.cnpj || '—'}: todos os níveis habilitados estão regulares (${niveisOk.join(', ') || 'I a VI'}).`,
+        ? `Documento ${jsonData?.documento || jsonData?.cpf || jsonData?.cnpj || '—'}: foram identificadas ${pendencias.length} pendência(s). Níveis regulares: ${niveisOk.join(', ') || '—'}. Com problema: ${niveisProblema.join(', ') || '—'}.`
+        : `Documento ${jsonData?.documento || jsonData?.cpf || jsonData?.cnpj || '—'}: todos os níveis habilitados estão regulares (${niveisOk.join(', ') || 'I a VI'}).`,
     status_geral: pendencias.length > 0 ? (niveisProblema.length > 1 ? 'Misto' : 'Pendente') : 'Regular',
-    cnpj: jsonData?.cnpj || null,
+    cnpj: jsonData?.documento || jsonData?.cpf || jsonData?.cnpj || null,
+    documento: jsonData?.documento || jsonData?.cpf || jsonData?.cnpj || null,
     razao_social: jsonData?.razao_social || null,
     niveis_status: niveisStatus,
     pendencias,
@@ -270,22 +270,6 @@ function buildAnaliseFallback(jsonData, pdfText = '') {
         : ['Mantenha as certidões monitoradas.', 'Agende renovação antes do vencimento.'],
     observacoes: null,
   };
-}
-
-function resolveCnpjFromPdf(jsonData, pdfText) {
-  const fromIa = jsonData?.cnpj ? formatCnpj(jsonData.cnpj) : null;
-  const fromText = extractCnpjFromText(pdfText);
-  const cnpjFinal = fromIa || fromText;
-  if (!cnpjFinal) return { cnpj: null, metodo: null };
-
-  const metodo =
-    fromIa && fromText && normalizeDocumento(fromIa) === normalizeDocumento(fromText)
-      ? 'IA + texto do PDF (conferidos)'
-      : fromIa
-        ? 'extração via IA do PDF'
-        : 'regex no texto do PDF';
-
-  return { cnpj: formatCnpj(cnpjFinal), metodo };
 }
 
 async function runAnaliseProblemaCore({
@@ -348,21 +332,20 @@ async function runAnaliseProblemaCore({
     }
   }
 
-  const { cnpj: cnpjPdf, metodo: metodoExtracao } = resolveCnpjFromPdf(jsonData, truncatedText);
-  if (!cnpjPdf) {
+  const { documento: docPdf, metodo: metodoExtracao } = applyDocumentoToPdfJson(jsonData, truncatedText);
+  if (!docPdf) {
     return {
       ok: false,
-      error: 'Não foi possível identificar o CNPJ no PDF. Envie a Situação do Fornecedor completa.',
+      error: 'Não foi possível identificar o CPF/CNPJ no PDF. Envie a Situação do Fornecedor completa.',
     };
   }
-  if (normalizeDocumento(cnpjPdf) !== normalizeDocumento(cliente.documento)) {
+  if (normalizeDocumento(docPdf) !== normalizeDocumento(cliente.documento)) {
     return {
       ok: false,
-      error: `O CNPJ do PDF (${cnpjPdf}) não corresponde ao cadastro selecionado (${formatCnpj(cliente.documento)}).`,
+      error: `O documento do PDF (${docPdf}) não corresponde ao cadastro selecionado (${formatDocumento(cliente.documento)}).`,
     };
   }
 
-  jsonData.cnpj = cnpjPdf;
   jsonData.razao_social = jsonData.razao_social || cliente.razao_social;
   if (/situa[çc][ãa]o do fornecedor/i.test(truncatedText)) {
     jsonData.tipo_documento = 'Situação do Fornecedor';
@@ -373,20 +356,22 @@ async function runAnaliseProblemaCore({
     analise = buildAnaliseFallback(jsonData, truncatedText);
   }
 
-  const cnpjAnalisado = cnpjPdf;
+  const docAnalisado = docPdf;
   const razaoSocial = jsonData.razao_social || cliente.razao_social;
   const validacao = {
-    processo: 'CNPJ identificado no PDF e conferido com seus cadastros',
+    processo: 'CPF/CNPJ identificado no PDF e conferido com seus cadastros',
     metodo_extracao: metodoExtracao,
-    cnpj_identificado: cnpjAnalisado,
-    cnpj_cadastro: formatCnpj(cliente.documento),
+    documento_identificado: docAnalisado,
+    cnpj_identificado: docAnalisado,
+    cnpj_cadastro: formatDocumento(cliente.documento),
     empresa: razaoSocial,
     status: 'conferido',
   };
 
   analise = {
     ...analise,
-    cnpj: cnpjAnalisado,
+    cnpj: docAnalisado,
+    documento: docAnalisado,
     razao_social: razaoSocial,
     cliente_id: clienteId,
     tipo_documento: jsonData.tipo_documento || 'Situação do Fornecedor',
@@ -403,7 +388,7 @@ async function runAnaliseProblemaCore({
       savePayload = buildResultPayload(result, jsonData);
     } else if (result.saved && Number(result.clienteId) !== Number(clienteId)) {
       saveWarning =
-        'Análise concluída, mas o CNPJ do PDF não corresponde a este cliente — níveis não foram atualizados no cadastro.';
+        'Análise concluída, mas o documento do PDF não corresponde a este cliente — níveis não foram atualizados no cadastro.';
     } else {
       saveWarning = result.reason || 'Análise concluída, porém não foi possível atualizar o cadastro automaticamente.';
     }
@@ -430,7 +415,8 @@ async function runAnaliseProblemaCore({
     message: savePayload
       ? 'Análise concluída e níveis SICAF atualizados.'
       : 'Análise concluída.',
-    cnpj: cnpjAnalisado,
+    cnpj: docAnalisado,
+    documento: docAnalisado,
     razaoSocial,
     clienteId,
     validacao,
@@ -517,20 +503,21 @@ async function analisarProblemaPdfForUsuario({
     };
   }
 
-  const { cnpj: cnpjPdf, metodo: metodoExtracao } = resolveCnpjFromPdf(jsonData, truncatedText);
-  if (!cnpjPdf) {
+  const { documento: docPdf, metodo: metodoExtracao } = applyDocumentoToPdfJson(jsonData, truncatedText);
+  if (!docPdf) {
     return {
       ok: false,
-      error: 'Não foi possível identificar o CNPJ no PDF. Envie a Situação do Fornecedor completa.',
+      error: 'Não foi possível identificar o CPF/CNPJ no PDF. Envie a Situação do Fornecedor completa.',
     };
   }
 
-  const cliente = await findClienteByDocumentoForUsuario(db, cnpjPdf, usuarioId);
+  const cliente = await findClienteByDocumentoForUsuario(db, docPdf, usuarioId);
   if (!cliente) {
     return {
       ok: false,
-      error: `O CNPJ ${cnpjPdf} identificado no PDF não está cadastrado nas suas empresas. Envie a Situação do Fornecedor de um CNPJ vinculado à sua conta.`,
-      cnpjIdentificado: cnpjPdf,
+      error: `O documento ${docPdf} identificado no PDF não está cadastrado nas suas empresas. Envie a Situação do Fornecedor de um CPF/CNPJ vinculado à sua conta.`,
+      cnpjIdentificado: docPdf,
+      documentoIdentificado: docPdf,
       metodoExtracao,
     };
   }

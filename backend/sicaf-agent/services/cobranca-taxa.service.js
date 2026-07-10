@@ -162,7 +162,7 @@ function buildPublicPayPagePayload(ctx) {
 
   const focusGuia = guias.find((g) => g.id === focusGuiaId) || guiasAbertas[0] || guias[0];
   const pixGuia = guiasAbertas.find((g) => g.pixCopiaCola) || focusGuia;
-  const boletoGuia = guiasAbertas.find((g) => g.linhaDigitavel || g.linkPdf) || focusGuia;
+  const boletoGuia = guiasAbertas.find((g) => g.linhaDigitavel || g.linkBoleto) || focusGuia;
 
   const cidade = [cliente.cidade, cliente.estado].filter(Boolean).join('/') || '';
 
@@ -194,8 +194,7 @@ function buildPublicPayPagePayload(ctx) {
       pixCopiaCola: pixGuia?.pixCopiaCola || null,
       pixQrImage: pixGuia?.pixQrImage || null,
       linhaDigitavel: boletoGuia?.linhaDigitavel || null,
-      linkBoleto: boletoGuia?.linkBoleto || null,
-      linkPdf: boletoGuia?.linkPdf || null,
+      linkBoleto: boletoGuia?.linkBoleto || `${getPublicPayBaseUrl()}/pay/${parsed.code}`,
       formaPagamento: focusGuia?.formaPagamento || null,
     },
     expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),
@@ -1192,7 +1191,6 @@ function mapPendenciaToGuia(item) {
     pixQrImage: item.qrcodeImage || null,
     linhaDigitavel: item.barcode || null,
     linkBoleto: item.linkBoleto || null,
-    linkPdf: item.linkPdf || null,
     protocolo: item.protocolo || null,
   };
 }

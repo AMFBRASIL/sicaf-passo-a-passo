@@ -544,8 +544,10 @@ async function extractCertidoesJSON(pdfText) {
   const jsonPrompt = `Analise o texto abaixo extraído de um documento SICAF e retorne SOMENTE um JSON válido (sem markdown, sem \`\`\`, sem texto extra) com esta estrutura:
 
 {
-  "cnpj": "00.000.000/0000-00",
-  "razao_social": "NOME DA EMPRESA",
+  "cnpj": "00.000.000/0000-00 ou null se for pessoa física (CPF)",
+  "cpf": "000.000.000-00 ou null se for pessoa jurídica (CNPJ)",
+  "documento": "CPF ou CNPJ principal do fornecedor no documento (obrigatório)",
+  "razao_social": "NOME DA EMPRESA OU NOME DO FORNECEDOR PF",
   "tipo_documento": "Situação do Fornecedor|CRC|Certidão Individual",
   "niveis_sicaf": {
     "I": { "situacao": "Regular|Vencido|Pendente|Não habilitado", "descricao": "Credenciamento", "validade": "DD/MM/YYYY ou null" },
@@ -569,8 +571,10 @@ async function extractCertidoesJSON(pdfText) {
 }
 
 REGRAS IMPORTANTES:
-1. O CNPJ deve ser extraído EXATAMENTE como aparece no documento, com formatação (00.000.000/0000-00)
-2. Para o campo "niveis_sicaf": analise o documento e determine o status de CADA nível SICAF:
+1. Extraia o documento principal do fornecedor: use "cpf" para pessoa física (11 dígitos) ou "cnpj" para pessoa jurídica (14 dígitos). Preencha também "documento" com o mesmo valor formatado.
+2. O CNPJ deve ser extraído EXATAMENTE como aparece no documento, com formatação (00.000.000/0000-00), quando for PJ.
+3. O CPF deve ser extraído EXATAMENTE como aparece (000.000.000-00), quando for PF.
+4. Para o campo "niveis_sicaf": analise o documento e determine o status de CADA nível SICAF:
    - "Regular" = nível completo, válido, SEM pendências
    - "Vencido" = nível com documentos vencidos
    - "Pendente" = nível com pendências. ATENÇÃO: se o texto do nível contém "(Possui Pendência)" ou "Pendência", a situação DEVE ser "Pendente", NUNCA "Regular" ou outro valor
@@ -608,7 +612,7 @@ ${pdfText.substring(0, 6000)}`;
     const resp = await openai.chat.completions.create({
       model: params.model,
       messages: [
-        { role: 'system', content: 'Você extrai dados estruturados de documentos SICAF brasileiros. Retorne SOMENTE JSON válido, sem nenhum texto adicional. Seja preciso com CNPJs, datas e status.' },
+        { role: 'system', content: 'Você extrai dados estruturados de documentos SICAF brasileiros. Retorne SOMENTE JSON válido, sem nenhum texto adicional. Seja preciso com CPFs, CNPJs, datas e status.' },
         { role: 'user', content: jsonPrompt },
       ],
       max_tokens: Math.min(2000, params.max_tokens),
@@ -666,7 +670,12 @@ ${pdfText.substring(0, 6000)}`;
       }
     }
 
-    return enrichSicafJsonFromText(parsed, pdfText);
+    const enriched = enrichSicafJsonFromText(parsed, pdfText);
+    try {
+      const { applyDocumentoToPdfJson } = require('../../../services/client-access.service');
+      applyDocumentoToPdfJson(enriched, pdfText);
+    } catch (_) {}
+    return enriched;
   } catch (e) {
     console.log(`  [DB] Erro ao extrair JSON: ${e.message.substring(0, 60)}`);
     return null;
@@ -1014,9 +1023,11 @@ Analise os dados abaixo e retorne um diagnóstico completo. Para CADA nível com
 
 Retorne SOMENTE JSON válido (sem markdown):
 {
-  "resumo": "Resumo em 2-4 frases incluindo o CNPJ analisado (ex: CNPJ 00.000.000/0001-00: ...)",
+  "resumo": "Resumo em 2-4 frases incluindo o CPF/CNPJ analisado (ex: CPF 000.000.000-00 ou CNPJ 00.000.000/0001-00: ...)",
   "status_geral": "Regular|Pendente|Vencido|Misto",
-  "cnpj": "CNPJ extraído do documento",
+  "cnpj": "CNPJ extraído do documento ou null se for PF",
+  "cpf": "CPF extraído do documento ou null se for PJ",
+  "documento": "CPF ou CNPJ principal do fornecedor",
   "razao_social": "Razão social do fornecedor",
   "niveis_status": [
     {

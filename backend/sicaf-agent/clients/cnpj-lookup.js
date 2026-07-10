@@ -422,8 +422,8 @@ async function enrichRespostaPagamentoPendente(base, cnpjDigits, row, sicafValid
           valor: item.valor ?? null,
           status: item.status || null,
           dataVencimento: item.dataVencimento || null,
-          linkBoleto: item.linkBoleto || null,
-          pdfBoleto: item.pdfBoleto || null,
+          urlPagamento: item.urlPagamento || null,
+          payCode: item.payCode || null,
         })),
       }
     : null;
