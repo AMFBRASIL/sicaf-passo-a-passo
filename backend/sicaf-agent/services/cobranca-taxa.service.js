@@ -113,35 +113,68 @@ async function resolvePublicPayContext(code) {
   return { ok: true, db, parsed, clienteId, cliente, pendencias };
 }
 
+function resolveTipoDocumentoCliente(documento) {
+  const digits = normalizeDocumentDigits(documento);
+  if (digits.length === 11) return 'CPF';
+  return 'CNPJ';
+}
+
 async function getPublicPayGate(code) {
   const ctx = await resolvePublicPayContext(code);
   if (!ctx.ok) return ctx;
 
   const { parsed, cliente } = ctx;
+  const tipoDocumento = resolveTipoDocumentoCliente(cliente.documento);
+  const docMascarado = maskDocument(cliente.documento);
+  const isCpf = tipoDocumento === 'CPF';
+
   return {
     ok: true,
     codigo: parsed.code,
-    requiresCnpj: true,
+    requiresCnpj: !isCpf,
+    requiresDocumento: true,
+    tipoDocumento,
     empresa: {
-      razao: cliente.razao_social || cliente.nome_fantasia || 'Empresa',
-      cnpjMascarado: maskDocument(cliente.documento),
+      razao: cliente.razao_social || cliente.nome_fantasia || (isCpf ? 'Fornecedor' : 'Empresa'),
+      cnpjMascarado: docMascarado,
+      documentoMascarado: docMascarado,
+      tipoDocumento,
     },
-    message: 'Informe o CNPJ da empresa para acessar a página de pagamento.',
+    message: isCpf
+      ? 'Informe o CPF cadastrado para acessar a página de pagamento.'
+      : 'Informe o CNPJ da empresa para acessar a página de pagamento.',
   };
 }
 
-async function verifyPublicPayAccess(code, cnpjInput) {
-  const digits = normalizeDocumentDigits(cnpjInput);
-  if (digits.length !== 14) {
-    return { ok: false, error: 'Informe um CNPJ válido com 14 dígitos.' };
+async function verifyPublicPayAccess(code, documentoInput) {
+  const digits = normalizeDocumentDigits(documentoInput);
+  if (digits.length !== 11 && digits.length !== 14) {
+    return { ok: false, error: 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.' };
   }
 
   const ctx = await resolvePublicPayContext(code);
   if (!ctx.ok) return ctx;
 
   const clienteDigits = normalizeDocumentDigits(ctx.cliente.documento);
+  const tipoEsperado = resolveTipoDocumentoCliente(clienteDigits);
+  const tipoInformado = digits.length === 11 ? 'CPF' : 'CNPJ';
+
+  if (tipoInformado !== tipoEsperado) {
+    return {
+      ok: false,
+      error: tipoEsperado === 'CPF'
+        ? 'Este link é de pessoa física. Informe o CPF cadastrado (11 dígitos).'
+        : 'Este link é de pessoa jurídica. Informe o CNPJ cadastrado (14 dígitos).',
+    };
+  }
+
   if (!clienteDigits || clienteDigits !== digits) {
-    return { ok: false, error: 'CNPJ não confere com o cadastro desta cobrança.' };
+    return {
+      ok: false,
+      error: tipoEsperado === 'CPF'
+        ? 'CPF não confere com o cadastro desta cobrança.'
+        : 'CNPJ não confere com o cadastro desta cobrança.',
+    };
   }
 
   return buildPublicPayPagePayload(ctx);
@@ -181,6 +214,8 @@ function buildPublicPayPagePayload(ctx) {
     empresa: {
       razao: cliente.razao_social || cliente.nome_fantasia || 'Empresa',
       cnpj: cliente.documento || '',
+      documento: cliente.documento || '',
+      tipoDocumento: resolveTipoDocumentoCliente(cliente.documento),
     },
     cidade,
     guias,

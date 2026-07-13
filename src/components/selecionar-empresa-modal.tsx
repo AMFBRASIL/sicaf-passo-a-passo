@@ -104,7 +104,7 @@ export function SelecionarEmpresaModal({
             <Input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por nome ou CNPJ..."
+              placeholder="Buscar por nome, CPF ou CNPJ..."
               className="pl-9"
             />
           </div>
@@ -223,7 +223,7 @@ function EmpresaSelectCard({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold leading-tight">{empresa.nome}</p>
           <p className="mt-0.5 truncate text-[11px] font-mono text-muted-foreground">
-            CNPJ {empresa.cnpj}
+            {empresa.cnpj.replace(/\D/g, "").length === 11 ? "CPF" : "CNPJ"} {empresa.cnpj}
           </p>
         </div>
       </div>

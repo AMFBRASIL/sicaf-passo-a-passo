@@ -37,10 +37,27 @@ import { formatCnpjInput } from "@/lib/concorrencia-api";
 import { buildWhatsAppSuporteUrl } from "@/lib/whatsapp-suporte";
 import { WhatsappFloatingButton } from "@/components/whatsapp-floating-button";
 
-const PAY_CNPJ_STORAGE_PREFIX = "pay-cnpj-verified:";
+const PAY_DOC_STORAGE_PREFIX = "pay-doc-verified:";
 
-function payCnpjStorageKey(code: string) {
-  return `${PAY_CNPJ_STORAGE_PREFIX}${code}`;
+function payDocStorageKey(code: string) {
+  return `${PAY_DOC_STORAGE_PREFIX}${code}`;
+}
+
+/** Compatibilidade com sessão antiga que usava pay-cnpj-verified: */
+function payLegacyCnpjStorageKey(code: string) {
+  return `pay-cnpj-verified:${code}`;
+}
+
+function formatCpfInput(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function formatDocumentoInput(value: string, tipo: "CPF" | "CNPJ"): string {
+  return tipo === "CPF" ? formatCpfInput(value) : formatCnpjInput(value);
 }
 
 export const Route = createFileRoute("/pay/$code")({
@@ -86,27 +103,32 @@ function PayPageRoute() {
   const [erro, setErro] = useState<string | null>(null);
   const [gate, setGate] = useState<PublicPayGate | null>(null);
   const [cobranca, setCobranca] = useState<PublicPayPage | null>(null);
-  const [cnpjInput, setCnpjInput] = useState("");
+  const [docInput, setDocInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const cnpjDigits = useMemo(() => cnpjInput.replace(/\D/g, ""), [cnpjInput]);
+  const tipoDocumento: "CPF" | "CNPJ" = gate?.tipoDocumento || gate?.empresa?.tipoDocumento || "CNPJ";
+  const expectedDigits = tipoDocumento === "CPF" ? 11 : 14;
+  const docDigits = useMemo(() => docInput.replace(/\D/g, ""), [docInput]);
 
   const carregarPagamento = useCallback(
-    async (cnpj: string, opts?: { silent?: boolean }) => {
+    async (documento: string, opts?: { silent?: boolean }) => {
       setVerifying(true);
       if (!opts?.silent) setAuthError(null);
-      const res = await verifyPublicPayAccess(code, cnpj);
+      const res = await verifyPublicPayAccess(code, documento);
       setVerifying(false);
       if (!res.ok || !res.guias) {
         const msg = res.error || "Não foi possível validar o acesso";
         if (opts?.silent) {
-          sessionStorage.removeItem(payCnpjStorageKey(code));
+          sessionStorage.removeItem(payDocStorageKey(code));
+          sessionStorage.removeItem(payLegacyCnpjStorageKey(code));
         } else {
           setAuthError(msg);
         }
         return false;
       }
-      sessionStorage.setItem(payCnpjStorageKey(code), cnpj.replace(/\D/g, ""));
+      const digits = documento.replace(/\D/g, "");
+      sessionStorage.setItem(payDocStorageKey(code), digits);
+      sessionStorage.setItem(payLegacyCnpjStorageKey(code), digits);
       setCobranca(res as PublicPayPage);
       setAuthError(null);
       return true;
@@ -129,17 +151,30 @@ function PayPageRoute() {
         setErro(res.error || "Link inválido ou expirado");
         return;
       }
+
+      const tipo = (res.tipoDocumento || res.empresa?.tipoDocumento || "CNPJ") as "CPF" | "CNPJ";
+      const expected = tipo === "CPF" ? 11 : 14;
+
       setGate({
         codigo: res.codigo,
-        requiresCnpj: res.requiresCnpj !== false,
-        empresa: res.empresa || { razao: "Empresa", cnpjMascarado: "***" },
+        requiresCnpj: res.requiresCnpj !== false && tipo !== "CPF",
+        requiresDocumento: res.requiresDocumento !== false,
+        tipoDocumento: tipo,
+        empresa: {
+          razao: res.empresa?.razao || (tipo === "CPF" ? "Fornecedor" : "Empresa"),
+          cnpjMascarado: res.empresa?.cnpjMascarado || "***",
+          documentoMascarado: res.empresa?.documentoMascarado || res.empresa?.cnpjMascarado || "***",
+          tipoDocumento: tipo,
+        },
         message: res.message,
       });
 
-      const savedCnpj = sessionStorage.getItem(payCnpjStorageKey(code));
-      if (savedCnpj && savedCnpj.length === 14) {
-        setCnpjInput(formatCnpjInput(savedCnpj));
-        await carregarPagamento(savedCnpj, { silent: true });
+      const savedDoc =
+        sessionStorage.getItem(payDocStorageKey(code)) ||
+        sessionStorage.getItem(payLegacyCnpjStorageKey(code));
+      if (savedDoc && savedDoc.length === expected) {
+        setDocInput(formatDocumentoInput(savedDoc, tipo));
+        await carregarPagamento(savedDoc, { silent: true });
       }
     });
 
@@ -148,12 +183,16 @@ function PayPageRoute() {
     };
   }, [code, carregarPagamento]);
 
-  const confirmarCnpj = async () => {
-    if (cnpjDigits.length !== 14) {
-      setAuthError("Informe o CNPJ completo da empresa (14 dígitos).");
+  const confirmarDocumento = async () => {
+    if (docDigits.length !== expectedDigits) {
+      setAuthError(
+        tipoDocumento === "CPF"
+          ? "Informe o CPF completo (11 dígitos)."
+          : "Informe o CNPJ completo da empresa (14 dígitos).",
+      );
       return;
     }
-    await carregarPagamento(cnpjDigits);
+    await carregarPagamento(docDigits);
   };
 
   if (loadingGate) {
@@ -172,11 +211,12 @@ function PayPageRoute() {
 
   if (!cobranca) {
     return (
-      <PayCnpjAccessGate
+      <PayDocumentoAccessGate
         gate={gate}
-        cnpjInput={cnpjInput}
-        onCnpjChange={setCnpjInput}
-        onConfirm={() => void confirmarCnpj()}
+        tipoDocumento={tipoDocumento}
+        docInput={docInput}
+        onDocChange={setDocInput}
+        onConfirm={() => void confirmarDocumento()}
         verifying={verifying}
         authError={authError}
       />
@@ -186,21 +226,26 @@ function PayPageRoute() {
   return <PayPage cobranca={cobranca} />;
 }
 
-function PayCnpjAccessGate({
+function PayDocumentoAccessGate({
   gate,
-  cnpjInput,
-  onCnpjChange,
+  tipoDocumento,
+  docInput,
+  onDocChange,
   onConfirm,
   verifying,
   authError,
 }: {
   gate: PublicPayGate;
-  cnpjInput: string;
-  onCnpjChange: (v: string) => void;
+  tipoDocumento: "CPF" | "CNPJ";
+  docInput: string;
+  onDocChange: (v: string) => void;
   onConfirm: () => void;
   verifying: boolean;
   authError: string | null;
 }) {
+  const expectedDigits = tipoDocumento === "CPF" ? 11 : 14;
+  const docLabel = tipoDocumento === "CPF" ? "CPF" : "CNPJ";
+  const docMascarado = gate.empresa.documentoMascarado || gate.empresa.cnpjMascarado;
   const whatsappUrl = buildWhatsAppSuporteUrl(
     `Olá! Estou tentando acessar a página de pagamento CADBRASIL (${gate.codigo}) e preciso de ajuda.`,
   );
@@ -215,7 +260,10 @@ function PayCnpjAccessGate({
           <div>
             <CardTitle className="text-lg">Acesso seguro ao pagamento</CardTitle>
             <p className="mt-2 text-sm text-muted-foreground">
-              {gate.message || "Informe o CNPJ da empresa para visualizar as guias de pagamento."}
+              {gate.message ||
+                (tipoDocumento === "CPF"
+                  ? "Informe o CPF cadastrado para visualizar as guias de pagamento."
+                  : "Informe o CNPJ da empresa para visualizar as guias de pagamento.")}
             </p>
           </div>
         </CardHeader>
@@ -223,20 +271,22 @@ function PayCnpjAccessGate({
           <div className="rounded-lg border bg-slate-50/80 p-3 text-sm">
             <p className="font-semibold text-slate-900">{gate.empresa.razao}</p>
             <p className="mt-1 text-xs text-slate-500">
-              CNPJ cadastrado: <span className="font-mono">{gate.empresa.cnpjMascarado}</span>
+              {docLabel} cadastrado: <span className="font-mono">{docMascarado}</span>
             </p>
             <p className="mt-1 text-xs text-slate-500">Cobrança #{gate.codigo}</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="pay-cnpj">CNPJ da empresa</Label>
+            <Label htmlFor="pay-documento">
+              {tipoDocumento === "CPF" ? "CPF do fornecedor" : "CNPJ da empresa"}
+            </Label>
             <Input
-              id="pay-cnpj"
+              id="pay-documento"
               inputMode="numeric"
               autoComplete="off"
-              placeholder="00.000.000/0000-00"
-              value={cnpjInput}
-              onChange={(e) => onCnpjChange(formatCnpjInput(e.target.value))}
+              placeholder={tipoDocumento === "CPF" ? "000.000.000-00" : "00.000.000/0000-00"}
+              value={docInput}
+              onChange={(e) => onDocChange(formatDocumentoInput(e.target.value, tipoDocumento))}
               onKeyDown={(e) => {
                 if (e.key === "Enter") onConfirm();
               }}
@@ -255,7 +305,11 @@ function PayCnpjAccessGate({
             )}
           </div>
 
-          <Button className="w-full gap-2" onClick={onConfirm} disabled={verifying || cnpjInput.replace(/\D/g, "").length < 14}>
+          <Button
+            className="w-full gap-2"
+            onClick={onConfirm}
+            disabled={verifying || docInput.replace(/\D/g, "").length < expectedDigits}
+          >
             {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
             {verifying ? "Validando..." : "Acessar pagamento"}
           </Button>
@@ -380,7 +434,13 @@ function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
                 <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50/60 px-4 py-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{cobranca.empresa.razao}</p>
-                    <p className="text-xs text-slate-500">CNPJ {cobranca.empresa.cnpj}</p>
+                    <p className="text-xs text-slate-500">
+                      {(cobranca.empresa.tipoDocumento ||
+                        (String(cobranca.empresa.documento || cobranca.empresa.cnpj || "").replace(/\D/g, "").length === 11
+                          ? "CPF"
+                          : "CNPJ"))}{" "}
+                      {cobranca.empresa.documento || cobranca.empresa.cnpj}
+                    </p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-slate-500">Responsável</p>

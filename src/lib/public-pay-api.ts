@@ -32,6 +32,8 @@ export type PublicPayPage = {
   empresa: {
     razao: string;
     cnpj: string;
+    documento?: string;
+    tipoDocumento?: "CPF" | "CNPJ";
   };
   cidade: string;
   guias: PublicPayGuia[];
@@ -55,9 +57,13 @@ export type PublicPayPage = {
 export type PublicPayGate = {
   codigo: string;
   requiresCnpj: boolean;
+  requiresDocumento?: boolean;
+  tipoDocumento?: "CPF" | "CNPJ";
   empresa: {
     razao: string;
     cnpjMascarado: string;
+    documentoMascarado?: string;
+    tipoDocumento?: "CPF" | "CNPJ";
   };
   message?: string;
 };
@@ -72,7 +78,7 @@ export async function fetchPublicPayGate(code: string): Promise<{
 
 export async function verifyPublicPayAccess(
   code: string,
-  cnpj: string,
+  documento: string,
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -81,7 +87,7 @@ export async function verifyPublicPayAccess(
     method: "POST",
     auth: false,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cnpj }),
+    body: JSON.stringify({ documento, cnpj: documento, cpf: documento }),
   });
   return (await res.json()) as { ok: boolean; error?: string } & Partial<PublicPayPage>;
 }

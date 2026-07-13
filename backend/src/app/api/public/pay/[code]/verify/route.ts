@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 type CobrancaTaxaService = {
   verifyPublicPayAccess: (
     code: string,
-    cnpj: string,
+    documento: string,
   ) => Promise<{ ok: boolean; error?: string }>;
 };
 
@@ -17,14 +17,21 @@ export async function POST(
 ) {
   try {
     const { code } = await context.params;
-    const body = (await request.json().catch(() => ({}))) as { cnpj?: string };
-    const cnpj = String(body.cnpj || "").trim();
-    if (!cnpj) {
-      return NextResponse.json({ ok: false, error: "Informe o CNPJ da empresa." }, { status: 400 });
+    const body = (await request.json().catch(() => ({}))) as {
+      cnpj?: string;
+      cpf?: string;
+      documento?: string;
+    };
+    const documento = String(body.documento || body.cpf || body.cnpj || "").trim();
+    if (!documento) {
+      return NextResponse.json(
+        { ok: false, error: "Informe o CPF ou CNPJ cadastrado." },
+        { status: 400 },
+      );
     }
 
     const svc = await getSicafAgentModule<CobrancaTaxaService>("services/cobranca-taxa.service");
-    const result = await svc.verifyPublicPayAccess(code, cnpj);
+    const result = await svc.verifyPublicPayAccess(code, documento);
     return NextResponse.json(result, { status: result.ok ? 200 : 401 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao validar acesso";

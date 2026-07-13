@@ -896,7 +896,7 @@ function SicafPage() {
             <AlertTriangle className="h-10 w-10 text-danger" />
             <p className="font-semibold">{loadError || "Empresa não encontrada"}</p>
             <p className="text-sm text-muted-foreground">
-              Cadastre a empresa em Empresas ou acesse com um CNPJ válido na URL.
+              Cadastre a empresa em Empresas ou acesse com um CPF/CNPJ válido na URL.
             </p>
             <Button asChild>
               <Link to="/empresas">Ir para Empresas</Link>
@@ -1051,10 +1051,12 @@ function SicafPage() {
               <p className="truncate text-sm font-semibold">{cliente.nome}</p>
               <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success">
                 <CheckCircle2 className="h-3 w-3" />
-                Empresa selecionada
+                {cliente.tipoDocumento === "CPF" ? "Fornecedor selecionado" : "Empresa selecionada"}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">CNPJ {cliente.cnpj}</p>
+            <p className="text-xs text-muted-foreground">
+              {cliente.tipoDocumento} {cliente.documento || cliente.cnpj}
+            </p>
           </div>
         </div>
         <Button

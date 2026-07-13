@@ -24,6 +24,8 @@ export type SicafPageCliente = {
   clienteId: number;
   nome: string;
   cnpj: string;
+  documento: string;
+  tipoDocumento: "CPF" | "CNPJ";
   endereco: string;
   cidade: string;
   uf: string;
@@ -46,10 +48,20 @@ export type SicafPageData = {
   valorRenovacaoFmt?: string;
 };
 
-function formatCnpj(doc: string): string {
-  const d = doc.replace(/\D/g, "");
-  if (d.length !== 14) return doc;
-  return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+function formatDocumento(doc: string): string {
+  const d = String(doc || "").replace(/\D/g, "");
+  if (d.length === 14) {
+    return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+  }
+  if (d.length === 11) {
+    return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  }
+  return String(doc || "").trim();
+}
+
+function resolveTipoDocumento(doc: string): "CPF" | "CNPJ" {
+  const d = String(doc || "").replace(/\D/g, "");
+  return d.length === 11 ? "CPF" : "CNPJ";
 }
 
 const NIVEIS_SICAF_TOTAL = 6;
@@ -228,7 +240,9 @@ function mapPainelToCliente(painel: EmpresaGerenciarPainel): SicafPageCliente {
   return {
     clienteId: c.id,
     nome: c.razaoSocial || c.nomeFantasia || "",
-    cnpj: formatCnpj(c.documento),
+    cnpj: formatDocumento(c.documento),
+    documento: formatDocumento(c.documento),
+    tipoDocumento: resolveTipoDocumento(c.documento),
     endereco: c.endereco || "",
     cidade: c.cidade || "",
     uf: c.estado || "",
