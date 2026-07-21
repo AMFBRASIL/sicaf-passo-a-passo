@@ -241,6 +241,8 @@ function mapCardRow(row, timeline = [], anexos = []) {
 
   const ultimoTl = timeline[0];
   const ultimoContato = ultimoTl ? fmtRelative(ultimoTl.created_at || ultimoTl.data) : fmtRelative(row.updated_at);
+  const criadoEm = fmtDate(row.created_at);
+  const atualizadoEm = fmtDate(row.updated_at || row.created_at) || criadoEm;
 
   return {
     id: row.codigo,
@@ -256,7 +258,8 @@ function mapCardRow(row, timeline = [], anexos = []) {
     dataAcao: row.data_acao ? fmtDateIso(row.data_acao) : '',
     notas: row.notas || '',
     tags: parseTags(row.tags),
-    criadoEm: fmtDate(row.created_at),
+    criadoEm,
+    atualizadoEm,
     ultimoContato,
     progressoDocs: row.progresso_docs || 0,
     anexos: anexos.map(mapAnexoRow),
@@ -660,6 +663,163 @@ async function removerAnexo(anexoId, usuarioId) {
   }
 }
 
+async function clienteTemPagamentoConfirmado(db, clienteId) {
+  const { TAXA_SICAF_PAGA_WHERE } = require('../utils/sicaf-pagamento-resumo');
+  const { resolveFinancialReleased } = require('../utils/sicaf-status');
+
+  let taxaReleased = false;
+  try {
+    const pago = await db('taxas_sicaf')
+      .where('cliente_id', clienteId)
+      .whereRaw(TAXA_SICAF_PAGA_WHERE)
+      .first();
+    taxaReleased = !!pago;
+  } catch (_) {}
+
+  const pagoSql =
+    "(LOWER(TRIM(CAST(status AS CHAR))) IN ('pago','paga','aprovado','aprovada','paid','quitado','confirmado','confirmada','liberado','liberada') OR status IN ('Pago','Paga','Aprovado','Aprovada','Confirmado','Liberado'))";
+
+  if (!taxaReleased) {
+    try {
+      if (await db.schema.hasTable('pagamentos')) {
+        const p = await db('pagamentos')
+          .where('cliente_id', clienteId)
+          .whereRaw(pagoSql)
+          .first();
+        if (p) taxaReleased = true;
+      }
+    } catch (_) {}
+  }
+
+  if (!taxaReleased) {
+    try {
+      if (await db.schema.hasTable('pagamentos_gerencianet')) {
+        const p = await db('pagamentos_gerencianet')
+          .where('cliente_id', clienteId)
+          .whereRaw(pagoSql)
+          .first();
+        if (p) taxaReleased = true;
+      }
+    } catch (_) {}
+  }
+
+  let sicaf = null;
+  try {
+    sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
+  } catch (_) {}
+
+  return resolveFinancialReleased({
+    hasSicaf: !!sicaf,
+    sicafStatus: sicaf?.status || null,
+    dataValidade: sicaf?.data_validade || null,
+    taxaReleased,
+  });
+}
+
+/**
+ * Cards em "Boleto gerado": se o cliente já pagou / financeiro liberado,
+ * move automaticamente para "Financeiro liberado".
+ */
+async function sincronizarBoletosPagos(usuarioId) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const tables = await ensureTables(db);
+  if (!tables.ok) return tables;
+
+  try {
+    const cards = await db('crm_cards as c')
+      .leftJoin('clientes as cl', 'cl.id', 'c.cliente_id')
+      .where('c.stage', 'boleto')
+      .select(
+        'c.id',
+        'c.codigo',
+        'c.cliente_id',
+        'c.stage',
+        'cl.razao_social',
+        'cl.nome_fantasia',
+        'cl.documento',
+      )
+      .orderBy('c.updated_at', 'desc');
+
+    let verificados = 0;
+    let promovidos = 0;
+    let pendentes = 0;
+    const detalhes = [];
+
+    for (const card of cards) {
+      verificados += 1;
+      const clienteId = Number(card.cliente_id);
+      if (!clienteId) {
+        pendentes += 1;
+        detalhes.push({
+          cardId: card.codigo,
+          cliente: card.razao_social || card.nome_fantasia || '',
+          status: 'sem_cliente',
+          mensagem: 'Card sem cliente vinculado',
+        });
+        continue;
+      }
+
+      const pago = await clienteTemPagamentoConfirmado(db, clienteId);
+      if (!pago) {
+        pendentes += 1;
+        detalhes.push({
+          cardId: card.codigo,
+          cliente: card.razao_social || card.nome_fantasia || '',
+          documento: card.documento || '',
+          status: 'pendente',
+          mensagem: 'Pagamento ainda não confirmado',
+        });
+        continue;
+      }
+
+      await db('crm_cards').where('id', card.id).update({
+        stage: 'liberado',
+        updated_at: db.fn.now(),
+      });
+
+      await addTimeline(
+        db,
+        card.id,
+        {
+          tipo: 'financeiro',
+          titulo: 'Pagamento confirmado',
+          descricao:
+            'Sincronização automática: boleto quitado — etapa alterada para Financeiro liberado.',
+        },
+        usuarioId,
+      );
+
+      promovidos += 1;
+      detalhes.push({
+        cardId: card.codigo,
+        cliente: card.razao_social || card.nome_fantasia || '',
+        documento: card.documento || '',
+        status: 'promovido',
+        mensagem: 'Movido para Financeiro liberado',
+      });
+    }
+
+    return {
+      ok: true,
+      verificados,
+      promovidos,
+      pendentes,
+      detalhes,
+      message:
+        promovidos > 0
+          ? `${promovidos} card(s) movido(s) para Financeiro liberado`
+          : verificados === 0
+            ? 'Nenhum card em Boleto gerado'
+            : 'Nenhum pagamento novo confirmado',
+    };
+  } catch (e) {
+    console.error('[CRM] Erro sincronizarBoletosPagos:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
 module.exports = {
   listConsultores,
   searchClientes,
@@ -669,4 +829,5 @@ module.exports = {
   updateCrmCard,
   adicionarAnexo,
   removerAnexo,
+  sincronizarBoletosPagos,
 };

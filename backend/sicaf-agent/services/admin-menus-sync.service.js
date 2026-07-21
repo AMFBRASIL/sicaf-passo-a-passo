@@ -18,6 +18,7 @@ const ADMIN_PANEL_MANIFEST = [
   { paginaId: 'atendimento', paginaNome: 'Central de Atendimento', categoria: 'Atendimento', rota: '/admin/atendimento' },
   { paginaId: 'alerts', paginaNome: 'Central de Alertas', categoria: 'Atendimento', rota: '/admin/alertas' },
   { paginaId: 'crm-clientes', paginaNome: 'CRM Clientes', categoria: 'CRM', rota: '/admin/crm-clientes' },
+  { paginaId: 'email-marketing', paginaNome: 'Email Marketing', categoria: 'CRM', rota: '/admin/email-marketing' },
   { paginaId: 'google-ads-tracking', paginaNome: 'Google Ads', categoria: 'Inteligência', rota: '/admin/google-ads' },
   { paginaId: 'processos', paginaNome: 'Processos', categoria: 'Inteligência', rota: '/admin/processos' },
   { paginaId: 'funil', paginaNome: 'Funil Comercial', categoria: 'Inteligência', rota: '/admin/funil' },

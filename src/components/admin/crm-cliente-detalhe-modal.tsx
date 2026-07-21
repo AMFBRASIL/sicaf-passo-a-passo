@@ -1,100 +1,213 @@
+import { useState } from "react";
 import {
-    Dialog,
-    DialogContent,
-    DialogTitle,
-    DialogDescription,
-  } from "@/components/ui/dialog";
-  import { Button } from "@/components/ui/button";
-  import { Progress } from "@/components/ui/progress";
-  import {
-    Building2,
-    Phone,
-    Mail,
-    MessageCircle,
-    MapPin,
-    DollarSign,
-    Receipt,
-    CalendarClock,
-    Flag,
-    UserCog,
-    Sparkles,
-    X,
-    FileText,
-    ClipboardList,
-    Activity,
-    ArrowUpRight,
-    MessageSquare,
-    Clock,
-    Send,
-    Pencil,
-    Paperclip,
-  } from "lucide-react";
-  import { cn } from "@/lib/utils";
-  import { formatarReal } from "@/lib/money";
-  import { STAGES, PRIORIDADES, CANAIS, type CrmConsultor } from "./crm-cliente-wizard-modal";
-  import type { CrmStage, CrmCliente } from "./crm-cliente-wizard-modal";
-  import { CrmAnexosLista, type CrmAnexo } from "./crm-anexos";
-  
-  export interface CrmCardData {
-    id: string;
-    cliente: CrmCliente;
-    stage: CrmStage;
-    consultorId: string;
-    prioridade: string;
-    canal: string;
-    valor: string;
-    boleto: string;
-    proximaAcao: string;
-    dataAcao: string;
-    notas: string;
-    tags: string[];
-    criadoEm: string;
-    ultimoContato: string;
-    progressoDocs: number;
-    anexos: CrmAnexo[];
-    timeline: { data: string; titulo: string; descricao: string; tipo: "criacao" | "contato" | "mudanca" | "nota" | "financeiro" }[];
-  }
-  
-  interface Props {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    card: CrmCardData | null;
-    onEditar?: (card: CrmCardData) => void;
-    consultores?: CrmConsultor[];
-  }
-  
-  const TIPO_ICON = {
-    criacao: Sparkles,
-    contato: MessageSquare,
-    mudanca: ArrowUpRight,
-    nota: FileText,
-    financeiro: Receipt,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import {
+  Building2,
+  Phone,
+  Mail,
+  MessageCircle,
+  MapPin,
+  DollarSign,
+  Receipt,
+  CalendarClock,
+  Flag,
+  UserCog,
+  Sparkles,
+  X,
+  FileText,
+  ClipboardList,
+  Activity,
+  ArrowUpRight,
+  MessageSquare,
+  Clock,
+  Send,
+  Pencil,
+  Paperclip,
+  HandCoins,
+  Loader2,
+} from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { formatarReal, parseRealToNumber } from "@/lib/money";
+import { STAGES, PRIORIDADES, CANAIS, type CrmConsultor } from "./crm-cliente-wizard-modal";
+import type { CrmStage, CrmCliente } from "./crm-cliente-wizard-modal";
+import { CrmAnexosLista, type CrmAnexo } from "./crm-anexos";
+import { CobrancaClienteModal } from "@/components/admin/cobranca-cliente-modal";
+import {
+  fetchCobrancaCliente,
+  fetchCobrancaHistorico,
+  type ClienteCobrancaPendente,
+} from "@/lib/cobranca-api";
+
+export interface CrmCardData {
+  id: string;
+  cliente: CrmCliente;
+  stage: CrmStage;
+  consultorId: string;
+  prioridade: string;
+  canal: string;
+  valor: string;
+  boleto: string;
+  proximaAcao: string;
+  dataAcao: string;
+  notas: string;
+  tags: string[];
+  criadoEm: string;
+  atualizadoEm?: string;
+  ultimoContato: string;
+  progressoDocs: number;
+  anexos: CrmAnexo[];
+  timeline: {
+    data: string;
+    titulo: string;
+    descricao: string;
+    tipo: "criacao" | "contato" | "mudanca" | "nota" | "financeiro";
+  }[];
+}
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  card: CrmCardData | null;
+  onEditar?: (card: CrmCardData) => void;
+  consultores?: CrmConsultor[];
+}
+
+const TIPO_ICON = {
+  criacao: Sparkles,
+  contato: MessageSquare,
+  mudanca: ArrowUpRight,
+  nota: FileText,
+  financeiro: Receipt,
+};
+
+const TIPO_COR = {
+  criacao: "bg-primary text-primary-foreground",
+  contato: "bg-sky-500 text-white",
+  mudanca: "bg-violet-500 text-white",
+  nota: "bg-muted text-foreground",
+  financeiro: "bg-emerald-500 text-white",
+};
+
+function buildCrmCobrancaFallback(card: CrmCardData): ClienteCobrancaPendente {
+  const clienteId = parseInt(card.cliente.id, 10);
+  const valor = parseRealToNumber(card.valor) ?? 0;
+  return {
+    clienteId,
+    taxaId: null,
+    pagamentoId: null,
+    company: card.cliente.razao,
+    cnpj: card.cliente.cnpj,
+    email: "",
+    telefone: "",
+    responsavel: "",
+    descricao: card.boleto?.trim() || "Taxa SICAF CADBRASIL",
+    valor,
+    formaPagamento: "Boleto",
+    dataVencimento: null,
+    vencimentoFormatado: "—",
+    pendenteDesde: null,
+    pendenteDesdeFormatado: "—",
+    diasPendente: 0,
+    status: "Aguardando",
+    origem: "crm_clientes",
+    cidade: card.cliente.cidade,
+    severidade: "leve",
+    foiCobrado: false,
+    ultimaCobrancaEm: null,
+    ultimaCobrancaFormatada: "",
+    totalCobrancas: 0,
   };
-  
-  const TIPO_COR = {
-    criacao: "bg-primary text-primary-foreground",
-    contato: "bg-sky-500 text-white",
-    mudanca: "bg-violet-500 text-white",
-    nota: "bg-muted text-foreground",
-    financeiro: "bg-emerald-500 text-white",
+}
+
+export function CrmClienteDetalheModal({
+  open,
+  onOpenChange,
+  card,
+  onEditar,
+  consultores = [],
+}: Props) {
+  const [cobrancaOpen, setCobrancaOpen] = useState(false);
+  const [cobrancaCliente, setCobrancaCliente] = useState<ClienteCobrancaPendente | null>(null);
+  const [loadingCobranca, setLoadingCobranca] = useState(false);
+
+  const abrirCobranca = async () => {
+    if (!card) return;
+    const clienteId = parseInt(card.cliente.id, 10);
+    if (!Number.isFinite(clienteId)) {
+      toast.error("Cliente inválido");
+      return;
+    }
+
+    setLoadingCobranca(true);
+    const [res, hist] = await Promise.all([
+      fetchCobrancaCliente(clienteId),
+      fetchCobrancaHistorico(clienteId),
+    ]);
+    setLoadingCobranca(false);
+
+    let dados: ClienteCobrancaPendente;
+    if (res.ok && res.cliente) {
+      dados = res.cliente;
+    } else {
+      dados = buildCrmCobrancaFallback(card);
+      if (!res.ok) {
+        toast.message("Cobrança aberta com dados do CRM", {
+          description: res.error || "Nenhuma pendência financeira encontrada na API.",
+        });
+      }
+    }
+
+    if (hist.ok && hist.historico?.length) {
+      const ultima = hist.historico[0];
+      dados = {
+        ...dados,
+        totalCobrancas: hist.historico.length,
+        foiCobrado: true,
+        ultimaCobrancaEm: ultima.enviadoEm,
+        ultimaCobrancaFormatada: ultima.enviadoEmFormatado,
+      };
+    }
+
+    setCobrancaCliente(dados);
+    setCobrancaOpen(true);
   };
-  
-  export function CrmClienteDetalheModal({ open, onOpenChange, card, onEditar, consultores = [] }: Props) {
-    if (!card) return null;
-    const stageObj = STAGES.find((s) => s.id === card.stage)!;
-    const consultor = consultores.find((c) => c.id === card.consultorId);
-    const prioridade = PRIORIDADES.find((p) => p.id === card.prioridade);
-    const canal = CANAIS.find((c) => c.id === card.canal);
-    const StageIcon = stageObj.icon;
-  
-    return (
+
+  const cobrancaModal = (
+    <CobrancaClienteModal
+      cliente={cobrancaCliente}
+      open={cobrancaOpen}
+      onClose={() => {
+        setCobrancaOpen(false);
+        setCobrancaCliente(null);
+      }}
+    />
+  );
+
+  if (!card) return cobrancaModal;
+
+  const stageObj = STAGES.find((s) => s.id === card.stage)!;
+  const consultor = consultores.find((c) => c.id === card.consultorId);
+  const prioridade = PRIORIDADES.find((p) => p.id === card.prioridade);
+  const canal = CANAIS.find((c) => c.id === card.canal);
+  const StageIcon = stageObj.icon;
+  const showCobranca = card.stage === "boleto";
+
+  return (
+    <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-6xl p-0 overflow-hidden gap-0 border-0">
           <DialogTitle className="sr-only">Detalhamento do cliente {card.cliente.razao}</DialogTitle>
           <DialogDescription className="sr-only">
             Visão 360 do atendimento no CRM.
           </DialogDescription>
-  
+
           <div className="grid lg:grid-cols-[320px_1fr] min-h-[680px] max-h-[90vh]">
             <aside
               className="relative hidden lg:flex flex-col justify-between p-6 text-white overflow-hidden"
@@ -111,11 +224,16 @@ import {
                 </div>
                 <h2 className="mt-3 text-2xl font-bold leading-tight">{card.cliente.razao}</h2>
                 <p className="mt-1 text-sm text-white/70">{card.cliente.cnpj}</p>
-  
-                <div className={cn("mt-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold text-white bg-gradient-to-br", stageObj.cor)}>
+
+                <div
+                  className={cn(
+                    "mt-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold text-white bg-gradient-to-br",
+                    stageObj.cor,
+                  )}
+                >
                   <StageIcon className="h-3.5 w-3.5" /> {stageObj.titulo}
                 </div>
-  
+
                 <div className="mt-5 space-y-2 text-xs">
                   <div className="flex items-center gap-2 text-white/80">
                     <MapPin className="h-3.5 w-3.5" /> {card.cliente.cidade}
@@ -131,7 +249,7 @@ import {
                     </span>
                   </div>
                 </div>
-  
+
                 <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-3 backdrop-blur">
                   <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-white/70">
                     <span>Documentação</span>
@@ -143,8 +261,23 @@ import {
                   </p>
                 </div>
               </div>
-  
+
               <div className="relative space-y-2">
+                {showCobranca && (
+                  <Button
+                    className="w-full gap-1.5 bg-rose-600 hover:bg-rose-700 text-white"
+                    size="sm"
+                    disabled={loadingCobranca}
+                    onClick={() => void abrirCobranca()}
+                  >
+                    {loadingCobranca ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <HandCoins className="h-3.5 w-3.5" />
+                    )}
+                    Cobrança
+                  </Button>
+                )}
                 <Button className="w-full gap-1.5" size="sm">
                   <MessageCircle className="h-3.5 w-3.5" /> Enviar WhatsApp
                 </Button>
@@ -158,7 +291,7 @@ import {
                 </div>
               </div>
             </aside>
-  
+
             <section className="flex flex-col bg-background overflow-hidden min-h-0">
               <header className="flex items-start justify-between border-b border-border px-6 py-5">
                 <div>
@@ -167,10 +300,27 @@ import {
                   </p>
                   <h3 className="text-xl font-bold tracking-tight">Visão 360 do cliente</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Criado em {card.criadoEm} · Último contato {card.ultimoContato}
+                    Criado em {card.criadoEm}
+                    {card.atualizadoEm ? ` · Atualizado em ${card.atualizadoEm}` : ""}
+                    {card.ultimoContato ? ` · Último contato ${card.ultimoContato}` : ""}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {showCobranca && (
+                    <Button
+                      size="sm"
+                      className="gap-1.5 bg-rose-600 hover:bg-rose-700 lg:hidden"
+                      disabled={loadingCobranca}
+                      onClick={() => void abrirCobranca()}
+                    >
+                      {loadingCobranca ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <HandCoins className="h-3.5 w-3.5" />
+                      )}
+                      Cobrança
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
@@ -188,17 +338,35 @@ import {
                   </button>
                 </div>
               </header>
-  
+
               <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 space-y-6">
-                {/* KPIs */}
                 <div className="grid gap-3 sm:grid-cols-4">
-                  <Kpi icon={<DollarSign className="h-4 w-4" />} label="Valor" valor={card.valor ? formatarReal(card.valor) : "—"} cor="text-emerald-600" />
-                  <Kpi icon={<Receipt className="h-4 w-4" />} label="Boleto" valor={card.boleto || "—"} cor="text-amber-600" />
-                  <Kpi icon={<CalendarClock className="h-4 w-4" />} label="Próxima ação" valor={card.dataAcao || "—"} cor="text-sky-600" />
-                  <Kpi icon={<MessageSquare className="h-4 w-4" />} label="Canal" valor={canal?.label ?? "—"} cor="text-violet-600" />
+                  <Kpi
+                    icon={<DollarSign className="h-4 w-4" />}
+                    label="Valor"
+                    valor={card.valor ? formatarReal(card.valor) : "—"}
+                    cor="text-emerald-600"
+                  />
+                  <Kpi
+                    icon={<Receipt className="h-4 w-4" />}
+                    label="Boleto"
+                    valor={card.boleto || "—"}
+                    cor="text-amber-600"
+                  />
+                  <Kpi
+                    icon={<CalendarClock className="h-4 w-4" />}
+                    label="Próxima ação"
+                    valor={card.dataAcao || "—"}
+                    cor="text-sky-600"
+                  />
+                  <Kpi
+                    icon={<MessageSquare className="h-4 w-4" />}
+                    label="Canal"
+                    valor={canal?.label ?? "—"}
+                    cor="text-violet-600"
+                  />
                 </div>
-  
-                {/* Próxima ação destacada */}
+
                 {card.proximaAcao && (
                   <div className="rounded-xl border-l-4 border-primary bg-primary/5 p-4">
                     <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-primary">
@@ -210,22 +378,25 @@ import {
                     )}
                   </div>
                 )}
-  
-                {/* Tags */}
+
                 {card.tags.length > 0 && (
                   <div>
-                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Tags</p>
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Tags
+                    </p>
                     <div className="flex flex-wrap gap-2">
                       {card.tags.map((t) => (
-                        <span key={t} className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                        <span
+                          key={t}
+                          className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary"
+                        >
                           {t}
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
-  
-                {/* Notas */}
+
                 {card.notas && (
                   <div className="rounded-xl border border-border bg-card p-4">
                     <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -234,8 +405,7 @@ import {
                     <p className="mt-1.5 text-sm leading-relaxed">{card.notas}</p>
                   </div>
                 )}
-  
-                {/* Anexos / Evidências */}
+
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -247,8 +417,7 @@ import {
                   </div>
                   <CrmAnexosLista anexos={card.anexos} />
                 </div>
-  
-                {/* Timeline */}
+
                 <div>
                   <div className="mb-3 flex items-center justify-between">
                     <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -274,7 +443,9 @@ import {
                           <div className="rounded-lg border border-border bg-card p-3">
                             <div className="flex items-start justify-between gap-3">
                               <p className="text-sm font-semibold">{ev.titulo}</p>
-                              <span className="text-[11px] text-muted-foreground whitespace-nowrap">{ev.data}</span>
+                              <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                                {ev.data}
+                              </span>
                             </div>
                             <p className="mt-0.5 text-xs text-muted-foreground">{ev.descricao}</p>
                           </div>
@@ -283,8 +454,7 @@ import {
                     })}
                   </ol>
                 </div>
-  
-                {/* Dados */}
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <InfoBloco titulo="Dados cadastrais" icone={<Building2 className="h-4 w-4" />}>
                     <Linha label="Razão social" valor={card.cliente.razao} />
@@ -298,11 +468,12 @@ import {
                     <Linha label="Prioridade" valor={prioridade?.label ?? "—"} />
                     <Linha label="Canal" valor={canal?.label ?? "—"} />
                     <Linha label="Etapa" valor={stageObj.titulo} />
-                    <Linha label="Criado em" valor={card.criadoEm} />
+                    <Linha label="Criado em" valor={card.criadoEm || "—"} />
+                    <Linha label="Atualizado em" valor={card.atualizadoEm || card.criadoEm || "—"} />
                   </InfoBloco>
                 </div>
               </div>
-  
+
               <footer className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-6 py-4">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Activity className="h-3.5 w-3.5" /> Todas as ações ficam registradas na auditoria.
@@ -311,9 +482,29 @@ import {
                   <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
                     Fechar
                   </Button>
-                  <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => onEditar?.(card)}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => onEditar?.(card)}
+                  >
                     <Pencil className="h-3.5 w-3.5" /> Editar
                   </Button>
+                  {showCobranca && (
+                    <Button
+                      size="sm"
+                      className="gap-1.5 bg-rose-600 hover:bg-rose-700"
+                      disabled={loadingCobranca}
+                      onClick={() => void abrirCobranca()}
+                    >
+                      {loadingCobranca ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <HandCoins className="h-3.5 w-3.5" />
+                      )}
+                      Cobrança
+                    </Button>
+                  )}
                   <Button size="sm" className="gap-1.5">
                     <Send className="h-3.5 w-3.5" /> Registrar interação
                   </Button>
@@ -323,36 +514,56 @@ import {
           </div>
         </DialogContent>
       </Dialog>
-    );
-  }
-  
-  function Kpi({ icon, label, valor, cor }: { icon: React.ReactNode; label: string; valor: string; cor: string }) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-3">
-        <div className={cn("flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider", cor)}>
-          {icon} {label}
-        </div>
-        <p className="mt-1 truncate text-sm font-bold">{valor}</p>
+      {cobrancaModal}
+    </>
+  );
+}
+
+function Kpi({
+  icon,
+  label,
+  valor,
+  cor,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  valor: string;
+  cor: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3">
+      <div className={cn("flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider", cor)}>
+        {icon} {label}
       </div>
-    );
-  }
-  
-  function InfoBloco({ titulo, icone, children }: { titulo: string; icone: React.ReactNode; children: React.ReactNode }) {
-    return (
-      <div className="rounded-xl border border-border bg-card p-4">
-        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          {icone} {titulo}
-        </div>
-        <div className="space-y-1.5">{children}</div>
+      <p className="mt-1 truncate text-sm font-bold">{valor}</p>
+    </div>
+  );
+}
+
+function InfoBloco({
+  titulo,
+  icone,
+  children,
+}: {
+  titulo: string;
+  icone: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+        {icone} {titulo}
       </div>
-    );
-  }
-  
-  function Linha({ label, valor }: { label: string; valor: string }) {
-    return (
-      <div className="flex items-start justify-between gap-3 text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-semibold text-right">{valor}</span>
-      </div>
-    );
-  }
+      <div className="space-y-1.5">{children}</div>
+    </div>
+  );
+}
+
+function Linha({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-semibold text-right">{valor}</span>
+    </div>
+  );
+}

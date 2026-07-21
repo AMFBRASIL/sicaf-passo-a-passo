@@ -93,6 +93,26 @@ export async function dataUrlToFile(dataUrl: string, nome: string, mime: string)
   return new File([blob], nome, { type: mime || blob.type });
 }
 
+export async function sincronizarCrmBoletos() {
+  const res = await apiFetch("/api/admin/crm/cards", {
+    method: "POST",
+    body: JSON.stringify({ action: "sincronizar-boletos" }),
+  });
+  return parseJson<{
+    verificados?: number;
+    promovidos?: number;
+    pendentes?: number;
+    message?: string;
+    detalhes?: Array<{
+      cardId: string;
+      cliente: string;
+      documento?: string;
+      status: string;
+      mensagem: string;
+    }>;
+  }>(res);
+}
+
 export async function syncCrmAnexosPendentes(cardId: string, anexos: CrmAnexo[]) {
   const uploaded: CrmAnexo[] = [];
   for (const a of anexos) {

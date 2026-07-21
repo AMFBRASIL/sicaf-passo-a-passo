@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Loader2,
   RefreshCw,
+  HandCoins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -42,6 +43,7 @@ import {
   fetchCrmCards,
   fetchCrmConsultores,
   searchCrmClientes,
+  sincronizarCrmBoletos,
   syncCrmAnexosPendentes,
 } from "@/lib/admin-crm-api";
 import type { CrmCliente } from "@/components/admin/crm-cliente-wizard-modal";
@@ -73,6 +75,7 @@ function CrmClientesPage() {
   const [kpis, setKpis] = useState({ emFunil: 0, pipeline: 0, liberado: 0, negociacao: 0 });
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<CrmStage | null>(null);
+  const [sincronizando, setSincronizando] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaDebounced(busca), 350);
@@ -234,6 +237,36 @@ function CrmClientesPage() {
     await carregar();
   }
 
+  async function handleSincronizarBoletos() {
+    setSincronizando(true);
+    const res = await sincronizarCrmBoletos();
+    setSincronizando(false);
+
+    if (!res.ok) {
+      toast.error(res.error || "Falha ao sincronizar boletos");
+      return;
+    }
+
+    const promovidos = res.promovidos || 0;
+    const verificados = res.verificados || 0;
+    const pendentes = res.pendentes || 0;
+
+    if (promovidos > 0) {
+      toast.success(res.message || `${promovidos} card(s) liberado(s)`, {
+        description: `${verificados} em Boleto gerado · ${pendentes} ainda pendente(s)`,
+      });
+    } else {
+      toast.message(res.message || "Nenhuma alteração", {
+        description:
+          verificados === 0
+            ? "Não há cards na etapa Boleto gerado"
+            : `${pendentes} card(s) ainda aguardando pagamento`,
+      });
+    }
+
+    await carregar();
+  }
+
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <PageHeader
@@ -242,6 +275,19 @@ function CrmClientesPage() {
         subtitle="Kanban dos clientes em atendimento pelos consultores CADBRASIL"
         action={
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => void handleSincronizarBoletos()}
+              disabled={loading || sincronizando}
+              className="gap-1.5"
+            >
+              {sincronizando ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <HandCoins className="h-4 w-4" />
+              )}
+              Sincronizar
+            </Button>
             <Button variant="outline" onClick={() => void carregar()} disabled={loading} className="gap-1.5">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Atualizar
@@ -404,14 +450,25 @@ function CrmClientesPage() {
                             <span className="line-clamp-2">{c.proximaAcao}</span>
                           </div>
                         )}
-                        <div className="mt-2.5 flex items-center justify-between border-t border-border pt-2 text-[11px] text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <UserCog className="h-3 w-3" /> {cons?.nome.split(" ")[0] || "—"}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <CanalIcon className="h-3 w-3" />
-                            {c.valor && <span className="font-semibold text-foreground">{c.valor}</span>}
-                          </span>
+                        <div className="mt-2 space-y-0.5 border-t border-border pt-2 text-[10px] text-muted-foreground">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1 truncate">
+                              <CalendarClock className="h-3 w-3 shrink-0" />
+                              Criado {c.criadoEm || "—"}
+                            </span>
+                            <span className="flex items-center gap-1 shrink-0">
+                              <CanalIcon className="h-3 w-3" />
+                              {c.valor && <span className="font-semibold text-foreground">{c.valor}</span>}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate">
+                              Atualiz. {c.atualizadoEm || c.criadoEm || "—"}
+                            </span>
+                            <span className="flex items-center gap-1 shrink-0">
+                              <UserCog className="h-3 w-3" /> {cons?.nome.split(" ")[0] || "—"}
+                            </span>
+                          </div>
                         </div>
                       </button>
                     );

@@ -143,7 +143,9 @@ export function CrmClienteEditarModal({ open, onOpenChange, card, onSave, consul
                   <Building2 className="h-3.5 w-3.5" /> #{card.id}
                 </p>
                 <p className="flex items-center gap-2">
-                  <CalendarClock className="h-3.5 w-3.5" /> Criado em {card.criadoEm}
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  Criado {card.criadoEm || "—"}
+                  {card.atualizadoEm ? ` · Atualiz. ${card.atualizadoEm}` : ""}
                 </p>
               </div>
             </div>

@@ -10,6 +10,7 @@ type AdminCrmService = {
   createCrmCard: (usuarioId: number, dados: Record<string, unknown>) => Promise<Record<string, unknown>>;
   listConsultores: () => Promise<Record<string, unknown>>;
   searchClientes: (search: string, limit?: number) => Promise<Record<string, unknown>>;
+  sincronizarBoletosPagos: (usuarioId: number) => Promise<Record<string, unknown>>;
 };
 
 export async function GET(request: Request) {
@@ -53,6 +54,12 @@ export async function POST(request: Request) {
     const { usuarioId } = await requireStaffAccess(request);
     const body = await request.json();
     const svc = await getSicafAgentModule<AdminCrmService>("services/admin-crm.service");
+
+    if (body?.action === "sincronizar-boletos") {
+      const result = await svc.sincronizarBoletosPagos(usuarioId);
+      return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+    }
+
     const result = await svc.createCrmCard(usuarioId, body);
     return NextResponse.json(result, { status: result.ok ? 201 : 400 });
   } catch (error) {

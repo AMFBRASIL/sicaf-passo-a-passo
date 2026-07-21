@@ -53,6 +53,7 @@ import { Route as AdminGoogleAdsRouteImport } from './routes/admin.google-ads'
 import { Route as AdminFunilRouteImport } from './routes/admin.funil'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin.financeiro'
 import { Route as AdminEquipeRouteImport } from './routes/admin.equipe'
+import { Route as AdminEmailMarketingRouteImport } from './routes/admin.email-marketing'
 import { Route as AdminDocumentosRouteImport } from './routes/admin.documentos'
 import { Route as AdminCrmClientesRouteImport } from './routes/admin.crm-clientes'
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
@@ -285,6 +286,11 @@ const AdminEquipeRoute = AdminEquipeRouteImport.update({
   path: '/equipe',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminEmailMarketingRoute = AdminEmailMarketingRouteImport.update({
+  id: '/email-marketing',
+  path: '/email-marketing',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminDocumentosRoute = AdminDocumentosRouteImport.update({
   id: '/documentos',
   path: '/documentos',
@@ -381,6 +387,7 @@ export interface FileRoutesByFullPath {
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/crm-clientes': typeof AdminCrmClientesRoute
   '/admin/documentos': typeof AdminDocumentosRoute
+  '/admin/email-marketing': typeof AdminEmailMarketingRoute
   '/admin/equipe': typeof AdminEquipeRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/admin/funil': typeof AdminFunilRoute
@@ -436,6 +443,7 @@ export interface FileRoutesByTo {
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/crm-clientes': typeof AdminCrmClientesRoute
   '/admin/documentos': typeof AdminDocumentosRoute
+  '/admin/email-marketing': typeof AdminEmailMarketingRoute
   '/admin/equipe': typeof AdminEquipeRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/admin/funil': typeof AdminFunilRoute
@@ -493,6 +501,7 @@ export interface FileRoutesById {
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/crm-clientes': typeof AdminCrmClientesRoute
   '/admin/documentos': typeof AdminDocumentosRoute
+  '/admin/email-marketing': typeof AdminEmailMarketingRoute
   '/admin/equipe': typeof AdminEquipeRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
   '/admin/funil': typeof AdminFunilRoute
@@ -552,6 +561,7 @@ export interface FileRouteTypes {
     | '/admin/configuracoes'
     | '/admin/crm-clientes'
     | '/admin/documentos'
+    | '/admin/email-marketing'
     | '/admin/equipe'
     | '/admin/financeiro'
     | '/admin/funil'
@@ -607,6 +617,7 @@ export interface FileRouteTypes {
     | '/admin/configuracoes'
     | '/admin/crm-clientes'
     | '/admin/documentos'
+    | '/admin/email-marketing'
     | '/admin/equipe'
     | '/admin/financeiro'
     | '/admin/funil'
@@ -663,6 +674,7 @@ export interface FileRouteTypes {
     | '/admin/configuracoes'
     | '/admin/crm-clientes'
     | '/admin/documentos'
+    | '/admin/email-marketing'
     | '/admin/equipe'
     | '/admin/financeiro'
     | '/admin/funil'
@@ -1025,6 +1037,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEquipeRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/email-marketing': {
+      id: '/admin/email-marketing'
+      path: '/email-marketing'
+      fullPath: '/admin/email-marketing'
+      preLoaderRoute: typeof AdminEmailMarketingRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/documentos': {
       id: '/admin/documentos'
       path: '/documentos'
@@ -1129,6 +1148,7 @@ interface AdminRouteChildren {
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
   AdminCrmClientesRoute: typeof AdminCrmClientesRoute
   AdminDocumentosRoute: typeof AdminDocumentosRoute
+  AdminEmailMarketingRoute: typeof AdminEmailMarketingRoute
   AdminEquipeRoute: typeof AdminEquipeRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRoute
   AdminFunilRoute: typeof AdminFunilRoute
@@ -1152,6 +1172,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
   AdminCrmClientesRoute: AdminCrmClientesRoute,
   AdminDocumentosRoute: AdminDocumentosRoute,
+  AdminEmailMarketingRoute: AdminEmailMarketingRoute,
   AdminEquipeRoute: AdminEquipeRoute,
   AdminFinanceiroRoute: AdminFinanceiroRoute,
   AdminFunilRoute: AdminFunilRoute,
