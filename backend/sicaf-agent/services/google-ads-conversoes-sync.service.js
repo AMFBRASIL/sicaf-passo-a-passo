@@ -13,7 +13,38 @@ const COL = {
   EMAIL: 'email_address',
   PHONE: 'phone_number',
   TIME: 'conversion_date_time',
+  VALUE: 'conversion_value',
+  CURRENCY: 'conversion_currency',
+  GBRAID: 'gbraid',
+  WBRAID: 'wbraid',
+  IP: 'ip_address',
 };
+
+/**
+ * Margem mínima após o clique do GCLID.
+ * 5 min falhava no Google Ads quando o Data Manager reinterpretava o fuso
+ * (conversão parecia ~3h antes do clique). 1h cobre skew + transformação errada parcial.
+ */
+const CLICK_MARGIN_SQL = 'INTERVAL 1 HOUR';
+
+/** Janela máxima clique → conversão (Google Ads costuma usar 90 dias). */
+const CLICK_LOOKBACK_SQL = 'INTERVAL 90 DAY';
+
+/**
+ * “Agora” em horário de Brasília (wall clock).
+ * O MySQL do servidor roda em UTC; pagamentos/tracking estão em Brasília.
+ * Usar NOW() misturava fusos e gerava conversões “no futuro” após CONVERT_TZ.
+ */
+const NOW_SP_SQL = `CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00')`;
+
+/** GCLID válido (rejeita lixo numérico tipo 323224…). */
+function gclidValidSql(alias = 'ts') {
+  return `(
+  NULLIF(TRIM(${alias}.gclid), '') IS NOT NULL
+  AND CHAR_LENGTH(TRIM(${alias}.gclid)) >= 20
+  AND TRIM(${alias}.gclid) NOT REGEXP '^[0-9]+$'
+)`;
+}
 
 const TAXA_SICAF_PAGA_SQL = `
   (
@@ -57,25 +88,73 @@ function qCol(name) {
 }
 
 function buildPagamentoSicafSubquery(days) {
+  // Usa SOMENTE a data real do pagamento (data_pagamento / paid_at).
+  // Nunca cair em created_at — isso distorce conversões no Google Ads.
+  // Inclui valor_sicaf do pagamento mais recente (para conversion_value).
   const periodFilter =
     days > 0
-      ? `AND COALESCE(pago_em, '1970-01-01') >= DATE_SUB(NOW(), INTERVAL ${Number(days)} DAY)`
+      ? `AND pago_em >= DATE_SUB(${NOW_SP_SQL}, INTERVAL ${Number(days)} DAY)`
       : '';
 
   return `
-    SELECT cliente_id, MAX(pago_em) AS ultimo_pagamento
+    SELECT cliente_id, pago_em AS ultimo_pagamento, valor AS valor_sicaf
     FROM (
-      SELECT t.cliente_id, COALESCE(t.data_pagamento, t.created_at) AS pago_em
-      FROM taxas_sicaf AS t
-      WHERE t.cliente_id IS NOT NULL AND ${TAXA_SICAF_PAGA_SQL}
-      UNION ALL
-      SELECT p.cliente_id, COALESCE(p.data_pagamento, p.updated_at, p.created_at) AS pago_em
-      FROM ${PAGAMENTOS_TABLE} AS p
-      WHERE p.cliente_id IS NOT NULL AND p.origem = 'sicaf' AND ${PG_PAGO_SQL}
-    ) AS pagos_sicaf
-    WHERE pago_em IS NOT NULL
-    ${periodFilter}
-    GROUP BY cliente_id
+      SELECT
+        cliente_id,
+        pago_em,
+        valor,
+        ROW_NUMBER() OVER (
+          PARTITION BY cliente_id
+          ORDER BY pago_em DESC, valor DESC
+        ) AS rn
+      FROM (
+        SELECT t.cliente_id, t.data_pagamento AS pago_em, CAST(t.valor AS DECIMAL(12,2)) AS valor
+        FROM taxas_sicaf AS t
+        WHERE t.cliente_id IS NOT NULL
+          AND t.data_pagamento IS NOT NULL
+          AND ${TAXA_SICAF_PAGA_SQL}
+        UNION ALL
+        SELECT p.cliente_id, p.data_pagamento AS pago_em, CAST(p.valor AS DECIMAL(12,2)) AS valor
+        FROM ${PAGAMENTOS_TABLE} AS p
+        WHERE p.cliente_id IS NOT NULL
+          AND p.origem = 'sicaf'
+          AND p.data_pagamento IS NOT NULL
+          AND ${PG_PAGO_SQL}
+      ) AS pagos_sicaf
+      WHERE pago_em IS NOT NULL
+      ${periodFilter}
+    ) AS ranked_pago
+    WHERE rn = 1
+  `;
+}
+
+const MANUT_ATIVA_SQL = `
+  LOWER(TRIM(CAST(m.status AS CHAR))) IN ('ativo', 'a vencer', 'vencendo')
+  OR m.status IN ('Ativo', 'A Vencer', 'Vencendo')
+`;
+
+/** Manutenção do cliente: flag + valor completo do plano (anual / contrato). */
+function buildManutencaoValorSubquery() {
+  return `
+    SELECT
+      m.cliente_id,
+      MAX(CASE WHEN ${MANUT_ATIVA_SQL} THEN 1 ELSE 0 END) AS manut_ativa,
+      MAX(CAST(m.valor AS DECIMAL(12,2))) AS valor_manut_completa,
+      COALESCE(SUM(CAST(mb.valor AS DECIMAL(12,2))), 0) AS soma_boletos,
+      COALESCE(SUM(
+        CASE
+          WHEN mb.data_pagamento IS NOT NULL
+           AND (
+             LOWER(TRIM(CAST(mb.status AS CHAR))) IN ('pago', 'paga', 'aprovado', 'aprovada', 'paid', 'quitado')
+             OR mb.status IN ('Pago', 'Paga', 'Aprovado', 'Aprovada')
+           )
+          THEN 1 ELSE 0
+        END
+      ), 0) AS qtd_boletos_pagos
+    FROM manutencoes AS m
+    LEFT JOIN manutencao_boletos AS mb ON mb.manutencao_id = m.id
+    WHERE m.cliente_id IS NOT NULL
+    GROUP BY m.cliente_id
   `;
 }
 
@@ -83,20 +162,45 @@ function normalizeEmailSql(columnSql) {
   return `REPLACE(LOWER(TRIM(COALESCE(${columnSql}, ''))), ' ', '')`;
 }
 
+/** Sessão de tracking com algum identificador de clique Google. */
+function trackingClickSql(alias = 'ts') {
+  return `(
+  ${gclidValidSql(alias)}
+  OR NULLIF(TRIM(${alias}.gbraid), '') IS NOT NULL
+  OR NULLIF(TRIM(${alias}.wbraid), '') IS NOT NULL
+)`;
+}
+
 function buildSelectSql(days) {
   const pagoSub = buildPagamentoSicafSubquery(days);
+  const manutSub = buildManutencaoValorSubquery();
+  // Google Ads: conversão NÃO pode ser anterior ao clique do anúncio.
+  // 1) Usa o último clique (GCLID/GBRAID/WBRAID) com sessão <= pagamento.
+  // 2) Garante conversion_date_time >= clique + margem.
+  // 3) Também >= cadastro do cliente + 1 min; nunca no futuro.
+  // 4) conversion_value: só SICAF ou SICAF + manutenção completa.
+  // 5) Exporta gbraid / wbraid / ip_address da mesma sessão de atribuição.
   return `
 SELECT
   ranked.gclid_val AS ${COL.GCLID},
   ranked.email_val AS ${COL.EMAIL},
   ranked.phone_val AS ${COL.PHONE},
-  ranked.time_val AS ${COL.TIME}
+  ranked.time_val AS ${COL.TIME},
+  ranked.value_val AS ${COL.VALUE},
+  'BRL' AS ${COL.CURRENCY},
+  ranked.gbraid_val AS ${COL.GBRAID},
+  ranked.wbraid_val AS ${COL.WBRAID},
+  ranked.ip_val AS ${COL.IP}
 FROM (
   SELECT
     src.gclid_val,
     src.email_val,
     src.phone_val,
     src.time_val,
+    src.value_val,
+    src.gbraid_val,
+    src.wbraid_val,
+    src.ip_val,
     ROW_NUMBER() OVER (
       PARTITION BY src.email_val
       ORDER BY src.time_val DESC, src.cliente_id DESC
@@ -104,28 +208,168 @@ FROM (
   FROM (
     SELECT
       c.id AS cliente_id,
-      tg.gclid AS gclid_val,
+      CASE
+        WHEN click.click_at IS NOT NULL
+         AND DATE_ADD(click.click_at, ${CLICK_MARGIN_SQL}) <= ${NOW_SP_SQL}
+         AND click.click_at >= DATE_SUB(pago.ultimo_pagamento, ${CLICK_LOOKBACK_SQL})
+         AND ${gclidValidSql('click')}
+        THEN NULLIF(TRIM(click.gclid), '')
+        ELSE NULL
+      END AS gclid_val,
       REPLACE(LOWER(TRIM(c.email)), ' ', '') AS email_val,
       ${PHONE_E164_SQL} AS phone_val,
-      pago.ultimo_pagamento AS time_val
+      LEAST(
+        ${NOW_SP_SQL},
+        GREATEST(
+          pago.ultimo_pagamento,
+          CASE
+            WHEN click.click_at IS NOT NULL
+             AND DATE_ADD(click.click_at, ${CLICK_MARGIN_SQL}) <= ${NOW_SP_SQL}
+             AND click.click_at >= DATE_SUB(pago.ultimo_pagamento, ${CLICK_LOOKBACK_SQL})
+            THEN DATE_ADD(click.click_at, ${CLICK_MARGIN_SQL})
+            ELSE pago.ultimo_pagamento
+          END,
+          COALESCE(DATE_ADD(c.created_at, INTERVAL 1 MINUTE), pago.ultimo_pagamento)
+        )
+      ) AS time_val,
+      ROUND(
+        COALESCE(pago.valor_sicaf, 0) +
+        CASE
+          WHEN COALESCE(manut.manut_ativa, 0) = 1
+            OR COALESCE(manut.qtd_boletos_pagos, 0) > 0
+          THEN COALESCE(
+            NULLIF(manut.valor_manut_completa, 0),
+            NULLIF(manut.soma_boletos, 0),
+            1860
+          )
+          ELSE 0
+        END
+      , 2) AS value_val,
+      NULLIF(TRIM(click.gbraid), '') AS gbraid_val,
+      NULLIF(TRIM(click.wbraid), '') AS wbraid_val,
+      NULLIF(TRIM(click.ip_address), '') AS ip_val
     FROM clientes AS c
     INNER JOIN (${pagoSub}) AS pago ON pago.cliente_id = c.id
+    LEFT JOIN (${manutSub}) AS manut ON manut.cliente_id = c.id
     LEFT JOIN (
-      SELECT ts.cliente_id,
-        SUBSTRING_INDEX(
-          GROUP_CONCAT(NULLIF(TRIM(ts.gclid), '') ORDER BY ts.created_at DESC SEPARATOR '||'),
-          '||', 1
-        ) AS gclid
-      FROM tracking_sessoes AS ts
-      WHERE ts.cliente_id IS NOT NULL AND NULLIF(TRIM(ts.gclid), '') IS NOT NULL
-      GROUP BY ts.cliente_id
-    ) AS tg ON tg.cliente_id = c.id
+      SELECT
+        last_click.cliente_id,
+        ts.gclid,
+        ts.gbraid,
+        ts.wbraid,
+        ts.ip_address,
+        ts.created_at AS click_at
+      FROM (
+        SELECT
+          ts0.cliente_id,
+          MAX(ts0.created_at) AS click_at
+        FROM tracking_sessoes AS ts0
+        INNER JOIN (${pagoSub}) AS pago2 ON pago2.cliente_id = ts0.cliente_id
+        WHERE ts0.cliente_id IS NOT NULL
+          AND ${trackingClickSql('ts0')}
+          AND ts0.created_at <= pago2.ultimo_pagamento
+          AND ts0.created_at >= DATE_SUB(pago2.ultimo_pagamento, ${CLICK_LOOKBACK_SQL})
+        GROUP BY ts0.cliente_id
+      ) AS last_click
+      INNER JOIN tracking_sessoes AS ts
+        ON ts.cliente_id = last_click.cliente_id
+       AND ts.created_at = last_click.click_at
+       AND ${trackingClickSql('ts')}
+    ) AS click ON click.cliente_id = c.id
     WHERE NULLIF(TRIM(c.email), '') IS NOT NULL
   ) AS src
   WHERE src.email_val IS NOT NULL AND src.time_val IS NOT NULL
 ) AS ranked
 WHERE ranked.rn = 1
 `;
+}
+
+/**
+ * Garante conversion_date_time >= primeiro clique do GCLID + margem.
+ * Também remove GCLID inválido / fora da janela de 90 dias.
+ */
+async function sanitizeConversionAgainstFirstClick(db, log = () => {}) {
+  const emailNormG = normalizeEmailSql(`g.${COL.EMAIL}`);
+
+  const [fake] = await db.raw(`
+    UPDATE google_ads_conversoes AS g
+    SET g.${COL.GCLID} = NULL
+    WHERE NULLIF(TRIM(g.${COL.GCLID}), '') IS NOT NULL
+      AND (
+        CHAR_LENGTH(TRIM(g.${COL.GCLID})) < 20
+        OR TRIM(g.${COL.GCLID}) REGEXP '^[0-9]+$'
+      )
+  `);
+  const fakeCleared = Number(fake?.affectedRows ?? 0);
+  if (fakeCleared > 0) log(`Removidos ${fakeCleared} GCLID(s) inválido(s)`);
+
+  const [bumped] = await db.raw(`
+    UPDATE google_ads_conversoes AS g
+    INNER JOIN (
+      SELECT
+        ${normalizeEmailSql('c.email')} AS email_norm,
+        ts.gclid AS gclid,
+        MIN(ts.created_at) AS first_click
+      FROM tracking_sessoes AS ts
+      INNER JOIN clientes AS c ON c.id = ts.cliente_id
+      WHERE ts.cliente_id IS NOT NULL
+        AND ${gclidValidSql('ts')}
+        AND NULLIF(TRIM(c.email), '') IS NOT NULL
+      GROUP BY ${normalizeEmailSql('c.email')}, ts.gclid
+    ) AS clk
+      ON clk.email_norm = ${emailNormG}
+     AND clk.gclid = g.${COL.GCLID}
+    SET g.${COL.TIME} = LEAST(
+      ${NOW_SP_SQL},
+      DATE_ADD(clk.first_click, ${CLICK_MARGIN_SQL})
+    )
+    WHERE NULLIF(TRIM(g.${COL.GCLID}), '') IS NOT NULL
+      AND g.${COL.TIME} < DATE_ADD(clk.first_click, ${CLICK_MARGIN_SQL})
+      AND DATE_ADD(clk.first_click, ${CLICK_MARGIN_SQL}) <= ${NOW_SP_SQL}
+  `);
+  const updated = Number(bumped?.affectedRows ?? 0);
+  if (updated > 0) {
+    log(`Ajustados ${updated} registro(s) (conversão >= 1º clique + 1h)`);
+  }
+
+  const [cleared] = await db.raw(`
+    UPDATE google_ads_conversoes AS g
+    INNER JOIN (
+      SELECT
+        ${normalizeEmailSql('c.email')} AS email_norm,
+        ts.gclid AS gclid,
+        MIN(ts.created_at) AS first_click
+      FROM tracking_sessoes AS ts
+      INNER JOIN clientes AS c ON c.id = ts.cliente_id
+      WHERE ts.cliente_id IS NOT NULL
+        AND ${gclidValidSql('ts')}
+        AND NULLIF(TRIM(c.email), '') IS NOT NULL
+      GROUP BY ${normalizeEmailSql('c.email')}, ts.gclid
+    ) AS clk
+      ON clk.email_norm = ${emailNormG}
+     AND clk.gclid = g.${COL.GCLID}
+    SET g.${COL.GCLID} = NULL
+    WHERE NULLIF(TRIM(g.${COL.GCLID}), '') IS NOT NULL
+      AND (
+        g.${COL.TIME} < DATE_ADD(clk.first_click, ${CLICK_MARGIN_SQL})
+        OR clk.first_click < DATE_SUB(g.${COL.TIME}, ${CLICK_LOOKBACK_SQL})
+      )
+  `);
+  const removedGclid = Number(cleared?.affectedRows ?? 0);
+  if (removedGclid > 0) {
+    log(`Removido GCLID de ${removedGclid} registro(s) (janela/clique inválido)`);
+  }
+
+  // Não exportar timestamps no futuro (wall clock SP)
+  const [capped] = await db.raw(`
+    UPDATE google_ads_conversoes AS g
+    SET g.${COL.TIME} = ${NOW_SP_SQL}
+    WHERE g.${COL.TIME} > ${NOW_SP_SQL}
+  `);
+  const cappedN = Number(capped?.affectedRows ?? 0);
+  if (cappedN > 0) log(`Limitados ${cappedN} registro(s) com data no futuro`);
+
+  return updated + removedGclid + fakeCleared + cappedN;
 }
 
 /** Remove linhas duplicadas na tabela (mesmo e-mail normalizado), mantém o registro mais recente (maior id). */
@@ -146,9 +390,16 @@ async function removeDuplicateEmails(db, log = () => {}) {
 
 function buildInsertOnlySql(selectSql) {
   const emailNormExisting = normalizeEmailSql(`g.${COL.EMAIL}`);
+  const cols = [
+    COL.GCLID, COL.EMAIL, COL.PHONE, COL.TIME, COL.VALUE, COL.CURRENCY,
+    COL.GBRAID, COL.WBRAID, COL.IP,
+  ].join(', ');
   return `
-INSERT INTO google_ads_conversoes (${[COL.GCLID, COL.EMAIL, COL.PHONE, COL.TIME].join(', ')})
-SELECT src.${COL.GCLID}, src.${COL.EMAIL}, src.${COL.PHONE}, src.${COL.TIME}
+INSERT INTO google_ads_conversoes (${cols})
+SELECT
+  src.${COL.GCLID}, src.${COL.EMAIL}, src.${COL.PHONE}, src.${COL.TIME},
+  src.${COL.VALUE}, src.${COL.CURRENCY},
+  src.${COL.GBRAID}, src.${COL.WBRAID}, src.${COL.IP}
 FROM (${selectSql}) AS src
 WHERE NOT EXISTS (
   SELECT 1 FROM google_ads_conversoes AS g
@@ -156,6 +407,37 @@ WHERE NOT EXISTS (
     AND NULLIF(src.${COL.EMAIL}, '') IS NOT NULL
 )
 `;
+}
+
+/** Atualiza conversion_date_time / gclid / valor / gbraid das linhas já existentes. */
+async function updateExistingPaymentDates(db, selectSql, log = () => {}) {
+  const emailNormG = normalizeEmailSql(`g.${COL.EMAIL}`);
+  const [result] = await db.raw(`
+    UPDATE google_ads_conversoes AS g
+    INNER JOIN (${selectSql}) AS src
+      ON ${emailNormG} = src.${COL.EMAIL}
+     AND NULLIF(src.${COL.EMAIL}, '') IS NOT NULL
+    SET
+      g.${COL.TIME} = src.${COL.TIME},
+      g.${COL.GCLID} = src.${COL.GCLID},
+      g.${COL.PHONE} = COALESCE(NULLIF(TRIM(src.${COL.PHONE}), ''), g.${COL.PHONE}),
+      g.${COL.VALUE} = src.${COL.VALUE},
+      g.${COL.CURRENCY} = COALESCE(src.${COL.CURRENCY}, 'BRL'),
+      g.${COL.GBRAID} = src.${COL.GBRAID},
+      g.${COL.WBRAID} = src.${COL.WBRAID},
+      g.${COL.IP} = src.${COL.IP}
+    WHERE g.${COL.TIME} IS NULL
+       OR g.${COL.TIME} <> src.${COL.TIME}
+       OR IFNULL(g.${COL.GCLID}, '') <> IFNULL(src.${COL.GCLID}, '')
+       OR IFNULL(g.${COL.VALUE}, -1) <> IFNULL(src.${COL.VALUE}, -1)
+       OR IFNULL(g.${COL.CURRENCY}, '') <> IFNULL(src.${COL.CURRENCY}, '')
+       OR IFNULL(g.${COL.GBRAID}, '') <> IFNULL(src.${COL.GBRAID}, '')
+       OR IFNULL(g.${COL.WBRAID}, '') <> IFNULL(src.${COL.WBRAID}, '')
+       OR IFNULL(g.${COL.IP}, '') <> IFNULL(src.${COL.IP}, '')
+  `);
+  const updated = Number(result?.affectedRows ?? 0);
+  if (updated > 0) log(`Atualizados ${updated} registro(s) (data/gclid/valor/gbraid alinhados)`);
+  return updated;
 }
 
 async function getColumnNames(db) {
@@ -180,6 +462,11 @@ async function createTable(db) {
       ${COL.EMAIL} VARCHAR(255) NULL,
       ${COL.PHONE} VARCHAR(20) NULL,
       ${COL.TIME} DATETIME NOT NULL,
+      ${COL.VALUE} DECIMAL(12,2) NULL,
+      ${COL.CURRENCY} CHAR(3) NULL DEFAULT 'BRL',
+      ${COL.GBRAID} VARCHAR(255) NULL,
+      ${COL.WBRAID} VARCHAR(255) NULL,
+      ${COL.IP} VARCHAR(50) NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
       INDEX idx_gac_gclid (${COL.GCLID}),
@@ -212,31 +499,60 @@ async function migrateTableSchema(db, log = () => {}) {
 
   let cols = await getColumnNames(db);
   const timeType = cols.includes(COL.TIME) ? await getConversionTimeColumnType(db) : '';
-  if (cols.includes(COL.EMAIL) && cols.includes(COL.TIME) && timeType === 'datetime') return;
 
-  log('Migrando schema google_ads_conversoes');
-  for (const { from, to } of RENAME_MAP) {
-    if (!cols.includes(from) || cols.includes(to)) continue;
-    const type =
-      to === COL.GCLID ? 'VARCHAR(255) NULL'
-        : to === COL.EMAIL ? 'VARCHAR(255) NULL'
-          : to === COL.PHONE ? 'VARCHAR(20) NULL'
-            : 'DATETIME NOT NULL';
-    await db.raw(`ALTER TABLE google_ads_conversoes CHANGE COLUMN \`${from}\` ${qCol(to)} ${type}`);
+  if (!cols.includes(COL.EMAIL) || !cols.includes(COL.TIME) || timeType !== 'datetime') {
+    log('Migrando schema google_ads_conversoes');
+    for (const { from, to } of RENAME_MAP) {
+      if (!cols.includes(from) || cols.includes(to)) continue;
+      const type =
+        to === COL.GCLID ? 'VARCHAR(255) NULL'
+          : to === COL.EMAIL ? 'VARCHAR(255) NULL'
+            : to === COL.PHONE ? 'VARCHAR(20) NULL'
+              : 'DATETIME NOT NULL';
+      await db.raw(`ALTER TABLE google_ads_conversoes CHANGE COLUMN \`${from}\` ${qCol(to)} ${type}`);
+      cols = await getColumnNames(db);
+    }
+
+    cols = await getColumnNames(db);
+    if (!cols.includes(COL.EMAIL) || !cols.includes(COL.TIME)) {
+      await db.raw('DROP TABLE google_ads_conversoes');
+      await createTable(db);
+      return;
+    }
+
+    const finalType = await getConversionTimeColumnType(db);
+    if (finalType !== 'datetime') {
+      await db.raw('TRUNCATE TABLE google_ads_conversoes');
+      await db.raw(`ALTER TABLE google_ads_conversoes MODIFY ${COL.TIME} DATETIME NOT NULL`);
+    }
     cols = await getColumnNames(db);
   }
 
-  cols = await getColumnNames(db);
-  if (!cols.includes(COL.EMAIL) || !cols.includes(COL.TIME)) {
-    await db.raw('DROP TABLE google_ads_conversoes');
-    await createTable(db);
-    return;
+  if (!cols.includes(COL.VALUE)) {
+    log('Adicionando conversion_value');
+    await db.raw(`ALTER TABLE google_ads_conversoes ADD COLUMN ${COL.VALUE} DECIMAL(12,2) NULL`);
+    cols = await getColumnNames(db);
   }
-
-  const finalType = await getConversionTimeColumnType(db);
-  if (finalType !== 'datetime') {
-    await db.raw('TRUNCATE TABLE google_ads_conversoes');
-    await db.raw(`ALTER TABLE google_ads_conversoes MODIFY ${COL.TIME} DATETIME NOT NULL`);
+  if (!cols.includes(COL.CURRENCY)) {
+    log('Adicionando conversion_currency');
+    await db.raw(
+      `ALTER TABLE google_ads_conversoes ADD COLUMN ${COL.CURRENCY} CHAR(3) NULL DEFAULT 'BRL'`
+    );
+    cols = await getColumnNames(db);
+  }
+  if (!cols.includes(COL.GBRAID)) {
+    log('Adicionando gbraid');
+    await db.raw(`ALTER TABLE google_ads_conversoes ADD COLUMN ${COL.GBRAID} VARCHAR(255) NULL`);
+    cols = await getColumnNames(db);
+  }
+  if (!cols.includes(COL.WBRAID)) {
+    log('Adicionando wbraid');
+    await db.raw(`ALTER TABLE google_ads_conversoes ADD COLUMN ${COL.WBRAID} VARCHAR(255) NULL`);
+    cols = await getColumnNames(db);
+  }
+  if (!cols.includes(COL.IP)) {
+    log('Adicionando ip_address');
+    await db.raw(`ALTER TABLE google_ads_conversoes ADD COLUMN ${COL.IP} VARCHAR(50) NULL`);
   }
 }
 
@@ -333,18 +649,30 @@ async function runGoogleAdsConversoesSync(opts = {}) {
     }
 
     let duplicatesRemoved = 0;
+    let updated = 0;
+    let sanitized = 0;
     if (!truncate) {
       duplicatesRemoved = await removeDuplicateEmails(db, log);
+      updated = await updateExistingPaymentDates(db, selectSql, log);
+      sanitized = await sanitizeConversionAgainstFirstClick(db, log);
+      updated += sanitized;
     } else {
       log('TRUNCATE google_ads_conversoes (modo substituir)');
       await db.raw('TRUNCATE TABLE google_ads_conversoes');
     }
 
-    const [result] = await db.raw(truncate ? `INSERT INTO google_ads_conversoes (${[COL.GCLID, COL.EMAIL, COL.PHONE, COL.TIME].join(', ')}) ${selectSql}` : insertSql);
+    const [result] = await db.raw(
+      truncate
+        ? `INSERT INTO google_ads_conversoes (${[COL.GCLID, COL.EMAIL, COL.PHONE, COL.TIME, COL.VALUE, COL.CURRENCY, COL.GBRAID, COL.WBRAID, COL.IP].join(', ')}) ${selectSql}`
+        : insertSql
+    );
     const inserted = Number(result?.affectedRows ?? 0);
 
     if (!truncate && inserted > 0) {
       duplicatesRemoved += await removeDuplicateEmails(db, log);
+      sanitized += await sanitizeConversionAgainstFirstClick(db, log);
+    } else if (truncate) {
+      sanitized = await sanitizeConversionAgainstFirstClick(db, log);
     }
 
     const [[totais]] = await db.raw(`
@@ -356,7 +684,8 @@ async function runGoogleAdsConversoesSync(opts = {}) {
     return {
       ok: true,
       inserted,
-      skipped: linhasJaExistentes,
+      updated,
+      skipped: Math.max(0, linhasJaExistentes - updated),
       duplicatesRemoved,
       linhasElegiveis,
       stats,
@@ -367,7 +696,7 @@ async function runGoogleAdsConversoesSync(opts = {}) {
       },
       message: truncate
         ? `Sync concluído (substituição): ${inserted} linha(s) na tabela.`
-        : `Sync concluído: ${inserted} nova(s), ${linhasJaExistentes} já existente(s)${duplicatesRemoved ? `, ${duplicatesRemoved} duplicata(s) removida(s)` : ''}. Total: ${Number(totais?.linhas ?? 0)}.`,
+        : `Sync concluído: ${inserted} nova(s), ${updated} data(s) de pagamento atualizada(s), ${Math.max(0, linhasJaExistentes - updated)} já ok${duplicatesRemoved ? `, ${duplicatesRemoved} duplicata(s) removida(s)` : ''}. Total: ${Number(totais?.linhas ?? 0)}.`,
     };
   } catch (err) {
     return { ok: false, error: err.message, sql: err.sql };

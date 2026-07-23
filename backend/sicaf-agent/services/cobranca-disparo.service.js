@@ -210,7 +210,14 @@ async function enviarCanalCliente({
   return { ok: false, error: 'Canal inválido' };
 }
 
-async function processarDisparoMassaInterno(db, disparoId, usuarioId) {
+async function processarDisparoMassaInterno(db, disparoId, usuarioId, opts = {}) {
+  const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+  const emit = (event) => {
+    try {
+      if (onProgress) onProgress(event);
+    } catch (_) {}
+  };
+
   const disparo = await db('cobranca_disparos_massa').where('id', disparoId).first();
   if (!disparo) return { ok: false, error: 'Disparo não encontrado' };
 
@@ -225,14 +232,26 @@ async function processarDisparoMassaInterno(db, disparoId, usuarioId) {
   const all = filtrarPublicoAlvo(await loadAllClientesCobrancaPendentes(), disparo.publico_alvo);
   let enviados = 0;
   let erros = 0;
+  const total = all.length;
 
   await db('cobranca_disparos_massa').where('id', disparoId).update({
     status: 'processando',
-    total_destinatarios: all.length,
+    total_destinatarios: total,
   });
 
-  for (const cliente of all) {
+  emit({
+    type: 'start',
+    disparoId,
+    total,
+    canais,
+    publicoAlvo: disparo.publico_alvo,
+  });
+
+  for (let i = 0; i < all.length; i++) {
+    const cliente = all[i];
     let clienteOk = false;
+    const canalResults = [];
+
     for (const canal of canais) {
       if (canal === 'nenhum') continue;
       const res = await enviarCanalCliente({
@@ -244,10 +263,48 @@ async function processarDisparoMassaInterno(db, disparoId, usuarioId) {
         usuarioId,
         disparoMassaId: disparoId,
       });
+      canalResults.push({
+        canal,
+        ok: !!res.ok,
+        error: res.ok ? null : res.error || 'falha',
+      });
       if (res.ok) clienteOk = true;
     }
+
     if (clienteOk) enviados += 1;
     else erros += 1;
+
+    const index = i + 1;
+    if (index % 5 === 0 || index === total) {
+      await db('cobranca_disparos_massa').where('id', disparoId).update({
+        total_enviados: enviados,
+        total_erros: erros,
+      });
+    }
+
+    const empresa = cliente.company || cliente.razaoSocial || '';
+    const email = cliente.email || '';
+    const failMsg = canalResults
+      .filter((c) => !c.ok)
+      .map((c) => `${c.canal}: ${c.error}`)
+      .join(' | ');
+
+    emit({
+      type: 'item',
+      index,
+      total,
+      clienteId: cliente.clienteId,
+      empresa,
+      email,
+      nome: cliente.responsavel || '',
+      ok: clienteOk,
+      error: clienteOk ? null : failMsg || 'Falha no envio',
+      canais: canalResults,
+      enviados,
+      erros,
+      falhas: erros,
+      percent: Math.round((index / Math.max(1, total)) * 100),
+    });
   }
 
   await db('cobranca_disparos_massa').where('id', disparoId).update({
@@ -257,14 +314,16 @@ async function processarDisparoMassaInterno(db, disparoId, usuarioId) {
     concluido_em: new Date(),
   });
 
-  return {
+  const payload = {
     ok: true,
     disparoId,
-    totalDestinatarios: all.length,
+    totalDestinatarios: total,
     totalEnviados: enviados,
     totalErros: erros,
-    message: `Disparo concluído: ${enviados} de ${all.length} clientes processados`,
+    message: `Disparo concluído: ${enviados} de ${total} clientes processados`,
   };
+  emit({ type: 'done', ...payload, enviados, falhas: erros, total });
+  return payload;
 }
 
 async function processarDisparosAgendados() {
@@ -293,6 +352,7 @@ async function executarDisparoMassa({
   mensagem,
   agendar,
   usuarioId,
+  onProgress,
 }) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
@@ -339,7 +399,7 @@ async function executarDisparoMassa({
     };
   }
 
-  return processarDisparoMassaInterno(db, disparoId, usuarioId);
+  return processarDisparoMassaInterno(db, disparoId, usuarioId, { onProgress });
 }
 
 function matchesReguaStep(cliente, diasRelativo) {

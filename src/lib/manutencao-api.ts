@@ -60,6 +60,28 @@ export type ManutencaoBoleto = {
   vencimento: string;
   status: string;
   dataPagamento?: string | null;
+  formaPagamento?: string | null;
+  pagamentoId?: number | null;
+  protocolo?: string | null;
+  linkPdf?: string | null;
+  linkBoleto?: string | null;
+  barcode?: string | null;
+  txid?: string | null;
+  chargeId?: string | number | null;
+  referencia?: string | null;
+};
+
+export type ManutencaoBoletoDetalhe = {
+  ok: boolean;
+  error?: string;
+  boleto?: ManutencaoBoleto;
+  cliente?: {
+    id: number;
+    nome: string | null;
+    email: string | null;
+    cnpj: string | null;
+    responsavel: string | null;
+  };
 };
 
 export async function fetchManutencaoCliente(clienteId: number) {
@@ -74,6 +96,24 @@ export async function fetchManutencaoCliente(clienteId: number) {
       boletos: ManutencaoBoleto[];
     } | null;
     error?: string;
+  }>;
+}
+
+export async function fetchBoletoManutencaoDetalhe(boletoId: number) {
+  const res = await apiFetch(`/api/manutencao/boletos/${boletoId}`);
+  return res.json() as Promise<ManutencaoBoletoDetalhe>;
+}
+
+export async function enviarComprovanteManutencao(boletoId: number, emailDestino?: string) {
+  const res = await apiFetch(`/api/manutencao/boletos/${boletoId}/enviar-comprovante`, {
+    method: "POST",
+    body: JSON.stringify(emailDestino ? { emailDestino } : {}),
+  });
+  return res.json() as Promise<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    emailNotificacao?: { enviado?: boolean; simulado?: boolean; para?: string };
   }>;
 }
 

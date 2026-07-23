@@ -5,6 +5,7 @@
  *   npm run sync:google-ads-conversoes
  *   node scripts/sync-google-ads-conversoes.js --dry-run
  *   node scripts/sync-google-ads-conversoes.js --days=90
+ *   node scripts/sync-google-ads-conversoes.js --truncate   # regenera com data_pagamento (não created_at)
  */
 const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "..", ".env"), override: true });

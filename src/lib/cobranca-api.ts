@@ -89,6 +89,7 @@ export async function executarDisparoMassa(payload: {
   agendado?: boolean;
   totalDestinatarios?: number;
   totalEnviados?: number;
+  totalErros?: number;
 }> {
   const res = await apiFetch("/api/admin/cobranca/disparo-massa", {
     method: "POST",
@@ -102,7 +103,140 @@ export async function executarDisparoMassa(payload: {
     agendado?: boolean;
     totalDestinatarios?: number;
     totalEnviados?: number;
+    totalErros?: number;
   };
+}
+
+export type CobrancaDisparoEvent =
+  | {
+      type: "start";
+      disparoId?: number;
+      total: number;
+      canais?: string[];
+      publicoAlvo?: string;
+    }
+  | {
+      type: "item";
+      index: number;
+      total: number;
+      clienteId?: number;
+      empresa?: string;
+      email?: string;
+      nome?: string;
+      ok: boolean;
+      error?: string | null;
+      enviados: number;
+      erros?: number;
+      falhas?: number;
+      percent: number;
+    }
+  | {
+      type: "done";
+      ok: boolean;
+      message?: string;
+      totalDestinatarios?: number;
+      totalEnviados?: number;
+      totalErros?: number;
+      enviados?: number;
+      falhas?: number;
+      total?: number;
+      error?: string;
+    }
+  | {
+      type: "error";
+      ok?: boolean;
+      error?: string;
+    };
+
+/** Disparo em massa com progresso SSE (e-mail via serviço existente). */
+export async function executarDisparoMassaStream(
+  payload: {
+    publicoAlvo: PublicoAlvoKey;
+    canais: Array<"email" | "whatsapp" | "sms">;
+    modelo?: ModeloMensagemKey;
+    mensagem: string;
+  },
+  onEvent: (event: CobrancaDisparoEvent) => void,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  message?: string;
+  totalDestinatarios?: number;
+  totalEnviados?: number;
+  totalErros?: number;
+}> {
+  const res = await apiFetch("/api/admin/cobranca/disparo-massa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, stream: true, action: "send-stream" }),
+  });
+
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: data.error || `Erro HTTP ${res.status}` };
+  }
+
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream") || !res.body) {
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+      message?: string;
+      totalDestinatarios?: number;
+      totalEnviados?: number;
+      totalErros?: number;
+    };
+    return {
+      ok: data.ok !== false,
+      error: data.error,
+      message: data.message,
+      totalDestinatarios: data.totalDestinatarios,
+      totalEnviados: data.totalEnviados,
+      totalErros: data.totalErros,
+    };
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let lastDone: CobrancaDisparoEvent | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n");
+    buffer = parts.pop() || "";
+
+    for (const rawLine of parts) {
+      const line = rawLine.trim();
+      if (!line.startsWith("data:")) continue;
+      const payloadLine = line.slice(5).trim();
+      if (!payloadLine || payloadLine === "[DONE]") continue;
+      try {
+        const event = JSON.parse(payloadLine) as CobrancaDisparoEvent;
+        onEvent(event);
+        if (event.type === "done" || event.type === "error") lastDone = event;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  if (lastDone?.type === "done") {
+    return {
+      ok: lastDone.ok !== false,
+      message: lastDone.message,
+      error: lastDone.error,
+      totalDestinatarios: lastDone.totalDestinatarios ?? lastDone.total,
+      totalEnviados: lastDone.totalEnviados ?? lastDone.enviados,
+      totalErros: lastDone.totalErros ?? lastDone.falhas,
+    };
+  }
+  if (lastDone?.type === "error") {
+    return { ok: false, error: lastDone.error || "Falha no disparo" };
+  }
+  return { ok: false, error: "Disparo interrompido sem confirmação" };
 }
 
 export const MODELOS_MENSAGEM_PADRAO: Record<ModeloMensagemKey, string> = {

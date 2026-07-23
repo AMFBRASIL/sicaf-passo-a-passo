@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 type EmailMktService = {
   getDashboard: (opts?: Record<string, string>) => Promise<Record<string, unknown>>;
   createCampanha: (usuarioId: number, dados: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  gerarHtmlCampanha: (dados: Record<string, unknown>) => Promise<Record<string, unknown>>;
 };
 
 function statusFromError(message: string) {
@@ -41,6 +42,12 @@ export async function POST(request: Request) {
     const svc = await getSicafAgentModule<EmailMktService>(
       "services/admin-email-marketing.service",
     );
+
+    if (body?.action === "gerar-html") {
+      const result = await svc.gerarHtmlCampanha(body);
+      return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+    }
+
     const result = await svc.createCampanha(usuarioId, body);
     return NextResponse.json(result, { status: result.ok ? 201 : 400 });
   } catch (error) {

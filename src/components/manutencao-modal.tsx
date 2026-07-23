@@ -49,6 +49,7 @@ import {
   podeAtivarManutencaoFromPainel,
 } from "@/lib/sicaf-access-rules";
 import { PagamentoModal } from "@/components/pagamento-modal";
+import { ManutencaoComprovanteModal } from "@/components/manutencao-comprovante-modal";
 import {
   ativarManutencao,
   autorizarBoletoManutencao,
@@ -780,6 +781,7 @@ type BoletoUi = {
   valor: number;
   status: "pago" | "aberto" | "futuro";
   rawStatus: string;
+  raw: ManutencaoBoleto;
 };
 
 function GerenciarPanel({
@@ -806,6 +808,7 @@ function GerenciarPanel({
   const [motivoCancelamento, setMotivoCancelamento] = useState("");
   const [cancelando, setCancelando] = useState(false);
   const [pagBoleto, setPagBoleto] = useState<{ data: Date; boletoId?: number; valor: number } | null>(null);
+  const [comprovanteBoleto, setComprovanteBoleto] = useState<BoletoUi | null>(null);
 
   const carregarBoletos = async () => {
     if (!empresa.clienteId) return;
@@ -823,6 +826,7 @@ function GerenciarPanel({
         valor: b.valor || res.manutencao!.valor,
         status: mapBoletoUiStatus(b),
         rawStatus: b.status,
+        raw: b,
       })),
     );
   };
@@ -982,7 +986,12 @@ function GerenciarPanel({
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {b.status === "pago" && (
-                      <Button size="sm" variant="outline" className="gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={() => setComprovanteBoleto(b)}
+                      >
                         <Download className="h-3.5 w-3.5" /> Comprovante
                       </Button>
                     )}
@@ -1121,6 +1130,16 @@ function GerenciarPanel({
           void carregarBoletos();
           onPaymentGenerated?.();
         }}
+      />
+
+      <ManutencaoComprovanteModal
+        open={!!comprovanteBoleto}
+        onOpenChange={(v) => !v && setComprovanteBoleto(null)}
+        boletoId={comprovanteBoleto?.id ?? null}
+        boletoSeed={comprovanteBoleto?.raw ?? null}
+        empresaNome={empresa.nome}
+        empresaCnpj={empresa.cnpj}
+        emailPadrao={empresa.email}
       />
     </div>
   );

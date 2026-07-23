@@ -22,6 +22,9 @@ export default defineConfig({
         "/api": {
           target: "http://localhost:3001",
           changeOrigin: true,
+          // Mantém SSE (progresso de email marketing) sem buffer excessivo
+          timeout: 0,
+          proxyTimeout: 0,
         },
         "/uploads": {
           target: "http://localhost:3001",

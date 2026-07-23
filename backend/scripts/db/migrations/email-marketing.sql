@@ -38,11 +38,15 @@ CREATE TABLE IF NOT EXISTS email_mkt_campanhas (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   titulo VARCHAR(255) NOT NULL,
   categoria ENUM('licitacoes','certidoes','avisos','boas-vindas') NOT NULL DEFAULT 'avisos',
-  publico_tipo ENUM('manutencao','cnae','cert-venc','sicaf','novos','todos') NOT NULL DEFAULT 'manutencao',
+  publico_tipo ENUM(
+    'manutencao','nunca_pagaram','taxa_pendente','ja_pagaram','sem_manutencao',
+    'cnae','cert-venc','sicaf','novos','todos'
+  ) NOT NULL DEFAULT 'manutencao',
   publico_label VARCHAR(255) DEFAULT NULL,
   assunto VARCHAR(255) NOT NULL,
   corpo MEDIUMTEXT NOT NULL,
-  status ENUM('rascunho','agendado','enviando','enviado','falhou','cancelado') NOT NULL DEFAULT 'rascunho',
+  formato ENUM('texto','html') NOT NULL DEFAULT 'texto',
+  status ENUM('rascunho','agendado','enviando','enviado','falhou','cancelado','pausado') NOT NULL DEFAULT 'rascunho',
   destinatarios INT UNSIGNED NOT NULL DEFAULT 0,
   enviados INT UNSIGNED NOT NULL DEFAULT 0,
   falhas INT UNSIGNED NOT NULL DEFAULT 0,

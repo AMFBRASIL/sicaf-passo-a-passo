@@ -4,6 +4,7 @@ import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 800;
 
 type CobrancaDisparoService = {
   executarDisparoMassa: (opts: Record<string, unknown>) => Promise<{
@@ -35,18 +36,56 @@ export async function POST(request: Request) {
     const modelo = body.modelo ? String(body.modelo) : undefined;
     const mensagem = body.mensagem ? String(body.mensagem) : undefined;
     const agendar = body.agendar === true || body.agendar === 1 || body.agendar === "true";
+    const wantStream = body.stream === true || body.action === "send-stream";
 
     const svc = await getSicafAgentModule<CobrancaDisparoService>("services/cobranca-disparo.service");
-    const result = await svc.executarDisparoMassa({
-      publicoAlvo,
-      canais,
-      modelo,
-      mensagem,
-      agendar,
-      usuarioId,
+
+    if (!wantStream || agendar) {
+      const result = await svc.executarDisparoMassa({
+        publicoAlvo,
+        canais,
+        modelo,
+        mensagem,
+        agendar,
+        usuarioId,
+      });
+      return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+    }
+
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const write = (event: Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        };
+        try {
+          await svc.executarDisparoMassa({
+            publicoAlvo,
+            canais,
+            modelo,
+            mensagem,
+            agendar: false,
+            usuarioId,
+            onProgress: write,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Erro no disparo";
+          write({ type: "error", ok: false, error: message });
+        } finally {
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }
+      },
     });
 
-    return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao executar disparo";
     const status =
