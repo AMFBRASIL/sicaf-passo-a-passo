@@ -66,6 +66,40 @@ export type GoogleAdsPagosDetalhe = {
   };
 };
 
+export type GoogleAdsPeriodoStats = {
+  clicks: number;
+  cadastros: number;
+  pagos: number;
+  receita: number;
+  receitaFormatada: string;
+  pct: number;
+  taxaPagosPorClique: number;
+  recomendado: boolean;
+};
+
+export type GoogleAdsPeriodoSemana = {
+  timezone: string;
+  totalClicks: number;
+  totalPagos: number;
+  semana: GoogleAdsPeriodoStats;
+  fimDeSemana: GoogleAdsPeriodoStats;
+  recomendacao: {
+    melhorPeriodo: "semana" | "fim" | "equilibrado";
+    veredito: string;
+  };
+  porDia: {
+    dia: string;
+    diaNum: number;
+    tipo: "semana" | "fim";
+    clicks: number;
+    cadastros: number;
+    pagos: number;
+    receita: number;
+  }[];
+  porHora: { hora: number; semana: number; fimDeSemana: number }[];
+  insight: string;
+};
+
 export type AdminGoogleAdsPainel = {
   periodo: { days: number; since: string };
   palavra?: string;
@@ -83,6 +117,7 @@ export type AdminGoogleAdsPainel = {
   palavras: GoogleAdsPalavra[];
   clientesPorPalavra?: GoogleAdsClientePalavra[];
   pagosDetalhe?: GoogleAdsPagosDetalhe;
+  periodoSemana?: GoogleAdsPeriodoSemana;
   notas?: string[];
 };
 

@@ -466,6 +466,220 @@ async function ativarManutencao({ clienteId, usuarioId, diaVencimento, parcelame
 }
 
 /**
+ * Renova o ciclo anual: exige manutenção ativa e todos os boletos do ciclo quitados.
+ * Mantém o histórico pago e gera novas cobranças para o próximo período.
+ * @param {{ clienteId: number, usuarioId?: number, diaVencimento?: number, parcelamento?: string, jwtTipo?: string, system?: boolean }} opts
+ */
+async function renovarManutencao({ clienteId, usuarioId, diaVencimento, parcelamento, jwtTipo, system }) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  if (system) {
+    const cliente = await db('clientes').where('id', clienteId).first();
+    if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
+  } else {
+    const cliente = await assertClienteAcessivel(db, clienteId, usuarioId, jwtTipo);
+    if (!cliente) return { ok: false, error: 'Cliente não encontrado ou sem permissão' };
+  }
+
+  const sicafCheck = await assertSicafVigenteParaManutencao(db, clienteId);
+  if (!sicafCheck.ok) return sicafCheck;
+
+  const manut = await db('manutencoes')
+    .where('cliente_id', clienteId)
+    .whereIn('status', MANUTENCAO_STATUS_ATIVOS)
+    .orderBy('created_at', 'desc')
+    .first();
+  if (!manut) {
+    return { ok: false, error: 'Não há manutenção ativa para renovar.' };
+  }
+
+  const boletos = await db('manutencao_boletos').where('manutencao_id', manut.id);
+  if (!boletos.length) {
+    return { ok: false, error: 'Não há boletos no ciclo atual para renovar.' };
+  }
+
+  const ciclo = getCicloAtualBoletos(boletos);
+  if (!ciclo.length) {
+    return { ok: false, error: 'Não há boletos no ciclo atual para renovar.' };
+  }
+
+  const emAberto = ciclo.filter((b) => !isPaidStatus(b.status));
+  if (emAberto.length > 0) {
+    return {
+      ok: false,
+      error: `Ainda há ${emAberto.length} boleto(s) em aberto. Quite todos antes de renovar.`,
+    };
+  }
+
+  const inferred = inferirParcelamentoEDia(ciclo);
+  const parcelamentoFinal = parcelamento || inferred.parcelamento;
+  const dueDay = Math.max(
+    1,
+    Math.min(28, parseInt(String(diaVencimento != null ? diaVencimento : inferred.dia), 10) || 10),
+  );
+  const { parcelas: qtdParcelas, intervaloMeses } = parseParcelamento(parcelamentoFinal);
+  const valorMensal = await getValorMensal(db);
+  const valorAnual = valorMensal * 12;
+  const valorBoleto = valorAnual / qtdParcelas;
+
+  let maxAno = 0;
+  let maxMes = 0;
+  for (const b of ciclo) {
+    const a = Number(b.ano_referencia) || 0;
+    const m = Number(b.mes_referencia) || 0;
+    if (a > maxAno || (a === maxAno && m > maxMes)) {
+      maxAno = a;
+      maxMes = m;
+    }
+  }
+
+  let startMes = maxMes + 1;
+  let startAno = maxAno;
+  if (startMes > 12) {
+    startMes = 1;
+    startAno += 1;
+  }
+
+  const hoje = new Date();
+  const hojeMes = hoje.getMonth() + 1;
+  const hojeAno = hoje.getFullYear();
+  if (startAno < hojeAno || (startAno === hojeAno && startMes < hojeMes)) {
+    startMes = hojeMes;
+    startAno = hojeAno;
+  }
+
+  const dataInicio = new Date(startAno, startMes - 1, 1);
+  const dataFim = new Date(startAno + 1, startMes - 1, 0);
+  const diasRestantes = Math.max(
+    0,
+    Math.ceil((dataFim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24)),
+  );
+
+  await db('manutencoes').where('id', manut.id).update({
+    titulo: 'Manutenção CADBRASIL',
+    tipo: 'Preventiva',
+    plano: 'Manutenção CADBRASIL',
+    valor: valorAnual,
+    status: 'Ativo',
+    data_inicio: dataInicio.toISOString().slice(0, 10),
+    data_fim: dataFim.toISOString().slice(0, 10),
+    dias_restantes: diasRestantes,
+    updated_at: db.fn.now(),
+  });
+
+  let criados = 0;
+  for (let i = 0; i < qtdParcelas; i++) {
+    const monthOffset = i * intervaloMeses;
+    const absolute = startMes - 1 + monthOffset;
+    const mesRef = (absolute % 12) + 1;
+    const anoRef = startAno + Math.floor(absolute / 12);
+    const dia = Math.min(dueDay, new Date(anoRef, mesRef, 0).getDate());
+    const dataVenc = new Date(anoRef, mesRef - 1, dia);
+
+    const existente = boletos.find(
+      (b) => Number(b.mes_referencia) === mesRef && Number(b.ano_referencia) === anoRef,
+    );
+    if (existente) continue;
+
+    try {
+      await db('manutencao_boletos').insert({
+        manutencao_id: manut.id,
+        cliente_id: clienteId,
+        mes_referencia: mesRef,
+        ano_referencia: anoRef,
+        valor: valorBoleto,
+        data_vencimento: dataVenc.toISOString().slice(0, 10),
+        status: 'Pendente',
+        created_at: db.fn.now(),
+      });
+      criados += 1;
+    } catch (_) {}
+  }
+
+  if (criados === 0) {
+    return {
+      ok: false,
+      error: 'Não foi possível gerar novos boletos para o próximo ciclo. Verifique se o período já existe.',
+    };
+  }
+
+  try {
+    await db('sicaf_cadastros').where('cliente_id', clienteId).update({ manutencao_ativa: 1 });
+  } catch (_) {}
+
+  try {
+    await db('historico_acoes').insert({
+      cliente_id: clienteId,
+      usuario_id: usuarioId || null,
+      acao: `${system ? 'Renovação automática' : 'Renovação'} de manutenção — ${criados} boleto(s) gerado(s) · vencimento dia ${dueDay}`,
+      entidade: 'manutencoes',
+      entidade_id: manut.id,
+      created_at: db.fn.now(),
+    });
+  } catch (_) {}
+
+  return {
+    ok: true,
+    manutencaoId: manut.id,
+    diaVencimento: dueDay,
+    boletosCriados: criados,
+    message: `Manutenção renovada! ${criados} boleto(s) gerado(s) para o novo ciclo.`,
+  };
+}
+
+/** Boletos do ciclo atual (janela dos últimos 12 meses de referência a partir do mais recente). */
+function getCicloAtualBoletos(boletos) {
+  if (!Array.isArray(boletos) || !boletos.length) return [];
+  let maxKey = -1;
+  for (const b of boletos) {
+    const a = Number(b.ano_referencia) || 0;
+    const m = Number(b.mes_referencia) || 0;
+    const key = a * 12 + m;
+    if (key > maxKey) maxKey = key;
+  }
+  if (maxKey < 0) return [];
+  return boletos.filter((b) => {
+    const key = (Number(b.ano_referencia) || 0) * 12 + (Number(b.mes_referencia) || 0);
+    return key >= maxKey - 11 && key <= maxKey;
+  });
+}
+
+function inferirParcelamentoEDia(ciclo) {
+  const n = ciclo.length;
+  let parcelamento = '12x';
+  if (n === 1) parcelamento = 'avista';
+  else if (n <= 6) parcelamento = '6x';
+
+  let dia = 10;
+  for (const b of ciclo) {
+    if (b.data_vencimento) {
+      const d = new Date(String(b.data_vencimento).slice(0, 10) + 'T12:00:00');
+      if (!Number.isNaN(d.getTime())) {
+        dia = d.getDate();
+        break;
+      }
+    }
+  }
+  return { parcelamento, dia: Math.max(1, Math.min(28, dia)) };
+}
+
+/**
+ * Indica se o ciclo atual da manutenção está 100% quitado.
+ */
+async function isCicloManutencaoCompleto(clienteId, manutencaoId) {
+  const db = getDb();
+  if (!db) return false;
+  const q = db('manutencao_boletos');
+  if (manutencaoId) q.where('manutencao_id', manutencaoId);
+  else q.where('cliente_id', clienteId);
+  const boletos = await q;
+  const ciclo = getCicloAtualBoletos(boletos);
+  if (!ciclo.length) return false;
+  return ciclo.every((b) => isPaidStatus(b.status));
+}
+
+/**
  * Cancela o plano de manutenção: cancela cobranças abertas, remove todos os boletos e exclui o plano.
  */
 async function cancelarManutencao({ clienteId, usuarioId, motivo, jwtTipo }) {
@@ -559,5 +773,7 @@ module.exports = {
   getBoletoManutencaoDetalhe,
   enviarComprovanteManutencao,
   ativarManutencao,
+  renovarManutencao,
+  isCicloManutencaoCompleto,
   cancelarManutencao,
 };

@@ -20,6 +20,7 @@ import {
   FileText,
   Trash2,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -58,6 +59,7 @@ import {
   fetchManutencaoCliente,
   fetchValorManutencaoMensal,
   fmtBrl,
+  renovarManutencao,
   type ManutencaoBoleto,
   type ParcelamentoManutencao,
 } from "@/lib/manutencao-api";
@@ -372,6 +374,7 @@ export function ManutencaoModal({
                     valorMensal={valorMensal}
                     onCancelar={handlePlanoCancelado}
                     onPaymentGenerated={onPaymentGenerated}
+                    onRenovado={(novoDia) => onAtivar(empresa.cnpj, novoDia)}
                   />
                 )}
                   </>
@@ -792,6 +795,7 @@ function GerenciarPanel({
   valorMensal,
   onCancelar,
   onPaymentGenerated,
+  onRenovado,
 }: {
   open: boolean;
   empresa: EmpresaData;
@@ -800,6 +804,7 @@ function GerenciarPanel({
   valorMensal: number;
   onCancelar: () => void;
   onPaymentGenerated?: () => void;
+  onRenovado?: (dia: number) => void;
 }) {
   const [boletos, setBoletos] = useState<BoletoUi[]>([]);
   const [carregandoBoletos, setCarregandoBoletos] = useState(false);
@@ -809,6 +814,10 @@ function GerenciarPanel({
   const [cancelando, setCancelando] = useState(false);
   const [pagBoleto, setPagBoleto] = useState<{ data: Date; boletoId?: number; valor: number } | null>(null);
   const [comprovanteBoleto, setComprovanteBoleto] = useState<BoletoUi | null>(null);
+  const [renovarOpen, setRenovarOpen] = useState(false);
+  const [renovarDia, setRenovarDia] = useState(dia);
+  const [renovarParcelamento, setRenovarParcelamento] = useState<ParcelamentoManutencao>("12x");
+  const [renovando, setRenovando] = useState(false);
 
   const carregarBoletos = async () => {
     if (!empresa.clienteId) return;
@@ -871,11 +880,38 @@ function GerenciarPanel({
     onCancelar();
   };
 
+  const openRenovar = () => {
+    setRenovarDia(dia);
+    setRenovarParcelamento("12x");
+    setRenovarOpen(true);
+  };
+
+  const handleRenovar = async () => {
+    if (!empresa.clienteId) {
+      toast.error("Empresa sem identificador. Recarregue a página.");
+      return;
+    }
+    setRenovando(true);
+    const res = await renovarManutencao(empresa.clienteId, renovarDia, renovarParcelamento);
+    setRenovando(false);
+    if (!res.ok) {
+      toast.error(res.error || "Falha ao renovar manutenção.");
+      return;
+    }
+    toast.success(res.message || "Manutenção renovada com sucesso!");
+    setRenovarOpen(false);
+    await carregarBoletos();
+    onRenovado?.(renovarDia);
+    onPaymentGenerated?.();
+  };
+
   const pagos = boletos.filter((b) => b.status === "pago").length;
   const proximoAberto = boletos.find((b) => b.status !== "pago");
+  const cicloCompleto = boletos.length > 0 && !proximoAberto && !carregandoBoletos;
 
   const currentLabel = GER_STEPS.find((s) => s.id === step)?.label ?? "";
   const stepIdxG = GER_STEPS.findIndex((s) => s.id === step);
+  const renovarCalc = calcParcelamentoManutencao(valorMensal, renovarParcelamento);
 
   return (
     <div className="space-y-6">
@@ -896,6 +932,29 @@ function GerenciarPanel({
           />
         </div>
       </div>
+
+      {cicloCompleto && (step === "visao" || step === "boletos") && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="h-9 w-9 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <RefreshCw className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+                  Ciclo quitado — pronto para renovar
+                </p>
+                <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80 mt-0.5">
+                  Todas as {boletos.length} mensalidades foram pagas. Gere o próximo ciclo de boletos.
+                </p>
+              </div>
+            </div>
+            <Button className="gap-1.5 shrink-0" onClick={openRenovar}>
+              <RefreshCw className="h-3.5 w-3.5" /> Renovar Manutenção
+            </Button>
+          </div>
+        </div>
+      )}
 
       {step === "visao" && (
         <div className="space-y-4">
@@ -1111,6 +1170,93 @@ function GerenciarPanel({
                 </>
               ) : (
                 "Confirmar cancelamento"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={renovarOpen} onOpenChange={(v) => !renovando && setRenovarOpen(v)}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Renovar Manutenção</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 text-sm text-muted-foreground">
+                <p>
+                  Será gerado um novo ciclo de cobranças para{" "}
+                  <strong className="text-foreground">{empresa.nome}</strong>. Os boletos já pagos
+                  permanecem no histórico.
+                </p>
+                <div>
+                  <p className="text-xs font-medium text-foreground mb-2">Forma de pagamento</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {PARCELAMENTO_OPCOES.map((opcao) => {
+                      const calc = calcParcelamentoManutencao(valorMensal, opcao);
+                      const active = renovarParcelamento === opcao;
+                      return (
+                        <button
+                          key={opcao}
+                          type="button"
+                          onClick={() => setRenovarParcelamento(opcao)}
+                          className={cn(
+                            "rounded-lg border px-2 py-2 text-left transition",
+                            active
+                              ? "border-primary bg-primary/5 ring-1 ring-primary"
+                              : "hover:bg-muted/50",
+                          )}
+                        >
+                          <p className="text-xs font-semibold text-foreground">{calc.titulo}</p>
+                          <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                            {fmtBrl(calc.valorParcela)}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] mt-2">
+                    Total anual {fmtBrl(renovarCalc.total)} · {renovarCalc.subtitulo}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-foreground mb-2">Dia de vencimento</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DIAS.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setRenovarDia(d)}
+                        className={cn(
+                          "h-8 w-8 rounded-md text-xs font-semibold border transition",
+                          renovarDia === d
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "hover:bg-muted",
+                        )}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={renovando}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={renovando}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleRenovar();
+              }}
+            >
+              {renovando ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Renovando…
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-1.5" /> Confirmar renovação
+                </>
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

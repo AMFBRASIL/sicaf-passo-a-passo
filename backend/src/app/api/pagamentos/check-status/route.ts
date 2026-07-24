@@ -152,6 +152,25 @@ export async function POST(request: Request) {
           status: "Pago",
           data_pagamento: db.fn.now(),
         });
+        try {
+          const boleto = await db("manutencao_boletos").where("id", pgto.origem_id).first();
+          if (boleto) {
+            const automacoes = await getSicafAgentModule<{
+              onManutencaoBoletoPago: (p: {
+                clienteId: number;
+                manutencaoId?: number;
+                boletoId?: number;
+              }) => Promise<unknown>;
+            }>("services/automacoes.service");
+            void automacoes.onManutencaoBoletoPago({
+              clienteId: Number((boleto as { cliente_id?: number }).cliente_id || (pgto as { cliente_id?: number }).cliente_id),
+              manutencaoId: Number((boleto as { manutencao_id?: number }).manutencao_id) || undefined,
+              boletoId: Number(pgto.origem_id),
+            });
+          }
+        } catch (e) {
+          console.error("[check-status] automação manutenção:", e instanceof Error ? e.message : e);
+        }
       }
 
       return NextResponse.json({

@@ -28,6 +28,7 @@ import {
   Clock,
   AlertTriangle,
   Target,
+  RefreshCw,
 } from "lucide-react";
 import wizardBg from "@/assets/wizard-bg.jpg";
 import { toast } from "sonner";
@@ -53,6 +54,12 @@ const ACAO_CATALOG: { tipo: AcaoTipo; label: string; icon: any; desc: string }[]
   { tipo: "acesso", label: "Liberar acesso", icon: Zap, desc: "Permissões e módulos" },
   { tipo: "alerta", label: "Alertar equipe", icon: Bell, desc: "Notificar gerente/responsável" },
   { tipo: "agendar", label: "Agendar follow-up", icon: Calendar, desc: "Lembrete futuro" },
+  {
+    tipo: "renovar_manutencao",
+    label: "Renovar manutenção",
+    icon: RefreshCw,
+    desc: "Gera novo ciclo de boletos ao quitar o plano",
+  },
 ];
 
 const GATILHOS = GATILHOS_CATALOG;
@@ -131,9 +138,13 @@ export function FluxoAutomacaoModal({ open, onOpenChange, fluxo, onSalvar }: Pro
       const lower = iaPrompt.toLowerCase();
       const tpl =
         TEMPLATES_IA.find((t) =>
-          lower.includes("cobr") ? t.nome.includes("cobrança") :
-          lower.includes("risc") || lower.includes("cancel") ? t.nome.includes("Retenção") :
-          t.nome.includes("Boas-vindas"),
+          lower.includes("manutenc") || lower.includes("renovar manut")
+            ? t.gatilho === "manutencao_ciclo_completo"
+            : lower.includes("cobr")
+              ? t.nome.includes("cobrança")
+              : lower.includes("risc") || lower.includes("cancel")
+                ? t.nome.includes("Retenção")
+                : t.nome.includes("Boas-vindas"),
         ) ?? TEMPLATES_IA[0];
       setData({
         ...data,

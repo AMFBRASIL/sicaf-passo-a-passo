@@ -452,6 +452,293 @@ function enrichPalavrasMetrics(palavras, investimento) {
   });
 }
 
+/**
+ * Clientes pagantes (taxa SICAF / Gerencianet) atribuídos ao dia da semana da
+ * primeira sessão Google Ads deles no período. Retorna Map dia_num(1-7) → { pagos, receita }.
+ */
+async function fetchPagosPorDiaSemana(db, sinceStr) {
+  const vazio = new Map();
+  return safeQuery(vazio, async () => {
+    const hasPg = await hasTable(db, 'pagamentos_gerencianet');
+    const hasTaxa = await hasTable(db, 'taxas_sicaf');
+    if (!hasPg && !hasTaxa) return vazio;
+
+    const unions = [];
+    const bindings = [];
+
+    if (hasPg) {
+      unions.push(`
+        SELECT DISTINCT ts.cliente_id, CONCAT('pg:', p.id) AS pagamento_key, COALESCE(p.valor, 0) AS valor_pago
+        FROM tracking_sessoes ts
+        INNER JOIN pagamentos_gerencianet p ON p.cliente_id = ts.cliente_id
+          AND COALESCE(p.data_pagamento, p.updated_at, p.created_at) >= ?
+          AND ${PG_PAGO_WHERE}
+        WHERE ts.created_at >= ?
+          AND ts.cliente_id IS NOT NULL
+          AND (ts.gclid IS NOT NULL AND TRIM(ts.gclid) <> '' OR LOWER(TRIM(ts.utm_source)) = 'google')
+      `);
+      bindings.push(sinceStr, sinceStr);
+    }
+
+    if (hasTaxa) {
+      unions.push(`
+        SELECT DISTINCT ts.cliente_id, CONCAT('tx:', t.id) AS pagamento_key, COALESCE(t.valor, 0) AS valor_pago
+        FROM tracking_sessoes ts
+        INNER JOIN taxas_sicaf t ON t.cliente_id = ts.cliente_id
+          AND COALESCE(t.data_pagamento, t.created_at) >= ?
+          AND ${TAXA_SICAF_PAGA_WHERE}
+        WHERE ts.created_at >= ?
+          AND ts.cliente_id IS NOT NULL
+          AND (ts.gclid IS NOT NULL AND TRIM(ts.gclid) <> '' OR LOWER(TRIM(ts.utm_source)) = 'google')
+      `);
+      bindings.push(sinceStr, sinceStr);
+    }
+
+    if (!unions.length) return vazio;
+
+    // Receita e nº de clientes pagos, atribuídos ao dia da PRIMEIRA sessão Google Ads do cliente
+    const sql = `
+      SELECT DAYOFWEEK(fs.primeira_sessao) AS dia_num,
+             COUNT(DISTINCT pagos_attr.cliente_id) AS pagos,
+             COALESCE(SUM(pagos_attr.valor_pago), 0) AS receita
+      FROM (
+        SELECT cliente_id, SUM(valor_pago) AS valor_pago
+        FROM (${unions.join(' UNION ALL ')}) AS uni
+        GROUP BY cliente_id
+      ) AS pagos_attr
+      INNER JOIN (
+        SELECT ts.cliente_id, MIN(ts.created_at) AS primeira_sessao
+        FROM tracking_sessoes ts
+        WHERE ts.created_at >= ?
+          AND ts.cliente_id IS NOT NULL
+          AND (ts.gclid IS NOT NULL AND TRIM(ts.gclid) <> '' OR LOWER(TRIM(ts.utm_source)) = 'google')
+        GROUP BY ts.cliente_id
+      ) AS fs ON fs.cliente_id = pagos_attr.cliente_id
+      GROUP BY DAYOFWEEK(fs.primeira_sessao)
+    `;
+    bindings.push(sinceStr);
+
+    const raw = await db.raw(sql, bindings);
+    const rows = raw[0] || [];
+    const map = new Map();
+    for (const r of rows) {
+      map.set(Number(r.dia_num), {
+        pagos: toNumber(r.pagos),
+        receita: toNumber(r.receita),
+      });
+    }
+    return map;
+  });
+}
+
+async function fetchClicksPorPeriodoSemana(db, sinceStr) {
+  const DIAS = [
+    { mysql: 2, label: 'Seg', tipo: 'semana' },
+    { mysql: 3, label: 'Ter', tipo: 'semana' },
+    { mysql: 4, label: 'Qua', tipo: 'semana' },
+    { mysql: 5, label: 'Qui', tipo: 'semana' },
+    { mysql: 6, label: 'Sex', tipo: 'semana' },
+    { mysql: 7, label: 'Sáb', tipo: 'fim' },
+    { mysql: 1, label: 'Dom', tipo: 'fim' },
+  ];
+
+  // Horário do clique como registrado no tracking (horário Brasil na prática do portal).
+  // MySQL: DAYOFWEEK 1=Dom … 7=Sáb
+  const diaExpr = 'DAYOFWEEK(ts.created_at)';
+  const horaExpr = 'HOUR(ts.created_at)';
+
+  async function queryDia(diaSql) {
+    return safeQuery([], () => {
+      const q = db('tracking_sessoes as ts').where('ts.created_at', '>=', sinceStr);
+      googleAdsFilter(q);
+      return q
+        .groupByRaw(diaSql)
+        .select(
+          db.raw(`${diaSql} as dia_num`),
+          db.raw('COUNT(*) as clicks'),
+          db.raw('COUNT(DISTINCT ts.cliente_id) as cadastros'),
+        )
+        .orderBy('dia_num');
+    });
+  }
+
+  async function queryHora(diaSql, horaSql) {
+    return safeQuery([], () => {
+      const q = db('tracking_sessoes as ts').where('ts.created_at', '>=', sinceStr);
+      googleAdsFilter(q);
+      return q
+        .groupByRaw(`${diaSql}, ${horaSql}`)
+        .select(
+          db.raw(`${diaSql} as dia_num`),
+          db.raw(`${horaSql} as hora`),
+          db.raw('COUNT(*) as clicks'),
+        );
+    });
+  }
+
+  const [porDiaRows, porHoraRows, pagosPorDia] = await Promise.all([
+    queryDia(diaExpr),
+    queryHora(diaExpr, horaExpr),
+    fetchPagosPorDiaSemana(db, sinceStr),
+  ]);
+  const timezone = 'America/Sao_Paulo';
+
+  const byDia = new Map(
+    porDiaRows.map((r) => [
+      Number(r.dia_num),
+      { clicks: toNumber(r.clicks), cadastros: toNumber(r.cadastros) },
+    ]),
+  );
+
+  const porDia = DIAS.map((d) => {
+    const row = byDia.get(d.mysql) || { clicks: 0, cadastros: 0 };
+    const pago = pagosPorDia.get(d.mysql) || { pagos: 0, receita: 0 };
+    return {
+      dia: d.label,
+      diaNum: d.mysql,
+      tipo: d.tipo,
+      clicks: row.clicks,
+      cadastros: row.cadastros,
+      pagos: pago.pagos,
+      receita: Math.round(pago.receita),
+    };
+  });
+
+  let semanaClicks = 0;
+  let semanaCadastros = 0;
+  let semanaPagos = 0;
+  let semanaReceita = 0;
+  let fimClicks = 0;
+  let fimCadastros = 0;
+  let fimPagos = 0;
+  let fimReceita = 0;
+  for (const d of porDia) {
+    if (d.tipo === 'fim') {
+      fimClicks += d.clicks;
+      fimCadastros += d.cadastros;
+      fimPagos += d.pagos;
+      fimReceita += d.receita;
+    } else {
+      semanaClicks += d.clicks;
+      semanaCadastros += d.cadastros;
+      semanaPagos += d.pagos;
+      semanaReceita += d.receita;
+    }
+  }
+  const totalClicks = semanaClicks + fimClicks;
+  const totalPagos = semanaPagos + fimPagos;
+  const pct = (n) => (totalClicks > 0 ? Math.round((n / totalClicks) * 1000) / 10 : 0);
+  const taxa = (pagos, clicks) => (clicks > 0 ? Math.round((pagos / clicks) * 1000) / 10 : 0);
+
+  const horaMap = new Map();
+  for (let h = 0; h < 24; h++) {
+    horaMap.set(h, { hora: h, semana: 0, fimDeSemana: 0 });
+  }
+  for (const r of porHoraRows) {
+    const h = Number(r.hora);
+    const dia = Number(r.dia_num);
+    if (!Number.isFinite(h) || h < 0 || h > 23) continue;
+    const bucket = horaMap.get(h);
+    if (!bucket) continue;
+    const clicks = toNumber(r.clicks);
+    if (dia === 1 || dia === 7) bucket.fimDeSemana += clicks;
+    else bucket.semana += clicks;
+  }
+  const porHora = Array.from(horaMap.values());
+
+  const pctFim = pct(fimClicks);
+  const pctSemana = pct(semanaClicks);
+  const taxaSemana = taxa(semanaPagos, semanaClicks);
+  const taxaFim = taxa(fimPagos, fimClicks);
+
+  let insight = 'Sem cliques Google Ads no período para analisar dia da semana.';
+  if (totalClicks > 0) {
+    if (pctFim >= 35) {
+      insight = `${pctFim}% dos cliques caem no fim de semana — vale testar orçamento e anúncios também em Sáb/Dom no Google Ads.`;
+    } else if (pctFim <= 15) {
+      insight = `Só ${pctFim}% dos cliques no fim de semana — priorize agenda e lances de segunda a sexta.`;
+    } else {
+      insight = `${pctSemana}% dos cliques na semana e ${pctFim}% no fim de semana — use isso no agendamento de anúncios (Ad schedule).`;
+    }
+  }
+
+  // Recomendação: onde é mais provável vir cliente pagante
+  let melhorPeriodo = 'equilibrado';
+  let veredito = 'Sem dados suficientes para recomendar dias de campanha.';
+  let semanaRecomendado = totalClicks > 0;
+  let fimRecomendado = totalClicks > 0;
+
+  if (totalClicks > 0) {
+    if (totalPagos >= 3) {
+      // Compara taxa de conversão em pagante por clique
+      if (taxaFim >= taxaSemana * 1.25 && fimPagos >= 2) {
+        melhorPeriodo = 'fim';
+        semanaRecomendado = true;
+        fimRecomendado = true;
+        veredito = `Fim de semana converte melhor (${taxaFim}% vs ${taxaSemana}% em pagantes por clique). Mantenha Sáb/Dom ativos e considere reforçar lances no fim de semana.`;
+      } else if (taxaSemana >= taxaFim * 1.25 || fimPagos === 0) {
+        melhorPeriodo = 'semana';
+        semanaRecomendado = true;
+        fimRecomendado = fimPagos > 0;
+        veredito =
+          fimPagos === 0
+            ? `Todos os ${totalPagos} clientes pagantes vieram de cliques de Seg–Sex. Concentre a campanha em dias de semana; fim de semana só se quiser testar com orçamento reduzido.`
+            : `Dias de semana convertem melhor (${taxaSemana}% vs ${taxaFim}% em pagantes por clique). Priorize Seg–Sex; mantenha o fim de semana com lances menores.`;
+      } else {
+        melhorPeriodo = 'equilibrado';
+        semanaRecomendado = true;
+        fimRecomendado = true;
+        veredito = `Conversão parecida (${taxaSemana}% na semana vs ${taxaFim}% no fim de semana). Rode a campanha nos 7 dias e ajuste apenas pelos horários de pico.`;
+      }
+    } else {
+      // Poucos pagos: usa volume de cliques/cadastros como proxy
+      if (pctFim <= 15) {
+        melhorPeriodo = 'semana';
+        fimRecomendado = false;
+        veredito = `Poucos pagantes no período para comparar, mas ${pctSemana}% dos cliques vêm de Seg–Sex. Recomendado rodar em dias de semana; fim de semana opcional.`;
+      } else {
+        veredito = `Poucos pagantes no período para comparar. Distribuição de cliques: ${pctSemana}% semana vs ${pctFim}% fim de semana — rode nos 7 dias até ter mais dados.`;
+      }
+    }
+  } else {
+    semanaRecomendado = false;
+    fimRecomendado = false;
+  }
+
+  return {
+    timezone,
+    totalClicks,
+    totalPagos,
+    semana: {
+      clicks: semanaClicks,
+      cadastros: semanaCadastros,
+      pagos: semanaPagos,
+      receita: semanaReceita,
+      receitaFormatada: formatCurrencyBR(semanaReceita),
+      pct: pctSemana,
+      taxaPagosPorClique: taxaSemana,
+      recomendado: semanaRecomendado,
+    },
+    fimDeSemana: {
+      clicks: fimClicks,
+      cadastros: fimCadastros,
+      pagos: fimPagos,
+      receita: fimReceita,
+      receitaFormatada: formatCurrencyBR(fimReceita),
+      pct: pctFim,
+      taxaPagosPorClique: taxaFim,
+      recomendado: fimRecomendado,
+    },
+    recomendacao: {
+      melhorPeriodo,
+      veredito,
+    },
+    porDia,
+    porHora,
+    insight,
+  };
+}
+
 async function getAdminGoogleAds(opts = {}) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
@@ -476,7 +763,7 @@ async function getAdminGoogleAds(opts = {}) {
     };
   }
 
-  const [totalsRow, investimento, palavrasBase, clientesPorPalavra] = await Promise.all([
+  const [totalsRow, investimento, palavrasBase, clientesPorPalavra, periodoSemana] = await Promise.all([
     safeQuery({}, () => {
       const q = db('tracking_sessoes as ts').where('ts.created_at', '>=', sinceStr);
       googleAdsFilter(q);
@@ -491,6 +778,7 @@ async function getAdminGoogleAds(opts = {}) {
     fetchInvestimento(db, sinceStr),
     fetchPalavrasValidadas(db, sinceStr),
     palavraDetalhe ? fetchClientesPorPalavra(db, sinceStr, palavraDetalhe) : Promise.resolve([]),
+    fetchClicksPorPeriodoSemana(db, sinceStr),
   ]);
 
   const palavras = enrichPalavrasMetrics(palavrasBase, investimento);
@@ -517,9 +805,11 @@ async function getAdminGoogleAds(opts = {}) {
     },
     palavras,
     clientesPorPalavra,
+    periodoSemana,
     notas: [
       'Pagos = clientes com taxa SICAF ou pagamento Gerencianet quitado no período, atribuídos à palavra-chave da sessão Google Ads.',
       'Receita = soma dos pagamentos reais desses clientes (não usa apenas o flag converted do tracking).',
+      'Semana vs fim de semana usa o horário do clique (tracking_sessoes.created_at) em horário de Brasília — útil para Ad schedule no Google Ads.',
       investimento > 0
         ? 'ROAS/CPA usam investimento das campanhas sincronizadas em google_ads_campanhas.'
         : 'Investimento não sincronizado — ROAS/CPA exibidos por palavra só quando houver custo em campanhas.',

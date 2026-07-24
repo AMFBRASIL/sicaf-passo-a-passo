@@ -30,6 +30,7 @@ import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
 import { Route as EmpresasLegacyRouteImport } from './routes/empresas-legacy'
 import { Route as EmpresasRouteImport } from './routes/empresas'
 import { Route as DocumentosRouteImport } from './routes/documentos'
+import { Route as DiagnosticoRouteImport } from './routes/diagnostico'
 import { Route as ConcorrenciaRouteImport } from './routes/concorrencia'
 import { Route as ConcluidoRouteImport } from './routes/concluido'
 import { Route as ColaboradoresRouteImport } from './routes/colaboradores'
@@ -169,6 +170,11 @@ const EmpresasRoute = EmpresasRouteImport.update({
 const DocumentosRoute = DocumentosRouteImport.update({
   id: '/documentos',
   path: '/documentos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DiagnosticoRoute = DiagnosticoRouteImport.update({
+  id: '/diagnostico',
+  path: '/diagnostico',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConcorrenciaRoute = ConcorrenciaRouteImport.update({
@@ -357,6 +363,7 @@ export interface FileRoutesByFullPath {
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/concorrencia': typeof ConcorrenciaRoute
+  '/diagnostico': typeof DiagnosticoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
   '/empresas-legacy': typeof EmpresasLegacyRoute
@@ -413,6 +420,7 @@ export interface FileRoutesByTo {
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/concorrencia': typeof ConcorrenciaRoute
+  '/diagnostico': typeof DiagnosticoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
   '/empresas-legacy': typeof EmpresasLegacyRoute
@@ -471,6 +479,7 @@ export interface FileRoutesById {
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
   '/concorrencia': typeof ConcorrenciaRoute
+  '/diagnostico': typeof DiagnosticoRoute
   '/documentos': typeof DocumentosRoute
   '/empresas': typeof EmpresasRoute
   '/empresas-legacy': typeof EmpresasLegacyRoute
@@ -531,6 +540,7 @@ export interface FileRouteTypes {
     | '/colaboradores'
     | '/concluido'
     | '/concorrencia'
+    | '/diagnostico'
     | '/documentos'
     | '/empresas'
     | '/empresas-legacy'
@@ -587,6 +597,7 @@ export interface FileRouteTypes {
     | '/colaboradores'
     | '/concluido'
     | '/concorrencia'
+    | '/diagnostico'
     | '/documentos'
     | '/empresas'
     | '/empresas-legacy'
@@ -644,6 +655,7 @@ export interface FileRouteTypes {
     | '/colaboradores'
     | '/concluido'
     | '/concorrencia'
+    | '/diagnostico'
     | '/documentos'
     | '/empresas'
     | '/empresas-legacy'
@@ -703,6 +715,7 @@ export interface RootRouteChildren {
   ColaboradoresRoute: typeof ColaboradoresRoute
   ConcluidoRoute: typeof ConcluidoRoute
   ConcorrenciaRoute: typeof ConcorrenciaRoute
+  DiagnosticoRoute: typeof DiagnosticoRoute
   DocumentosRoute: typeof DocumentosRoute
   EmpresasRoute: typeof EmpresasRoute
   EmpresasLegacyRoute: typeof EmpresasLegacyRoute
@@ -874,6 +887,13 @@ declare module '@tanstack/react-router' {
       path: '/documentos'
       fullPath: '/documentos'
       preLoaderRoute: typeof DocumentosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/diagnostico': {
+      id: '/diagnostico'
+      path: '/diagnostico'
+      fullPath: '/diagnostico'
+      preLoaderRoute: typeof DiagnosticoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/concorrencia': {
@@ -1210,6 +1230,7 @@ const rootRouteChildren: RootRouteChildren = {
   ColaboradoresRoute: ColaboradoresRoute,
   ConcluidoRoute: ConcluidoRoute,
   ConcorrenciaRoute: ConcorrenciaRoute,
+  DiagnosticoRoute: DiagnosticoRoute,
   DocumentosRoute: DocumentosRoute,
   EmpresasRoute: EmpresasRoute,
   EmpresasLegacyRoute: EmpresasLegacyRoute,

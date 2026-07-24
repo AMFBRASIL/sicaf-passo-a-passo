@@ -27,6 +27,8 @@ import {
   RefreshCw,
   CheckCircle2,
   Users,
+  CalendarDays,
+  CalendarRange,
 } from "lucide-react";
 import {
   BarChart,
@@ -37,6 +39,7 @@ import {
   Tooltip,
   CartesianGrid,
   Cell,
+  Legend,
 } from "recharts";
 import { toast } from "sonner";
 import {
@@ -44,6 +47,8 @@ import {
   formatBRL,
   type GoogleAdsPalavra,
   type GoogleAdsClientePalavra,
+  type GoogleAdsPeriodoSemana,
+  type GoogleAdsPeriodoStats,
 } from "@/lib/admin-google-ads-api";
 import { GoogleAdsPagosModal } from "@/components/admin/google-ads-pagos-modal";
 
@@ -63,6 +68,7 @@ function GoogleAdsPage() {
   const [days, setDays] = useState("30");
   const [kpis, setKpis] = useState<Awaited<ReturnType<typeof fetchAdminGoogleAds>>["kpis"]>();
   const [palavras, setPalavras] = useState<GoogleAdsPalavra[]>([]);
+  const [periodoSemana, setPeriodoSemana] = useState<GoogleAdsPeriodoSemana | null>(null);
   const [notas, setNotas] = useState<string[]>([]);
   const [detalheOpen, setDetalheOpen] = useState(false);
   const [pagosOpen, setPagosOpen] = useState(false);
@@ -81,6 +87,7 @@ function GoogleAdsPage() {
     }
     setKpis(res.kpis);
     setPalavras(res.palavras || []);
+    setPeriodoSemana(res.periodoSemana || null);
     setNotas(res.notas || []);
   }, [days]);
 
@@ -93,6 +100,24 @@ function GoogleAdsPage() {
     [palavras],
   );
   const maxFat = Math.max(...chartData.map((p) => p.fat), 1);
+
+  const chartDiaSemana = useMemo(
+    () =>
+      (periodoSemana?.porDia || []).map((d) => ({
+        ...d,
+        fill: d.tipo === "fim" ? "hsl(280 65% 55%)" : "hsl(210 80% 50%)",
+      })),
+    [periodoSemana],
+  );
+
+  const chartHora = useMemo(
+    () =>
+      (periodoSemana?.porHora || []).map((h) => ({
+        ...h,
+        label: `${String(h.hora).padStart(2, "0")}h`,
+      })),
+    [periodoSemana],
+  );
 
   const abrirPagos = (p: GoogleAdsPalavra) => {
     if (p.pagos <= 0) return;
@@ -176,6 +201,150 @@ function GoogleAdsPage() {
               sub={`${kpis?.pagos ?? 0} clientes pagaram`}
             />
           </div>
+
+          {periodoSemana && periodoSemana.totalClicks > 0 && (
+            <Card className="mt-5 p-5">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Onde rodar a campanha: semana × fim de semana</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Cliques, cadastros e clientes pagantes por dia do clique — use no Ad schedule do Google Ads.
+                  </p>
+                </div>
+                <Badge variant="secondary" className="text-[10px]">
+                  Horário Brasil
+                </Badge>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                <PeriodoRecomendacaoCard
+                  icon={CalendarDays}
+                  titulo="Dias de semana (Seg–Sex)"
+                  stats={periodoSemana.semana}
+                  destaque={periodoSemana.recomendacao.melhorPeriodo === "semana"}
+                  cor="sky"
+                />
+                <PeriodoRecomendacaoCard
+                  icon={CalendarRange}
+                  titulo="Fim de semana (Sáb–Dom)"
+                  stats={periodoSemana.fimDeSemana}
+                  destaque={periodoSemana.recomendacao.melhorPeriodo === "fim"}
+                  cor="violet"
+                />
+              </div>
+
+              <div className="mt-3 rounded-xl border border-dashed bg-muted/30 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Veredito — onde é mais provável vir cliente
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-foreground/90">
+                  {periodoSemana.recomendacao.veredito}
+                </p>
+              </div>
+
+              <div className="mt-5 grid gap-5 lg:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">Cliques por dia</p>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartDiaSemana} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                        <XAxis
+                          dataKey="dia"
+                          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                          axisLine={false}
+                          tickLine={false}
+                          allowDecimals={false}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            background: "hsl(var(--popover))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          formatter={(v: number, _n, item) => {
+                            const tipo = (item?.payload as { tipo?: string })?.tipo;
+                            return [
+                              v.toLocaleString("pt-BR"),
+                              tipo === "fim" ? "Fim de semana" : "Semana",
+                            ];
+                          }}
+                        />
+                        <Bar dataKey="clicks" radius={[6, 6, 0, 0]}>
+                          {chartDiaSemana.map((d, i) => (
+                            <Cell key={i} fill={d.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-1 flex items-center justify-center gap-4 text-[10px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-sm bg-sky-500" /> Semana
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-sm bg-violet-500" /> Fim de semana
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Cliques por hora (semana vs fim de semana)
+                  </p>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartHora} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                          axisLine={false}
+                          tickLine={false}
+                          interval={2}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                          axisLine={false}
+                          tickLine={false}
+                          allowDecimals={false}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            background: "hsl(var(--popover))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                          formatter={(v: number, name: string) => [
+                            v.toLocaleString("pt-BR"),
+                            name === "semana" ? "Semana" : "Fim de semana",
+                          ]}
+                        />
+                        <Legend
+                          wrapperStyle={{ fontSize: 11 }}
+                          formatter={(v) => (v === "semana" ? "Semana" : "Fim de semana")}
+                        />
+                        <Bar dataKey="semana" stackId="a" fill="hsl(210 80% 50%)" radius={[0, 0, 0, 0]} />
+                        <Bar
+                          dataKey="fimDeSemana"
+                          stackId="a"
+                          fill="hsl(280 65% 55%)"
+                          radius={[2, 2, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {chartData.length > 0 && (
             <Card className="mt-5 p-5">
@@ -383,6 +552,78 @@ function GoogleAdsPage() {
           </div>
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+function PeriodoRecomendacaoCard({
+  icon: Icon,
+  titulo,
+  stats,
+  destaque,
+  cor,
+}: {
+  icon: typeof CalendarDays;
+  titulo: string;
+  stats: GoogleAdsPeriodoStats;
+  destaque: boolean;
+  cor: "sky" | "violet";
+}) {
+  const cores = {
+    sky: { barra: "bg-sky-500", texto: "text-sky-600" },
+    violet: { barra: "bg-violet-500", texto: "text-violet-600" },
+  }[cor];
+
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        destaque
+          ? "border-emerald-400/60 bg-emerald-50/60 dark:border-emerald-700/60 dark:bg-emerald-950/20"
+          : "bg-card"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <Icon className="h-3.5 w-3.5" /> {titulo}
+        </div>
+        {stats.recomendado ? (
+          <Badge className="shrink-0 gap-1 bg-emerald-600 text-[10px] hover:bg-emerald-600">
+            <CheckCircle2 className="h-3 w-3" />
+            {destaque ? "Melhor período" : "Rodar campanha"}
+          </Badge>
+        ) : (
+          <Badge variant="secondary" className="shrink-0 text-[10px]">
+            Não prioritário
+          </Badge>
+        )}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Cliques</p>
+          <p className="text-lg font-bold">{stats.clicks.toLocaleString("pt-BR")}</p>
+          <p className={`text-[10px] font-medium ${cores.texto}`}>{stats.pct}% do total</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Cadastros</p>
+          <p className="text-lg font-bold">{stats.cadastros.toLocaleString("pt-BR")}</p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Pagantes</p>
+          <p className="text-lg font-bold text-emerald-600">{stats.pagos}</p>
+          <p className="text-[10px] text-muted-foreground">
+            {stats.taxaPagosPorClique}% por clique
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Receita</p>
+          <p className="text-lg font-bold text-emerald-600">{stats.receitaFormatada}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+        <div className={`h-full rounded-full ${cores.barra}`} style={{ width: `${stats.pct}%` }} />
+      </div>
     </div>
   );
 }

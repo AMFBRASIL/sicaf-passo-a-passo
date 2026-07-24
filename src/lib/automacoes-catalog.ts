@@ -6,7 +6,8 @@ export type AcaoAutomacaoTipo =
   | "cobranca"
   | "acesso"
   | "alerta"
-  | "agendar";
+  | "agendar"
+  | "renovar_manutencao";
 
 export interface FluxoAutomacao {
   id?: string;
@@ -60,6 +61,12 @@ export const GATILHOS_CATALOG: GatilhoCatalogItem[] = [
   { grupo: "Cliente", value: "score_risco", label: "Score de cancelamento alto", descricao: "Risco elevado de churn" },
   { grupo: "Cliente", value: "manutencao_ativada", label: "Manutenção ativada", descricao: "Plano de manutenção contratado" },
   { grupo: "Cliente", value: "manutencao_cancelada", label: "Manutenção cancelada", descricao: "Plano de manutenção encerrado" },
+  {
+    grupo: "Cliente",
+    value: "manutencao_ciclo_completo",
+    label: "Ciclo de manutenção quitado",
+    descricao: "Todos os boletos do ciclo atual foram pagos",
+  },
   { grupo: "Cliente", value: "onboarding_concluido", label: "Onboarding concluído", descricao: "Todas as etapas iniciais finalizadas" },
 
   // Licitação
@@ -142,10 +149,39 @@ export const TEMPLATES_IA = [
       { tipo: "ticket" as const, label: "Criar ticket para operador", delay: "imediato" },
     ],
   },
+  {
+    nome: "Renovar Manutenção Cliente",
+    gatilho: "manutencao_ciclo_completo",
+    acoes: [
+      {
+        tipo: "renovar_manutencao" as const,
+        label: "Renovar manutenção (novo ciclo de boletos)",
+        delay: "imediato",
+      },
+      { tipo: "email" as const, label: "E-mail avisando renovação", delay: "imediato" },
+    ],
+  },
 ];
 
 /** Fluxos de exemplo exibidos na listagem inicial (até integração com API/DB). */
 export const FLUXOS_EXEMPLO: FluxoAutomacao[] = [
+  {
+    id: "renovar-manutencao",
+    nome: "Renovar Manutenção Cliente",
+    descricao: "Renova a manutenção do cliente de forma automática ao quitar o ciclo.",
+    gatilho: gatilhoLabel("manutencao_ciclo_completo"),
+    gatilhoTipo: "manutencao_ciclo_completo",
+    acoes: [
+      {
+        tipo: "renovar_manutencao",
+        label: "Renovar manutenção (novo ciclo de boletos)",
+        delay: "imediato",
+      },
+      { tipo: "email", label: "E-mail avisando renovação", delay: "imediato" },
+    ],
+    ativo: true,
+    rodou: 0,
+  },
   {
     id: "1",
     nome: "Boas-vindas ao pagar",

@@ -1015,6 +1015,19 @@ async function atualizarStatus(id, novoStatus, extras = {}) {
             status: 'Pago',
             data_pagamento: db.fn.now(),
           });
+          try {
+            const boleto = await db('manutencao_boletos').where('id', pgto.origem_id).first();
+            if (boleto) {
+              const automacoes = require('./automacoes.service');
+              void automacoes.onManutencaoBoletoPago({
+                clienteId: boleto.cliente_id || pgto.cliente_id,
+                manutencaoId: boleto.manutencao_id,
+                boletoId: boleto.id,
+              });
+            }
+          } catch (e) {
+            console.error('[Pagamentos] automação pós-status manutenção:', e.message);
+          }
         }
         // avulso: sem tabela de origem — apenas pagamentos
       }
@@ -1079,6 +1092,19 @@ async function autorizarPagamentoManutencao(boletoId, clienteIdEsperado, usuario
     }
 
     console.log(`[Pagamentos] Manutenção boleto ${boletoId} autorizado como pago (cliente ${row.cliente_id})`);
+
+    try {
+      const automacoes = require('./automacoes.service');
+      const boletoRow = await db('manutencao_boletos').where('id', boletoId).first();
+      void automacoes.onManutencaoBoletoPago({
+        clienteId: row.cliente_id,
+        manutencaoId: boletoRow?.manutencao_id,
+        boletoId,
+      });
+    } catch (e) {
+      console.error('[Pagamentos] automação pós-pagamento manutenção:', e.message);
+    }
+
     return { ok: true, message: 'Pagamento do boleto autorizado com sucesso.' };
   } catch (e) {
     console.error('[Pagamentos] Erro autorizarPagamentoManutencao:', e.message);

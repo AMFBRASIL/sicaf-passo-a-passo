@@ -52,6 +52,23 @@ export async function ativarManutencao(
   return res.json() as Promise<{ ok: boolean; error?: string; message?: string }>;
 }
 
+export async function renovarManutencao(
+  clienteId: number,
+  diaVencimento: number,
+  parcelamento?: ParcelamentoManutencao | string,
+) {
+  const res = await apiFetch("/api/manutencao/renovar", {
+    method: "POST",
+    body: JSON.stringify({ clienteId, diaVencimento, parcelamento }),
+  });
+  return res.json() as Promise<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    boletosCriados?: number;
+  }>;
+}
+
 export type ManutencaoBoleto = {
   id: number;
   mes?: number;
