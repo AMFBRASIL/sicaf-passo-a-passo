@@ -41,6 +41,8 @@ export type ApiAdminClient = {
   novo?: boolean;
   plano?: string;
   createdAt?: string;
+  /** Total de logins bem-sucedidos do usuário vinculado (login_logs). */
+  totalAcessos?: number;
 };
 
 export type ApiAdminGroup = {

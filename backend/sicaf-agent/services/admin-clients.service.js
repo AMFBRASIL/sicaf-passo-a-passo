@@ -151,6 +151,24 @@ async function enrichClients(clients) {
     } catch (_) {}
   }
 
+  let loginCountMap = {};
+  if (userIds.length && db) {
+    try {
+      const hasLoginLogs = await db.schema.hasTable('login_logs');
+      if (hasLoginLogs) {
+        const counts = await db('login_logs')
+          .whereIn('usuario_id', userIds)
+          .where('sucesso', 1)
+          .groupBy('usuario_id')
+          .select('usuario_id')
+          .count('* as total');
+        for (const row of counts) {
+          loginCountMap[row.usuario_id] = parseInt(row.total, 10) || 0;
+        }
+      }
+    } catch (_) {}
+  }
+
   return clients.map((c) => {
     const usuario = c.userId ? userMap[c.userId] : null;
     const manut = manutMap[c.id];
@@ -179,6 +197,7 @@ async function enrichClients(clients) {
     const novo = c.createdAt
       ? Date.now() - new Date(c.createdAt).getTime() < 30 * 24 * 60 * 60 * 1000
       : false;
+    const totalAcessos = c.userId ? loginCountMap[c.userId] || 0 : 0;
 
     return {
       ...c,
@@ -196,6 +215,7 @@ async function enrichClients(clients) {
       sicafAtivo: displayStatus === 'Ativo' || displayStatus === 'Vencendo',
       novo,
       plano: manut ? 'Manutenção SICAF' : c.sicafId ? 'SICAF' : 'Onboarding',
+      totalAcessos,
     };
   });
 }

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Copy, Eye, Building2, Mail, Phone, FileText, Award } from "lucide-react";
+import { Loader2, Copy, Eye, Building2, Mail, Phone, FileText, Award, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import {
   criarAdminCliente,
@@ -232,6 +232,9 @@ function ClienteMobileCard({
         <span className="inline-flex items-center gap-1">
           <Award className="h-3 w-3" /> {c.certificates ?? 0} cert.
         </span>
+        <span className="inline-flex items-center gap-1" title="Total de acessos ao portal">
+          <LogIn className="h-3 w-3" /> {c.totalAcessos ?? 0} acessos
+        </span>
       </div>
     </button>
   );
@@ -448,16 +451,17 @@ function ClientesPage() {
         <div className="mt-2 hidden overflow-x-auto md:block">
           <table className="w-full table-fixed text-sm">
             <colgroup>
-              <col style={{ width: "18%" }} />
-              <col style={{ width: "128px" }} />
-              <col style={{ width: "132px" }} />
-              <col style={{ width: "52px" }} />
-              <col style={{ width: "52px" }} />
-              <col style={{ width: "64px" }} />
-              <col style={{ width: "60px" }} />
-              <col style={{ width: "64px" }} />
-              <col style={{ width: "60px" }} />
               <col style={{ width: "16%" }} />
+              <col style={{ width: "120px" }} />
+              <col style={{ width: "120px" }} />
+              <col style={{ width: "48px" }} />
+              <col style={{ width: "48px" }} />
+              <col style={{ width: "56px" }} />
+              <col style={{ width: "56px" }} />
+              <col style={{ width: "58px" }} />
+              <col style={{ width: "58px" }} />
+              <col style={{ width: "56px" }} />
+              <col style={{ width: "14%" }} />
               <col style={{ width: "40px" }} />
             </colgroup>
             <thead>
@@ -467,6 +471,9 @@ function ClientesPage() {
                 <th className="hidden px-2 py-2 font-medium lg:table-cell">Contato</th>
                 <th className="hidden px-2 py-2 text-center font-medium xl:table-cell">Lic.</th>
                 <th className="hidden px-2 py-2 text-center font-medium xl:table-cell">Cert.</th>
+                <th className="px-1 py-2 text-center font-medium" title="Total de logins no portal">
+                  Acessos
+                </th>
                 <th className="px-1 py-2 text-center font-medium">Status</th>
                 <th className="px-1 py-2 text-center font-medium">SICAF</th>
                 <th className="px-1 py-2 text-center font-medium">Pago</th>
@@ -478,7 +485,7 @@ function ClientesPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={11} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={12} className="px-3 py-10 text-center text-sm text-muted-foreground">
                     <Loader2 className="mr-2 inline h-5 w-5 animate-spin" />
                     Carregando clientes...
                   </td>
@@ -558,6 +565,12 @@ function ClientesPage() {
                       </td>
                       <td className="hidden px-2 py-2.5 text-center xl:table-cell">
                         <span className="text-xs font-medium">{c.certificates ?? 0}</span>
+                      </td>
+                      <td className="px-1 py-2.5 text-center" title="Total de logins bem-sucedidos no portal">
+                        <span className="inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums">
+                          <LogIn className="h-3 w-3 text-muted-foreground" />
+                          {c.totalAcessos ?? 0}
+                        </span>
                       </td>
                       <td className="px-1 py-2.5 text-center">
                         <Badge
