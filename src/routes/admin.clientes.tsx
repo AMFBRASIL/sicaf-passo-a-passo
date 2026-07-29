@@ -634,7 +634,7 @@ function ClientesPage() {
                 })}
               {!loading && lista.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-3 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={12} className="px-3 py-10 text-center text-sm text-muted-foreground">
                     Nenhuma empresa encontrada com esses filtros.
                   </td>
                 </tr>
