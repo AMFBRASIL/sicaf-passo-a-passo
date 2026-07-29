@@ -58,6 +58,7 @@ import {
   cancelarManutencao,
   fetchManutencaoCliente,
   fetchValorManutencaoMensal,
+  fetchValoresManutencao,
   fmtBrl,
   renovarManutencao,
   type ManutencaoBoleto,
@@ -66,6 +67,7 @@ import {
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import wizardBg from "@/assets/wizard-bg.jpg";
+import { PRECO_FALLBACK } from "@/lib/sicaf-precos";
 
 const DIAS = [1, 5, 10, 15, 20, 25];
 
@@ -110,7 +112,8 @@ export function ManutencaoModal({
   const [ativando, setAtivando] = useState(false);
   const [effectiveMode, setEffectiveMode] = useState<Mode>(mode);
   const [planoAtivo, setPlanoAtivo] = useState(false);
-  const [valorMensal, setValorMensal] = useState(155);
+  const [valorMensal, setValorMensal] = useState(PRECO_FALLBACK.valorManutencaoMensal);
+  const [valorAnual, setValorAnual] = useState(PRECO_FALLBACK.valorManutencaoMensal * 12);
   const [parcelamento, setParcelamento] = useState<ParcelamentoManutencao>("12x");
 
   const sicafElegivel = useMemo(() => {
@@ -128,7 +131,10 @@ export function ManutencaoModal({
 
   useEffect(() => {
     if (!open || !empresa) return;
-    void fetchValorManutencaoMensal().then(setValorMensal);
+    void fetchValoresManutencao().then(({ valorMensal: m, valorAnual: a }) => {
+      setValorMensal(m);
+      setValorAnual(a);
+    });
     if (!empresa.clienteId) {
       setPlanoAtivo(false);
       setEffectiveMode(mode);
@@ -339,6 +345,7 @@ export function ManutencaoModal({
                 {effectiveMode === "ativar" && step === "plano" && (
                   <PlanoStep
                     valorMensal={valorMensal}
+                    valorAnual={valorAnual}
                     parcelamento={parcelamento}
                     setParcelamento={setParcelamento}
                   />
@@ -350,6 +357,7 @@ export function ManutencaoModal({
                     dataInicio={dataInicio}
                     setDataInicio={setDataInicio}
                     valorMensal={valorMensal}
+                    valorAnual={valorAnual}
                     parcelamento={parcelamento}
                   />
                 )}
@@ -359,6 +367,7 @@ export function ManutencaoModal({
                     dia={dia!}
                     dataInicio={dataInicio}
                     valorMensal={valorMensal}
+                    valorAnual={valorAnual}
                     parcelamento={parcelamento}
                   />
                 )}
@@ -372,6 +381,7 @@ export function ManutencaoModal({
                     dia={diaVencimento ?? 15}
                     step={gerStep}
                     valorMensal={valorMensal}
+                    valorAnual={valorAnual}
                     onCancelar={handlePlanoCancelado}
                     onPaymentGenerated={onPaymentGenerated}
                     onRenovado={(novoDia) => onAtivar(empresa.cnpj, novoDia)}
@@ -461,14 +471,16 @@ function ManutencaoSicafBloqueioStep({
 
 function PlanoStep({
   valorMensal,
+  valorAnual,
   parcelamento,
   setParcelamento,
 }: {
   valorMensal: number;
+  valorAnual: number;
   parcelamento: ParcelamentoManutencao;
   setParcelamento: (p: ParcelamentoManutencao) => void;
 }) {
-  const totalAnual = valorMensal * 12;
+  const totalAnual = valorAnual > 0 ? valorAnual : valorMensal * 12;
   const features = [
     { icon: ShieldCheck, t: "Renovação SICAF automática", d: "Cuidamos do seu cadastro antes do vencimento." },
     { icon: FileText, t: "Emissão e envio de certidões", d: "Federal, Estadual, Municipal, FGTS e CNDT." },
@@ -499,7 +511,7 @@ function PlanoStep({
         </p>
         <div className="grid sm:grid-cols-3 gap-3">
           {PARCELAMENTO_OPCOES.map((opcao) => {
-            const calc = calcParcelamentoManutencao(valorMensal, opcao);
+            const calc = calcParcelamentoManutencao(valorMensal, opcao, totalAnual);
             const active = parcelamento === opcao;
             return (
               <button
@@ -560,6 +572,7 @@ function VencimentoStep({
   dataInicio,
   setDataInicio,
   valorMensal,
+  valorAnual,
   parcelamento,
 }: {
   dia: number | null;
@@ -567,9 +580,10 @@ function VencimentoStep({
   dataInicio: Date | undefined;
   setDataInicio: (d: Date | undefined) => void;
   valorMensal: number;
+  valorAnual: number;
   parcelamento: ParcelamentoManutencao;
 }) {
-  const calc = calcParcelamentoManutencao(valorMensal, parcelamento);
+  const calc = calcParcelamentoManutencao(valorMensal, parcelamento, valorAnual);
   return (
     <div className="space-y-6">
       <div>
@@ -666,15 +680,17 @@ function ConfirmarStep({
   dia,
   dataInicio,
   valorMensal,
+  valorAnual,
   parcelamento,
 }: {
   empresa: EmpresaData;
   dia: number;
   dataInicio: Date | undefined;
   valorMensal: number;
+  valorAnual: number;
   parcelamento: ParcelamentoManutencao;
 }) {
-  const calc = calcParcelamentoManutencao(valorMensal, parcelamento);
+  const calc = calcParcelamentoManutencao(valorMensal, parcelamento, valorAnual);
   return (
     <div className="space-y-6">
       <div>
@@ -793,6 +809,7 @@ function GerenciarPanel({
   dia,
   step,
   valorMensal,
+  valorAnual,
   onCancelar,
   onPaymentGenerated,
   onRenovado,
@@ -802,6 +819,7 @@ function GerenciarPanel({
   dia: number;
   step: GerStep;
   valorMensal: number;
+  valorAnual: number;
   onCancelar: () => void;
   onPaymentGenerated?: () => void;
   onRenovado?: (dia: number) => void;
@@ -911,7 +929,7 @@ function GerenciarPanel({
 
   const currentLabel = GER_STEPS.find((s) => s.id === step)?.label ?? "";
   const stepIdxG = GER_STEPS.findIndex((s) => s.id === step);
-  const renovarCalc = calcParcelamentoManutencao(valorMensal, renovarParcelamento);
+  const renovarCalc = calcParcelamentoManutencao(valorMensal, renovarParcelamento, valorAnual);
 
   return (
     <div className="space-y-6">
@@ -1191,7 +1209,7 @@ function GerenciarPanel({
                   <p className="text-xs font-medium text-foreground mb-2">Forma de pagamento</p>
                   <div className="grid grid-cols-3 gap-2">
                     {PARCELAMENTO_OPCOES.map((opcao) => {
-                      const calc = calcParcelamentoManutencao(valorMensal, opcao);
+                      const calc = calcParcelamentoManutencao(valorMensal, opcao, valorAnual);
                       const active = renovarParcelamento === opcao;
                       return (
                         <button

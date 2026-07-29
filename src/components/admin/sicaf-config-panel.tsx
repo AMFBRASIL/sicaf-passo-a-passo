@@ -11,6 +11,12 @@ import {
   type SicafSettings,
   type SicafSettingsStatus,
 } from "@/lib/admin-settings-api";
+import {
+  PRECO_FALLBACK,
+  formatMoneyPtBr,
+  maskMoneyPtBrInput,
+  parseMoneyPtBr,
+} from "@/lib/sicaf-precos";
 
 const NIVEL_LABELS = [
   "Nível I — Credenciamento",
@@ -29,6 +35,10 @@ const DEFAULT_SETTINGS: SicafSettings = {
   ticketAutomatico: true,
   notificarEmailWhatsapp: true,
   bloquearRelatorioVencido: false,
+  valorCadastroSicaf: PRECO_FALLBACK.valorCadastroSicaf,
+  valorCadastroSicafImediato: PRECO_FALLBACK.valorCadastroSicafImediato,
+  valorManutencaoMensal: PRECO_FALLBACK.valorManutencaoMensal,
+  valorManutencaoAnual: PRECO_FALLBACK.valorManutencaoMensal * 12,
 };
 
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
@@ -75,6 +85,8 @@ function ToggleRow({
   );
 }
 
+type MoneyKey = "valorCadastroSicaf" | "valorCadastroSicafImediato" | "valorManutencaoMensal" | "valorManutencaoAnual";
+
 type Props = {
   onSaved?: () => void;
 };
@@ -84,12 +96,41 @@ export function SicafConfigPanel({ onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<SicafSettings>(DEFAULT_SETTINGS);
   const [status, setStatus] = useState<SicafSettingsStatus | null>(null);
+  const [moneyDraft, setMoneyDraft] = useState({
+    valorCadastroSicaf: formatMoneyPtBr(DEFAULT_SETTINGS.valorCadastroSicaf),
+    valorCadastroSicafImediato: formatMoneyPtBr(DEFAULT_SETTINGS.valorCadastroSicafImediato),
+    valorManutencaoMensal: formatMoneyPtBr(DEFAULT_SETTINGS.valorManutencaoMensal),
+    valorManutencaoAnual: formatMoneyPtBr(DEFAULT_SETTINGS.valorManutencaoAnual),
+  });
+  /** Qual campo de manutenção o usuário editou por último — evita sobrescrever o anual digitado. */
+  const [manutOrigem, setManutOrigem] = useState<"mensal" | "anual">("mensal");
+
+  const applySettings = (next: SicafSettings) => {
+    setSettings(next);
+    setMoneyDraft({
+      valorCadastroSicaf: formatMoneyPtBr(next.valorCadastroSicaf),
+      valorCadastroSicafImediato: formatMoneyPtBr(next.valorCadastroSicafImediato),
+      valorManutencaoMensal: formatMoneyPtBr(next.valorManutencaoMensal),
+      valorManutencaoAnual: formatMoneyPtBr(next.valorManutencaoAnual),
+    });
+    setManutOrigem("mensal");
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchSicafSettings();
-      setSettings(data.settings);
+      applySettings({
+        ...DEFAULT_SETTINGS,
+        ...data.settings,
+        valorCadastroSicaf: data.settings.valorCadastroSicaf ?? DEFAULT_SETTINGS.valorCadastroSicaf,
+        valorCadastroSicafImediato:
+          data.settings.valorCadastroSicafImediato ?? DEFAULT_SETTINGS.valorCadastroSicafImediato,
+        valorManutencaoMensal: data.settings.valorManutencaoMensal ?? DEFAULT_SETTINGS.valorManutencaoMensal,
+        valorManutencaoAnual:
+          data.settings.valorManutencaoAnual
+          ?? Math.round((data.settings.valorManutencaoMensal ?? PRECO_FALLBACK.valorManutencaoMensal) * 12 * 100) / 100,
+      });
       setStatus(data.status);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao carregar configurações SICAF");
@@ -110,15 +151,78 @@ export function SicafConfigPanel({ onSaved }: Props) {
     });
   };
 
-  const patchNum = (key: keyof Pick<SicafSettings, "avisoAntecedenciaDias" | "lembreteReenvioDias" | "centralAlertaCertidoesDias">, raw: string) => {
+  const patchNum = (
+    key: keyof Pick<SicafSettings, "avisoAntecedenciaDias" | "lembreteReenvioDias" | "centralAlertaCertidoesDias">,
+    raw: string,
+  ) => {
     const n = parseInt(raw, 10);
     setSettings((prev) => ({ ...prev, [key]: Number.isFinite(n) && n > 0 ? n : prev[key] }));
+  };
+
+  const onMoneyChange = (key: MoneyKey, raw: string) => {
+    if (key === "valorManutencaoMensal") setManutOrigem("mensal");
+    if (key === "valorManutencaoAnual") setManutOrigem("anual");
+    setMoneyDraft((d) => ({ ...d, [key]: maskMoneyPtBrInput(raw) }));
+  };
+
+  const commitMoney = (key: MoneyKey) => {
+    setSettings((prev) => {
+      if (key === "valorManutencaoMensal") {
+        const mensal = parseMoneyPtBr(moneyDraft.valorManutencaoMensal, prev.valorManutencaoMensal);
+        const anual = Math.round(mensal * 12 * 100) / 100;
+        setManutOrigem("mensal");
+        setMoneyDraft((d) => ({
+          ...d,
+          valorManutencaoMensal: formatMoneyPtBr(mensal),
+          valorManutencaoAnual: formatMoneyPtBr(anual),
+        }));
+        return { ...prev, valorManutencaoMensal: mensal, valorManutencaoAnual: anual };
+      }
+      if (key === "valorManutencaoAnual") {
+        // Preserva o anual digitado; mensal só é referência (anual/12).
+        const anual = parseMoneyPtBr(moneyDraft.valorManutencaoAnual, prev.valorManutencaoAnual);
+        const mensal = Math.round((anual / 12) * 100) / 100;
+        setManutOrigem("anual");
+        setMoneyDraft((d) => ({
+          ...d,
+          valorManutencaoMensal: formatMoneyPtBr(mensal),
+          valorManutencaoAnual: formatMoneyPtBr(anual),
+        }));
+        return { ...prev, valorManutencaoMensal: mensal, valorManutencaoAnual: anual };
+      }
+      const value = parseMoneyPtBr(moneyDraft[key], prev[key]);
+      setMoneyDraft((d) => ({ ...d, [key]: formatMoneyPtBr(value) }));
+      return { ...prev, [key]: value };
+    });
   };
 
   const salvar = async () => {
     setSaving(true);
     try {
-      const msg = await saveSicafSettings(settings);
+      const valorCadastroSicaf = parseMoneyPtBr(moneyDraft.valorCadastroSicaf, settings.valorCadastroSicaf);
+      const valorCadastroSicafImediato = parseMoneyPtBr(
+        moneyDraft.valorCadastroSicafImediato,
+        settings.valorCadastroSicafImediato,
+      );
+
+      let valorManutencaoMensal: number;
+      let valorManutencaoAnual: number;
+      if (manutOrigem === "anual") {
+        valorManutencaoAnual = parseMoneyPtBr(moneyDraft.valorManutencaoAnual, settings.valorManutencaoAnual);
+        valorManutencaoMensal = Math.round((valorManutencaoAnual / 12) * 100) / 100;
+      } else {
+        valorManutencaoMensal = parseMoneyPtBr(moneyDraft.valorManutencaoMensal, settings.valorManutencaoMensal);
+        valorManutencaoAnual = Math.round(valorManutencaoMensal * 12 * 100) / 100;
+      }
+
+      const payload: SicafSettings = {
+        ...settings,
+        valorCadastroSicaf,
+        valorCadastroSicafImediato,
+        valorManutencaoMensal,
+        valorManutencaoAnual,
+      };
+      const msg = await saveSicafSettings(payload);
       toast.success(msg);
       await load();
       onSaved?.();
@@ -148,9 +252,99 @@ export function SicafConfigPanel({ onSaved }: Props) {
           <span>
             {status.niveisAtivos} nível(is) obrigatório(s) · Central de alertas: {status.centralAlertaDias} dias ·
             Aviso antecedência: {status.avisoAntecedenciaDias} dias
+            {status.valorCadastroSicaf != null && (
+              <> · SICAF R$ {formatMoneyPtBr(status.valorCadastroSicaf)}</>
+            )}
+            {status.valorManutencaoAnual != null && (
+              <> · Manutenção anual R$ {formatMoneyPtBr(status.valorManutencaoAnual)}</>
+            )}
           </span>
         </div>
       )}
+
+      <Section
+        title="Valores comerciais"
+        desc="Esses valores ficam no banco e alimentam cobranças, planos e telas do portal. Alterar aqui atualiza todos os pontos."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Taxa SICAF padrão (R$)"
+            hint="Valor anual do cadastro padrão (lido de configuracoes_sistema)."
+          >
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                R$
+              </span>
+              <Input
+                inputMode="numeric"
+                className="pl-10 tabular-nums"
+                value={moneyDraft.valorCadastroSicaf}
+                onChange={(e) => onMoneyChange("valorCadastroSicaf", e.target.value)}
+                onBlur={() => commitMoney("valorCadastroSicaf")}
+                disabled={saving}
+                placeholder="0,00"
+              />
+            </div>
+          </Field>
+          <Field
+            label="Taxa SICAF imediato (R$)"
+            hint="Valor do atendimento imediato (plano sicaf_imediato)."
+          >
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                R$
+              </span>
+              <Input
+                inputMode="numeric"
+                className="pl-10 tabular-nums"
+                value={moneyDraft.valorCadastroSicafImediato}
+                onChange={(e) => onMoneyChange("valorCadastroSicafImediato", e.target.value)}
+                onBlur={() => commitMoney("valorCadastroSicafImediato")}
+                disabled={saving}
+                placeholder="0,00"
+              />
+            </div>
+          </Field>
+          <Field
+            label="Manutenção mensal (R$)"
+            hint="Fonte no banco: valor_manutencao_mensal."
+          >
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                R$
+              </span>
+              <Input
+                inputMode="numeric"
+                className="pl-10 tabular-nums"
+                value={moneyDraft.valorManutencaoMensal}
+                onChange={(e) => onMoneyChange("valorManutencaoMensal", e.target.value)}
+                onBlur={() => commitMoney("valorManutencaoMensal")}
+                disabled={saving}
+                placeholder="0,00"
+              />
+            </div>
+          </Field>
+          <Field
+            label="Manutenção anual integral (R$)"
+            hint="Valor integral do contrato. Digitar aqui preserva este total (o mensal vira anual÷12 para boletos)."
+          >
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                R$
+              </span>
+              <Input
+                inputMode="numeric"
+                className="pl-10 tabular-nums"
+                value={moneyDraft.valorManutencaoAnual}
+                onChange={(e) => onMoneyChange("valorManutencaoAnual", e.target.value)}
+                onBlur={() => commitMoney("valorManutencaoAnual")}
+                disabled={saving}
+                placeholder="0,00"
+              />
+            </div>
+          </Field>
+        </div>
+      </Section>
 
       <Section title="Níveis obrigatórios" desc="Marque os níveis exigidos por padrão para novas empresas.">
         <div className="grid gap-2 sm:grid-cols-2">

@@ -195,11 +195,9 @@ async function listSicaf(search = '', usuarioId) {
       };
     });
 
-    let valorTaxa = 985.0;
-    try {
-      const cfgTaxa = await db('configuracoes_sistema').where('chave', 'valor_cadastro_sicaf').first();
-      if (cfgTaxa) valorTaxa = parseFloat(cfgTaxa.valor);
-    } catch (_) {}
+    const { getPrecosComerciais } = require('./precos-comerciais.service');
+    const precos = await getPrecosComerciais(db);
+    const valorTaxa = precos.valorCadastroSicaf;
 
     return { ok: true, items, total: items.length, valorTaxa };
   } catch (e) {

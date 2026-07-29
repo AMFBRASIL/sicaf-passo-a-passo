@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ExternalLink, FileText, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -7,16 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-  type CarouselApi,
-} from "@/components/ui/carousel";
 import type { TutorialGovTopico } from "@/lib/ajuda-tutoriais-sicaf";
-import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -25,33 +16,15 @@ type Props = {
 };
 
 export function AjudaTutorialGovModal({ open, onOpenChange, topico }: Props) {
-  const [api, setApi] = useState<CarouselApi>();
-  const [passoAtual, setPassoAtual] = useState(0);
-
-  const multiplo = (topico?.urls.length ?? 0) > 1;
-  const urlAtual = topico?.urls[passoAtual] ?? topico?.urls[0] ?? "";
-
-  const onSelect = useCallback(() => {
-    if (!api) return;
-    setPassoAtual(api.selectedScrollSnap());
-  }, [api]);
+  const url = topico?.url ?? "";
+  const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
-    if (!open) {
-      setPassoAtual(0);
-      return;
-    }
-    if (!api) return;
-    onSelect();
-    api.on("select", onSelect);
-    return () => {
-      api.off("select", onSelect);
-    };
-  }, [api, onSelect, open]);
-
-  useEffect(() => {
-    if (open) setPassoAtual(0);
-  }, [open, topico?.id]);
+    if (!open || !url) return;
+    setCarregando(true);
+    const t = window.setTimeout(() => setCarregando(false), 1200);
+    return () => window.clearTimeout(t);
+  }, [open, url, topico?.id]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -65,17 +38,15 @@ export function AjudaTutorialGovModal({ open, onOpenChange, topico }: Props) {
               {topico?.subtitulo && (
                 <p className="mt-0.5 text-xs text-muted-foreground">{topico.subtitulo}</p>
               )}
-              {multiplo && topico && (
-                <p className="mt-1 text-xs font-medium text-primary">
-                  Etapa {passoAtual + 1} de {topico.urls.length}
-                </p>
-              )}
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Material oficial do Compras.gov.br (sistema atual)
+              </p>
             </div>
-            {urlAtual && (
-              <Button variant="outline" size="sm" className="shrink-0 gap-1.5" asChild>
-                <a href={urlAtual} target="_blank" rel="noopener noreferrer">
+            {url && (
+              <Button variant="default" size="sm" className="shrink-0 gap-1.5" asChild>
+                <a href={url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-3.5 w-3.5" />
-                  Abrir em nova aba
+                  Abrir no portal
                 </a>
               </Button>
             )}
@@ -83,56 +54,39 @@ export function AjudaTutorialGovModal({ open, onOpenChange, topico }: Props) {
         </DialogHeader>
 
         <div className="relative min-h-0 flex-1 bg-muted/30">
-          {topico && multiplo ? (
+          {url ? (
             <>
-              <Carousel setApi={setApi} opts={{ loop: false }} className="h-full w-full">
-                <CarouselContent className="ml-0 h-[min(72vh,720px)]">
-                  {topico.urls.map((url, index) => (
-                    <CarouselItem key={url} className="basis-full pl-0">
-                      <iframe
-                        title={`${topico.titulo} — etapa ${index + 1}`}
-                        src={url}
-                        className="h-[min(72vh,720px)] w-full border-0 bg-white"
-                        loading={index === 0 ? "eager" : "lazy"}
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                        referrerPolicy="no-referrer-when-downgrade"
-                      />
-                    </CarouselItem>
-                  ))}
-                </CarouselContent>
-                <CarouselPrevious className="left-3 border-border bg-background/95 shadow-md" />
-                <CarouselNext className="right-3 border-border bg-background/95 shadow-md" />
-              </Carousel>
-
-              <div className="flex flex-wrap items-center justify-center gap-2 border-t bg-card px-4 py-3">
-                {topico.urls.map((_, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    aria-label={`Ir para etapa ${index + 1}`}
-                    aria-current={passoAtual === index ? "step" : undefined}
-                    onClick={() => api?.scrollTo(index)}
-                    className={cn(
-                      "h-2 rounded-full transition-all",
-                      passoAtual === index
-                        ? "w-6 bg-primary"
-                        : "w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50",
-                    )}
-                  />
-                ))}
-              </div>
+              {carregando && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/80">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">Carregando tutorial oficial…</p>
+                </div>
+              )}
+              <iframe
+                key={url}
+                title={topico?.titulo ?? "Tutorial SICAF"}
+                src={url}
+                className="h-[min(72vh,720px)] w-full border-0 bg-white"
+                onLoad={() => setCarregando(false)}
+              />
             </>
-          ) : urlAtual ? (
-            <iframe
-              key={urlAtual}
-              title={topico?.titulo ?? "Tutorial SICAF"}
-              src={urlAtual}
-              className="h-[min(72vh,720px)] w-full border-0 bg-white"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
           ) : null}
         </div>
+
+        {url && (
+          <div className="flex shrink-0 flex-col gap-2 border-t bg-muted/40 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="flex items-start gap-2 text-[11px] text-muted-foreground sm:items-center">
+              <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 sm:mt-0" />
+              Se a prévia não aparecer (bloqueio do gov.br), abra o PDF no portal oficial.
+            </p>
+            <Button variant="outline" size="sm" className="gap-1.5 self-end sm:self-auto" asChild>
+              <a href={url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+                Abrir em nova aba
+              </a>
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

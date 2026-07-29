@@ -103,7 +103,8 @@ function isSicafStatusPendente(status) {
 
 function buildMensagensCadastroPendenteReceita({ razaoSocial, valorTaxa, situacaoReceita }) {
   const nome = razaoSocial || "sua empresa";
-  const valorFmt = formatarMoeda(valorTaxa) || "R$ 985,00";
+  const { formatBrl } = require("../services/precos-comerciais.service");
+  const valorFmt = formatarMoeda(valorTaxa) || formatBrl(Number(valorTaxa) || 0);
   const url = URL_CADASTRO_CADBRASIL;
 
   return {
@@ -214,7 +215,8 @@ function buildMensagensSicafVencido({ razaoSocial, dataValidade, urlPortal }) {
 
 function buildMensagensCadastroSemSicaf({ razaoSocial, valorTaxa }) {
   const nome = razaoSocial || "sua empresa";
-  const valorFmt = formatarMoeda(valorTaxa) || "R$ 985,00";
+  const { formatBrl } = require("../services/precos-comerciais.service");
+  const valorFmt = formatarMoeda(valorTaxa) || formatBrl(Number(valorTaxa) || 0);
   const url = URL_CADASTRO_CADBRASIL;
   const portal = getPublicPayBaseUrl();
 

@@ -171,9 +171,12 @@ function trackingClickSql(alias = 'ts') {
 )`;
 }
 
-function buildSelectSql(days) {
+function buildSelectSql(days, valorManutencaoAnualFallback = 1860) {
   const pagoSub = buildPagamentoSicafSubquery(days);
   const manutSub = buildManutencaoValorSubquery();
+  const manutFallback = Number(valorManutencaoAnualFallback) > 0
+    ? Number(valorManutencaoAnualFallback)
+    : 1860;
   // Google Ads: conversão NÃO pode ser anterior ao clique do anúncio.
   // 1) Usa o último clique (GCLID/GBRAID/WBRAID) com sessão <= pagamento.
   // 2) Garante conversion_date_time >= clique + margem.
@@ -240,7 +243,7 @@ FROM (
           THEN COALESCE(
             NULLIF(manut.valor_manut_completa, 0),
             NULLIF(manut.soma_boletos, 0),
-            1860
+            ${manutFallback}
           )
           ELSE 0
         END
@@ -615,7 +618,9 @@ async function runGoogleAdsConversoesSync(opts = {}) {
     shouldDestroy = true;
   }
 
-  const selectSql = buildSelectSql(days);
+  const { getPrecosComerciais } = require('./precos-comerciais.service');
+  const precos = await getPrecosComerciais(db);
+  const selectSql = buildSelectSql(days, precos.valorManutencaoAnual);
   const insertSql = buildInsertOnlySql(selectSql);
 
   try {

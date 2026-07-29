@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -29,7 +29,13 @@ import {
   ProcessoClienteModal,
   useProcessoModalAutoOpen,
 } from "@/components/processo-cliente-modal";
+import { PendenciasModal } from "@/components/pendencias-modal";
+import { PropostaComercialModal } from "@/components/proposta-comercial-modal";
 import { buildProcessoClienteEtapas } from "@/lib/processo-cliente-etapas";
+import {
+  fetchPropostasPendentes,
+  type PropostaComercial,
+} from "@/lib/propostas-api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -130,6 +136,56 @@ function HomePage() {
   );
   const [processoModalManual, setProcessoModalManual] = useState(false);
   const processoModalVisivel = processoModalOpen || processoModalManual;
+  const [pendenciasOpen, setPendenciasOpen] = useState(false);
+  const [propostas, setPropostas] = useState<PropostaComercial[]>([]);
+  const [propostaModalOpen, setPropostaModalOpen] = useState(false);
+  const propostasCarregadasRef = useRef(false);
+
+  const empresasComTaxaPendente = useMemo(
+    () => empresasRaw.filter((e) => e.taxaPendente),
+    [empresasRaw],
+  );
+
+  const carregarPropostas = async () => {
+    const res = await fetchPropostasPendentes();
+    if (!res.ok) {
+      setPropostas([]);
+      return [] as PropostaComercial[];
+    }
+    setPropostas(res.propostas);
+    return res.propostas;
+  };
+
+  useEffect(() => {
+    if (loading) return;
+    void carregarPropostas().then((lista) => {
+      propostasCarregadasRef.current = true;
+      // Sem empresas o modal de etapas não aparece — mostra a proposta direto
+      if (empresasRaw.length === 0 && lista.length > 0) {
+        window.setTimeout(() => setPropostaModalOpen(true), 400);
+      }
+    });
+  }, [loading, empresasRaw.length]);
+
+  const abrirPropostaSeHouver = async () => {
+    const lista = await carregarPropostas();
+    if (lista.length > 0) {
+      window.setTimeout(() => setPropostaModalOpen(true), 280);
+    }
+  };
+
+  const aposFecharEtapas = () => {
+    if (empresasComTaxaPendente.length > 0) {
+      window.setTimeout(() => setPendenciasOpen(true), 280);
+      return;
+    }
+    void abrirPropostaSeHouver();
+  };
+
+  const aposFecharPendencias = () => {
+    void abrirPropostaSeHouver();
+  };
+
   const nomeUsuario = firstName(user?.nome);
 
   if (loading) {
@@ -149,11 +205,33 @@ function HomePage() {
           onOpenChange={(v) => {
             setProcessoModalOpen(v);
             setProcessoModalManual(v);
+            // Continuar, X ou clique fora → financeiro (taxa pendente) ou proposta
+            if (!v) aposFecharEtapas();
           }}
           empresas={empresasRaw}
           empresaInicial={empresaPrioridadeRaw}
         />
       )}
+
+      <PendenciasModal
+        open={pendenciasOpen}
+        onOpenChange={(v) => {
+          setPendenciasOpen(v);
+          if (!v) aposFecharPendencias();
+        }}
+        empresas={empresasComTaxaPendente}
+      />
+
+      <PropostaComercialModal
+        open={propostaModalOpen}
+        onOpenChange={setPropostaModalOpen}
+        propostas={propostas}
+        onAtualizado={() => {
+          void carregarPropostas().then((lista) => {
+            if (!lista.length) setPropostaModalOpen(false);
+          });
+        }}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-6">

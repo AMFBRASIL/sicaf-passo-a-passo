@@ -21,7 +21,9 @@ import {
   salvarAdminClienteContrato,
   type ContratoDigitalUi,
 } from "@/lib/admin-clientes-api";
-import { openContractPreviewWindow, openContractPrintWindow, type ContractData } from "@/lib/contract-template";
+import { openContractPreviewWindow, openContractPrintWindow, type ContractData, type ContractValores } from "@/lib/contract-template";
+import { fetchSicafValores } from "@/lib/empresas-api";
+import { PRECOS_FALLBACK_NORMALIZED } from "@/lib/sicaf-precos";
 
 const MODELOS = [
   { value: "Licença + Manutenção", label: "Manutenção SICAF — Anual" },
@@ -62,10 +64,13 @@ export function ContratosModal({ open, onOpenChange, cliente, clienteId }: Props
   const [vigenciaMeses, setVigenciaMeses] = useState("12");
   const [dataInicio, setDataInicio] = useState(() => new Date().toISOString().slice(0, 10));
   const [dataAssinatura, setDataAssinatura] = useState(() => new Date().toISOString().slice(0, 10));
-  const [valorMensal, setValorMensal] = useState(String(cliente.mrr || 155));
+  const [valorMensal, setValorMensal] = useState(
+    String(cliente.mrr || PRECOS_FALLBACK_NORMALIZED.valorManutencaoMensal),
+  );
   const [signatario, setSignatario] = useState(cliente.responsavel || "");
   const [emailSignatario, setEmailSignatario] = useState(cliente.email ?? "");
   const [jaAssinado, setJaAssinado] = useState(false);
+  const [valoresContrato, setValoresContrato] = useState<ContractValores>(PRECOS_FALLBACK_NORMALIZED);
 
   const applyForm = useCallback(
     (c: ContratoDigitalUi | null) => {
@@ -75,7 +80,7 @@ export function ContratosModal({ open, onOpenChange, cliente, clienteId }: Props
         setVigenciaMeses("12");
         setDataInicio(hoje);
         setDataAssinatura(hoje);
-        setValorMensal(String(cliente.mrr || 155));
+        setValorMensal(String(cliente.mrr || PRECOS_FALLBACK_NORMALIZED.valorManutencaoMensal));
         setSignatario(cliente.responsavel || "");
         setEmailSignatario(cliente.email ?? "");
         setJaAssinado(false);
@@ -85,7 +90,7 @@ export function ContratosModal({ open, onOpenChange, cliente, clienteId }: Props
       setVigenciaMeses(String(c.vigenciaMeses ?? 12));
       setDataInicio(toInputDate(c.dataInicio) || hoje);
       setDataAssinatura(toInputDate(c.assinadoEm) || toInputDate(c.dataInicio) || hoje);
-      setValorMensal(String(c.valorMensal ?? cliente.mrr ?? 155));
+      setValorMensal(String(c.valorMensal ?? cliente.mrr ?? PRECOS_FALLBACK_NORMALIZED.valorManutencaoMensal));
       setSignatario(c.assinadoPor || c.responsavelNome || cliente.responsavel || "");
       setEmailSignatario(c.emailSignatario || c.email || cliente.email || "");
       setJaAssinado(c.status === "Assinado");
@@ -114,7 +119,16 @@ export function ContratosModal({ open, onOpenChange, cliente, clienteId }: Props
   }, [effectiveId, applyForm]);
 
   useEffect(() => {
-    if (open) void carregar();
+    if (!open) return;
+    void carregar();
+    void fetchSicafValores().then((r) => {
+      if (!r.ok || !r.valores) return;
+      setValoresContrato({
+        valorCadastroSicaf: r.valores.valorCadastroSicaf,
+        valorManutencaoMensal: r.valores.valorManutencaoMensal,
+        valorManutencaoAnual: r.valores.valorManutencaoAnual!,
+      });
+    });
   }, [open, carregar]);
 
   const meses = parseInt(vigenciaMeses, 10) || 12;
@@ -142,7 +156,7 @@ export function ContratosModal({ open, onOpenChange, cliente, clienteId }: Props
       toast.error("Informe a data do contrato");
       return;
     }
-    const ok = openContractPreviewWindow(buildContractData());
+    const ok = openContractPreviewWindow(buildContractData(), valoresContrato);
     if (!ok) {
       toast.error("Popup bloqueado. Permita popups para abrir o contrato.");
       return;
@@ -151,7 +165,7 @@ export function ContratosModal({ open, onOpenChange, cliente, clienteId }: Props
   };
 
   const imprimir = () => {
-    const ok = openContractPrintWindow(buildContractData());
+    const ok = openContractPrintWindow(buildContractData(), valoresContrato);
     if (!ok) toast.error("Popup bloqueado. Permita popups para imprimir.");
   };
 

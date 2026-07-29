@@ -3,6 +3,8 @@
  * Usado em /digital-contracts e no painel de Contratos do cliente (/clients).
  */
 
+import { PRECO_FALLBACK } from "@/lib/sicaf-precos";
+
 export interface ContractData {
   razao_social: string;
   documento: string;
@@ -26,10 +28,32 @@ export interface ContractClause {
   items: string[];
 }
 
-export const CONTRACT_TITLE =
-  "Contrato de Prestação de Serviços Especializados em Licitações, Gestão Documental e Manutenção SICAF";
+export type ContractValores = {
+  valorCadastroSicaf: number;
+  valorManutencaoMensal: number;
+  valorManutencaoAnual: number;
+};
 
-export const contractClauses: ContractClause[] = [
+const DEFAULT_CONTRACT_VALORES: ContractValores = {
+  valorCadastroSicaf: PRECO_FALLBACK.valorCadastroSicaf,
+  valorManutencaoMensal: PRECO_FALLBACK.valorManutencaoMensal,
+  valorManutencaoAnual: PRECO_FALLBACK.valorManutencaoMensal * 12,
+};
+
+function formatMoneyBr(value: number): string {
+  return Number(value || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+export function buildContractClauses(valores?: Partial<ContractValores>): ContractClause[] {
+  const v = { ...DEFAULT_CONTRACT_VALORES, ...valores };
+  const sicaf = formatMoneyBr(v.valorCadastroSicaf);
+  const mensal = formatMoneyBr(v.valorManutencaoMensal);
+  const anual = formatMoneyBr(v.valorManutencaoAnual);
+
+  return [
   {
     title: "CLÁUSULA 1ª – DO OBJETO",
     items: [
@@ -57,14 +81,14 @@ export const contractClauses: ContractClause[] = [
   {
     title: "CLÁUSULA 4ª – DOS VALORES, LICENÇA E MANUTENÇÃO",
     items: [
-      "4.1. Pela disponibilização da licença anual de uso da plataforma CADBRASIL, a CONTRATANTE pagará o valor de R$ 985,00 (novecentos e oitenta e cinco reais) por ano.",
-      "4.2. Para prestação dos serviços de manutenção contínua, gestão documental, monitoramento de certidões, armazenamento digital e suporte técnico, a CONTRATANTE pagará:\n  a) R$ 1.860,00 (mil oitocentos e sessenta reais) por ano, em pagamento anual;\n  ou\n  b) R$ 155,00 (cento e cinquenta e cinco reais) mensais, totalizando R$ 1.860,00 ao ano.",
+      `4.1. Pela disponibilização da licença anual de uso da plataforma CADBRASIL, a CONTRATANTE pagará o valor de R$ ${sicaf} por ano.`,
+      `4.2. Para prestação dos serviços de manutenção contínua, gestão documental, monitoramento de certidões, armazenamento digital e suporte técnico, a CONTRATANTE pagará:\n  a) R$ ${anual} por ano, em pagamento anual;\n  ou\n  b) R$ ${mensal} mensais, totalizando R$ ${anual} ao ano.`,
       "4.3. A licença da plataforma e o plano de manutenção são obrigações distintas e complementares.",
       "4.4. O não pagamento da licença poderá implicar na suspensão do acesso ao sistema.",
       "4.5. O não pagamento do plano de manutenção poderá implicar na suspensão dos serviços técnicos.",
       "4.6. Em caso de atraso incidirá multa de 2%, juros de 1% ao mês e correção monetária.",
       "4.7. Os valores poderão ser reajustados anualmente pelo IPCA ou índice oficial equivalente.",
-      "4.8. O plano de manutenção mensal (R$ 155,00) constitui modalidade de pagamento fracionado do valor anual de R$ 1.860,00, concedida exclusivamente como facilidade financeira à CONTRATANTE, não alterando a natureza do serviço contínuo, recorrente e de execução diluída ao longo de todo o período contratual.",
+      `4.8. O plano de manutenção mensal (R$ ${mensal}) constitui modalidade de pagamento fracionado do valor anual de R$ ${anual}, concedida exclusivamente como facilidade financeira à CONTRATANTE, não alterando a natureza do serviço contínuo, recorrente e de execução diluída ao longo de todo o período contratual.`,
       "4.9. A CONTRATANTE reconhece que, desde o início da manutenção ativa, a CONTRATADA passa a dedicar recursos humanos, técnicos e operacionais de forma contínua, incluindo monitoramento de certidões, prazos, alertas, organização documental, suporte e demais entregas previstas no plano, independentemente do dia do pagamento mensal.",
     ],
   },
@@ -73,7 +97,7 @@ export const contractClauses: ContractClause[] = [
     items: [
       "5.1. Considera-se manutenção ativa o período em que o plano de manutenção estiver contratado e em execução, com disponibilização de serviços técnicos pela CONTRATADA, ainda que a CONTRATANTE deixe de utilizar parcialmente a plataforma ou de responder às solicitações da equipe.",
       "5.2. A opção de pagamento em parcelas mensais não converte o serviço em contratação mês a mês discricionária: trata-se de parcelamento do valor global da manutenção anual, em benefício da CONTRATANTE, tendo em vista a prestação fracionada, contínua e antecipada de obrigações da CONTRATADA ao longo dos 12 (doze) meses do ciclo contratual.",
-      "5.3. Em caso de desistência, cancelamento, rescisão ou simples abandono do contrato pela CONTRATANTE enquanto a manutenção estiver ativa — por qualquer motivo, inclusive por decisão comercial, troca de fornecedor, encerramento de atividades ou desinteresse —, permanece exigível o pagamento integral de todas as parcelas vencidas e vincendas do ciclo de manutenção em curso, correspondentes ao valor anual pactuado (R$ 1.860,00), sem direito a abatimento proporcional, reembolso ou suspensão por período não utilizado.",
+      `5.3. Em caso de desistência, cancelamento, rescisão ou simples abandono do contrato pela CONTRATANTE enquanto a manutenção estiver ativa — por qualquer motivo, inclusive por decisão comercial, troca de fornecedor, encerramento de atividades ou desinteresse —, permanece exigível o pagamento integral de todas as parcelas vencidas e vincendas do ciclo de manutenção em curso, correspondentes ao valor anual pactuado (R$ ${anual}), sem direito a abatimento proporcional, reembolso ou suspensão por período não utilizado.`,
       "5.4. O disposto no item 5.3 aplica-se inclusive quando a CONTRATANTE tenha pago apenas parte das mensalidades, tendo a CONTRATADA já iniciado ou mantido a execução dos serviços de manutenção, a organização documental, o acompanhamento de certidões e demais entregas correlatas.",
       "5.5. Parcelas em atraso permanecem sujeitas à multa de 2% (dois por cento), juros de 1% (um por cento) ao mês, correção monetária e eventuais custos de cobrança extrajudicial ou judicial, sem prejuízo da suspensão dos serviços e do bloqueio de acesso, até a quitação integral.",
       "5.6. A desistência não exonera a CONTRATANTE de documentos, taxas, emolumentos ou obrigações perante terceiros e órgãos públicos eventualmente geradas por sua solicitação ou por exigências do certame, permanecendo de responsabilidade exclusiva da CONTRATANTE.",
@@ -147,6 +171,13 @@ export const contractClauses: ContractClause[] = [
     ],
   },
 ];
+}
+
+/** Cláusulas com valores padrão (fallback). Preferir `buildContractClauses(valoresDoBanco)`. */
+export const contractClauses: ContractClause[] = buildContractClauses();
+
+export const CONTRACT_TITLE =
+  "Contrato de Prestação de Serviços Especializados em Licitações, Gestão Documental e Manutenção SICAF";
 
 function formatDateBr(value: string | null | undefined): string {
   if (!value) return "—";
@@ -191,11 +222,15 @@ As partes acima identificadas celebram o presente Contrato de Prestação de Ser
 /**
  * Monta o HTML completo do contrato para impressão / PDF, já com os dados do cliente.
  */
-export function buildContractPrintHtml(data: ContractData): string {
+export function buildContractPrintHtml(
+  data: ContractData,
+  valores?: Partial<ContractValores>,
+): string {
   const contractHeader = generateContractText(data);
   const isAssinado = data.status === "Assinado";
+  const clauses = buildContractClauses(valores);
 
-  const clausesHtml = contractClauses
+  const clausesHtml = clauses
     .map(
       (c) =>
         `<div style="margin-bottom:18px;page-break-inside:avoid;">
@@ -275,8 +310,11 @@ function printHtmlDocument(html: string, win: Window): void {
  * Abre o contrato para impressão (nova aba ou iframe oculto se popup bloqueado).
  */
 /** Abre o contrato em nova aba (visualizar / imprimir / salvar como PDF). */
-export function openContractPreviewWindow(data: ContractData): boolean {
-  const html = buildContractPrintHtml(data);
+export function openContractPreviewWindow(
+  data: ContractData,
+  valores?: Partial<ContractValores>,
+): boolean {
+  const html = buildContractPrintHtml(data, valores);
   const win = window.open("", "_blank");
   if (!win) return false;
   win.document.open();
@@ -285,8 +323,11 @@ export function openContractPreviewWindow(data: ContractData): boolean {
   return true;
 }
 
-export function openContractPrintWindow(data: ContractData): boolean {
-  const html = buildContractPrintHtml(data);
+export function openContractPrintWindow(
+  data: ContractData,
+  valores?: Partial<ContractValores>,
+): boolean {
+  const html = buildContractPrintHtml(data, valores);
   const printWindow = window.open("", "_blank");
   if (printWindow) {
     printHtmlDocument(html, printWindow);

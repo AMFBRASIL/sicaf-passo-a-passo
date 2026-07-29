@@ -307,7 +307,7 @@ export async function loadSicafPageData(cnpj?: string): Promise<SicafPageData> {
           style: "currency",
           currency: "BRL",
         })
-      : "R$ 985,00");
+      : "");
 
   return {
     ok: true,

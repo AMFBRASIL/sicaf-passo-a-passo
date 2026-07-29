@@ -1,5 +1,5 @@
 /**
- * Configurações SICAF — configuracoes_sistema (níveis, automações, central de alertas).
+ * Configurações SICAF — configuracoes_sistema (níveis, automações, valores, central de alertas).
  */
 const { getDb } = require('../database/connection');
 
@@ -12,6 +12,13 @@ const NIVEL_KEYS = [
   'sicaf_nivel_6_obrigatorio',
 ];
 
+const MONEY_KEYS = [
+  'valor_cadastro_sicaf',
+  'valor_cadastro_sicaf_imediato',
+  'valor_manutencao_mensal',
+  'valor_manutencao_anual',
+];
+
 const SICAF_CONFIG_KEYS = [
   ...NIVEL_KEYS,
   'sicaf_aviso_antecedencia_dias',
@@ -20,6 +27,7 @@ const SICAF_CONFIG_KEYS = [
   'sicaf_ticket_automatico',
   'sicaf_notificar_email_whatsapp',
   'sicaf_bloquear_relatorio_vencido',
+  ...MONEY_KEYS,
 ];
 
 const DEFAULTS = {
@@ -35,6 +43,10 @@ const DEFAULTS = {
   sicaf_ticket_automatico: 'true',
   sicaf_notificar_email_whatsapp: 'true',
   sicaf_bloquear_relatorio_vencido: 'false',
+  valor_cadastro_sicaf: '985',
+  valor_cadastro_sicaf_imediato: '1480',
+  valor_manutencao_mensal: '155',
+  valor_manutencao_anual: '1860',
 };
 
 let cache = null;
@@ -52,9 +64,35 @@ function parseIntConfig(val, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+function parseMoney(val, fallback) {
+  if (val === undefined || val === null || String(val).trim() === '') return fallback;
+  let s = String(val).trim().replace(/R\$\s?/gi, '').replace(/\s/g, '');
+  if (!s) return fallback;
+  // pt-BR: 1.480,00 → 1480.00 | 155,00 → 155.00 | 1480 → 1480
+  if (s.includes(',') && s.includes('.')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (s.includes(',')) {
+    s = s.replace(',', '.');
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+    s = s.replace(/\./g, '');
+  }
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : fallback;
+}
+
+function moneyToString(val, fallback) {
+  const n = parseMoney(val, fallback);
+  return String(n);
+}
+
 function rawToSettings(raw) {
   const merged = { ...DEFAULTS, ...raw };
   const niveisObrigatorios = NIVEL_KEYS.map((k) => parseBool(merged[k], parseBool(DEFAULTS[k])));
+  const valorCadastroSicaf = parseMoney(merged.valor_cadastro_sicaf, 985);
+  const valorCadastroSicafImediato = parseMoney(merged.valor_cadastro_sicaf_imediato, 1480);
+  const valorManutencaoMensal = parseMoney(merged.valor_manutencao_mensal, 155);
+  const anualFromMensal = Math.round(valorManutencaoMensal * 12 * 100) / 100;
+  const valorManutencaoAnual = parseMoney(merged.valor_manutencao_anual, anualFromMensal);
   return {
     niveisObrigatorios,
     avisoAntecedenciaDias: parseIntConfig(merged.sicaf_aviso_antecedencia_dias, 30),
@@ -63,6 +101,10 @@ function rawToSettings(raw) {
     ticketAutomatico: parseBool(merged.sicaf_ticket_automatico, true),
     notificarEmailWhatsapp: parseBool(merged.sicaf_notificar_email_whatsapp, true),
     bloquearRelatorioVencido: parseBool(merged.sicaf_bloquear_relatorio_vencido, false),
+    valorCadastroSicaf,
+    valorCadastroSicafImediato,
+    valorManutencaoMensal,
+    valorManutencaoAnual,
   };
 }
 
@@ -77,7 +119,63 @@ function settingsToRaw(settings) {
   out.sicaf_ticket_automatico = settings.ticketAutomatico ? 'true' : 'false';
   out.sicaf_notificar_email_whatsapp = settings.notificarEmailWhatsapp ? 'true' : 'false';
   out.sicaf_bloquear_relatorio_vencido = settings.bloquearRelatorioVencido ? 'true' : 'false';
+  out.valor_cadastro_sicaf = moneyToString(settings.valorCadastroSicaf, 985);
+  out.valor_cadastro_sicaf_imediato = moneyToString(settings.valorCadastroSicafImediato, 1480);
+
+  const mensal = parseMoney(settings.valorManutencaoMensal, 155);
+  const anualInformado = parseMoney(settings.valorManutencaoAnual, Math.round(mensal * 12 * 100) / 100);
+  // Mantém o anual digitado; mensal é referência para boletos (anual/12).
+  out.valor_manutencao_anual = moneyToString(anualInformado, 1860);
+  out.valor_manutencao_mensal = moneyToString(mensal, 155);
   return out;
+}
+
+async function upsertConfigRow(db, chave, valor, descricao) {
+  const exists = await db('configuracoes_sistema').where('chave', chave).first();
+  if (exists) {
+    await db('configuracoes_sistema').where('chave', chave).update({
+      valor,
+      updated_at: db.fn.now(),
+    });
+  } else {
+    await db('configuracoes_sistema').insert({
+      chave,
+      valor,
+      // ENUM real: empresa|licitacoes|integracoes|...|pagamentos|armazenamento (sem "financeiro")
+      categoria: MONEY_KEYS.includes(chave) ? 'licitacoes' : 'integracoes',
+      descricao: descricao || '',
+      tipo_valor: MONEY_KEYS.includes(chave) ? 'number' : 'string',
+    });
+  }
+}
+
+/** Mantém planos.preco alinhado aos valores de configuração (tela de pagamento). */
+async function syncPlanosPrecos(db, settings) {
+  try {
+    const hasPlanos = await db.schema.hasTable('planos');
+    if (!hasPlanos) return;
+
+    const pairs = [
+      { codigo: 'sicaf_padrao', preco: parseMoney(settings.valorCadastroSicaf, 985) },
+      { codigo: 'sicaf_imediato', preco: parseMoney(settings.valorCadastroSicafImediato, 1480) },
+    ];
+
+    for (const p of pairs) {
+      const row = await db('planos').where('codigo', p.codigo).first();
+      if (row) {
+        try {
+          await db('planos').where('id', row.id).update({
+            preco: p.preco,
+            updated_at: db.fn.now(),
+          });
+        } catch (_) {
+          await db('planos').where('id', row.id).update({ preco: p.preco });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[SICAF Config] syncPlanosPrecos:', e.message);
+  }
 }
 
 async function loadSicafRawFromDb() {
@@ -121,9 +219,18 @@ async function getSicafSettings() {
       niveisAtivos,
       centralAlertaDias: settings.centralAlertaCertidoesDias,
       avisoAntecedenciaDias: settings.avisoAntecedenciaDias,
+      valorCadastroSicaf: settings.valorCadastroSicaf,
+      valorManutencaoAnual: settings.valorManutencaoAnual,
     },
   };
 }
+
+const MONEY_DESCRIPTIONS = {
+  valor_cadastro_sicaf: 'Valor padrão da taxa de cadastro SICAF (anual)',
+  valor_cadastro_sicaf_imediato: 'Valor da taxa SICAF com atendimento imediato',
+  valor_manutencao_mensal: 'Valor mensal da manutenção SICAF',
+  valor_manutencao_anual: 'Valor anual integral da manutenção SICAF',
+};
 
 async function updateSicafSettings(payload) {
   const db = getDb();
@@ -139,23 +246,12 @@ async function updateSicafSettings(payload) {
   for (const chave of SICAF_CONFIG_KEYS) {
     if (updates[chave] === undefined) continue;
     const valor = String(updates[chave]);
-    const exists = await db('configuracoes_sistema').where('chave', chave).first();
-    if (exists) {
-      await db('configuracoes_sistema').where('chave', chave).update({
-        valor,
-        updated_at: db.fn.now(),
-      });
-    } else {
-      await db('configuracoes_sistema').insert({
-        chave,
-        valor,
-        categoria: 'integracoes',
-        descricao: '',
-        tipo_valor: 'string',
-      });
-    }
+    await upsertConfigRow(db, chave, valor, MONEY_DESCRIPTIONS[chave] || '');
     updatedCount++;
   }
+
+  const resolvedForSync = rawToSettings({ ...DEFAULTS, ...updates });
+  await syncPlanosPrecos(db, resolvedForSync);
 
   invalidateSicafConfigCache();
   return {
@@ -200,6 +296,7 @@ function certidaoVisivelCentralAlerta(status, dataValidade, diasCentral) {
 
 module.exports = {
   SICAF_CONFIG_KEYS,
+  MONEY_KEYS,
   DEFAULTS,
   getSicafSettings,
   updateSicafSettings,

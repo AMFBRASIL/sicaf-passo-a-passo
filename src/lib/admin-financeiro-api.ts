@@ -179,6 +179,7 @@ export async function enviarCobrancaCliente(opts: {
   clienteId: number;
   taxaId?: number | null;
   pagamentoId?: number | null;
+  mensagem?: string | null;
 }): Promise<{
   ok: boolean;
   error?: string;
@@ -194,6 +195,7 @@ export async function enviarCobrancaCliente(opts: {
       clienteId: opts.clienteId,
       taxaId: opts.taxaId ?? undefined,
       pagamentoId: opts.pagamentoId ?? undefined,
+      mensagem: opts.mensagem?.trim() || undefined,
     }),
   });
   return (await res.json()) as {

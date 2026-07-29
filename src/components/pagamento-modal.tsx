@@ -48,6 +48,8 @@ export function PagamentoModal({
   clienteId,
   onPaymentGenerated,
   initialMethod = "boleto",
+  /** Geração custom (ex.: proposta comercial). Quando informado, ignora boletoId de manutenção. */
+  onGerarCustom,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -55,11 +57,29 @@ export function PagamentoModal({
   descricao: string;
   valor: number;
   vencimentoPadrao?: string;
-  /** Boleto de manutenção — obrigatório para integração Gerencianet */
+  /** Boleto de manutenção — obrigatório para integração Gerencianet (salvo onGerarCustom) */
   boletoId?: number;
   clienteId?: number;
   onPaymentGenerated?: () => void;
   initialMethod?: Metodo;
+  onGerarCustom?: (opts: {
+    metodo: Metodo;
+    dataVencimento?: string;
+  }) => Promise<{
+    ok: boolean;
+    error?: string;
+    barcode?: string;
+    link?: string;
+    pdf?: string;
+    valor?: number;
+    vencimento?: string;
+    protocolo?: string;
+    chargeId?: number;
+    qrcodeText?: string;
+    qrcodeImage?: string;
+    txid?: string;
+    pagamentoId?: number;
+  }>;
 }) {
   const { user } = useAuth();
   const [metodo, setMetodo] = useState<Metodo>(initialMethod);
@@ -81,7 +101,8 @@ export function PagamentoModal({
   } | null>(null);
 
   const effectiveClienteId = clienteId ?? empresa?.clienteId;
-  const podeGerar = !!(boletoId && effectiveClienteId);
+  const modoCustom = typeof onGerarCustom === "function";
+  const podeGerar = modoCustom ? !!effectiveClienteId : !!(boletoId && effectiveClienteId);
   const allowCustomizeDueDate = isStaffTipo(user?.perfil?.tipo);
   const podeEditarVencimento = podeGerar && allowCustomizeDueDate && metodo === "boleto";
 
@@ -115,7 +136,7 @@ export function PagamentoModal({
       toast.error("Empresa sem identificador. Recarregue a página.");
       return;
     }
-    if (!boletoId) {
+    if (!modoCustom && !boletoId) {
       toast.error("Selecione um boleto de manutenção na aba Boletos antes de gerar o pagamento.");
       return;
     }
@@ -133,8 +154,12 @@ export function PagamentoModal({
     setProcessing(true);
     setErrorMsg("");
 
-    const result =
-      metodo === "boleto"
+    const result = modoCustom
+      ? await onGerarCustom!({
+          metodo,
+          dataVencimento: metodo === "boleto" ? data : undefined,
+        })
+      : metodo === "boleto"
         ? await gerarBoletoManutencaoPagamento(
             boletoId!,
             effectiveClienteId,
@@ -272,7 +297,9 @@ export function PagamentoModal({
                   <p className="text-xs text-slate-500 mt-2">
                     {podeEditarVencimento
                       ? "Escolha o vencimento do boleto."
-                      : "Vencimento conforme o boleto de manutenção."}
+                      : modoCustom
+                        ? "Vencimento padrão: amanhã (mesmo fluxo do boleto SICAF)."
+                        : "Vencimento conforme o boleto de manutenção."}
                   </p>
                 </div>
               )}

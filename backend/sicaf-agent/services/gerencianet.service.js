@@ -65,6 +65,7 @@ function extrairMensagemErro(err) {
     code === 'server_error'
     || errCode === '3500000'
     || errCode === '4699999'
+    || errCode === '4600222'
     || (httpStatus === 500 && String(desc || '').toLowerCase().includes('interno'))
   ) {
     return (
@@ -296,7 +297,7 @@ async function gerarBoleto(dados) {
 
       LOG('BOLETO 2/5', 'Montando payload');
       const items = [{
-        name: 'Guia de Processamento SICAF - CadBrasil',
+        name: (dados.itemName || 'Guia de Processamento SICAF - CadBrasil').slice(0, 85),
         value: dados.valor,
         amount: 1,
       }];
@@ -350,7 +351,10 @@ async function gerarBoleto(dados) {
         payment: {
           banking_billet: {
             expire_at: normalizeExpireAt(dados.vencimento),
-            message: `Assessoria CADBRASIL\nServiços de assessoria para licitações\nReferência: ${dados.protocolo || ''}`,
+            message: (
+              dados.message
+              || `Assessoria CADBRASIL\nServiços de assessoria para licitações\nReferência: ${dados.protocolo || ''}`
+            ).slice(0, 500),
             customer,
           },
         },

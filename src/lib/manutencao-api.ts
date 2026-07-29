@@ -1,18 +1,46 @@
 import { apiFetch } from "@/lib/api-fetch";
+import { PRECO_FALLBACK, normalizeSicafPrecos, formatBrl } from "@/lib/sicaf-precos";
 
 export type ParcelamentoManutencao = "avista" | "6x" | "12x";
 
 export async function fetchValorManutencaoMensal(): Promise<number> {
-  const res = await apiFetch("/api/sicaf/valores");
-  const data = await res.json();
-  if (data.ok && data.valores?.valorManutencaoMensal != null) {
-    return Number(data.valores.valorManutencaoMensal) || 155;
-  }
-  return 155;
+  try {
+    const res = await apiFetch("/api/sicaf/valores");
+    const data = await res.json();
+    if (data.ok && data.valores) {
+      return normalizeSicafPrecos(data.valores).valorManutencaoMensal;
+    }
+  } catch (_) {}
+  return PRECO_FALLBACK.valorManutencaoMensal;
 }
 
-export function calcParcelamentoManutencao(valorMensal: number, parcelamento: ParcelamentoManutencao) {
-  const totalAnual = valorMensal * 12;
+export async function fetchValoresManutencao(): Promise<{
+  valorMensal: number;
+  valorAnual: number;
+}> {
+  try {
+    const res = await apiFetch("/api/sicaf/valores");
+    const data = await res.json();
+    if (data.ok && data.valores) {
+      const p = normalizeSicafPrecos(data.valores);
+      return { valorMensal: p.valorManutencaoMensal, valorAnual: p.valorManutencaoAnual };
+    }
+  } catch (_) {}
+  return {
+    valorMensal: PRECO_FALLBACK.valorManutencaoMensal,
+    valorAnual: PRECO_FALLBACK.valorManutencaoMensal * 12,
+  };
+}
+
+export function calcParcelamentoManutencao(
+  valorMensal: number,
+  parcelamento: ParcelamentoManutencao,
+  valorAnualOverride?: number,
+) {
+  const totalAnual =
+    valorAnualOverride != null && Number.isFinite(valorAnualOverride) && valorAnualOverride > 0
+      ? valorAnualOverride
+      : valorMensal * 12;
   if (parcelamento === "avista") {
     return {
       parcelas: 1,
@@ -37,7 +65,7 @@ export function calcParcelamentoManutencao(valorMensal: number, parcelamento: Pa
 }
 
 export function fmtBrl(valor: number) {
-  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return formatBrl(valor);
 }
 
 export async function ativarManutencao(

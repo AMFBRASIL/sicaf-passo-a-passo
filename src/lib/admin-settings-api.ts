@@ -332,12 +332,18 @@ export type SicafSettings = {
   ticketAutomatico: boolean;
   notificarEmailWhatsapp: boolean;
   bloquearRelatorioVencido: boolean;
+  valorCadastroSicaf: number;
+  valorCadastroSicafImediato: number;
+  valorManutencaoMensal: number;
+  valorManutencaoAnual: number;
 };
 
 export type SicafSettingsStatus = {
   niveisAtivos: number;
   centralAlertaDias: number;
   avisoAntecedenciaDias: number;
+  valorCadastroSicaf?: number;
+  valorManutencaoAnual?: number;
 };
 
 export async function fetchSicafSettings(): Promise<{

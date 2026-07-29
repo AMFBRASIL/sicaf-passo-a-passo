@@ -71,12 +71,9 @@ function isManutencaoStatusAtivo(status) {
 }
 
 async function getValorMensal(db) {
-  let valorMensal = 155;
-  try {
-    const cfg = await db('configuracoes_sistema').where('chave', 'valor_manutencao_mensal').first();
-    if (cfg) valorMensal = parseFloat(cfg.valor);
-  } catch (_) {}
-  return valorMensal;
+  const { getPrecosComerciais } = require('./precos-comerciais.service');
+  const precos = await getPrecosComerciais(db);
+  return precos.valorManutencaoMensal;
 }
 
 function parseParcelamento(parcelamento) {

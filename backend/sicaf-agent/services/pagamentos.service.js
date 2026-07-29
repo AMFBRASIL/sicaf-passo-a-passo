@@ -677,7 +677,8 @@ async function gerarPixManutencao(opts) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Gera boleto ou PIX personalizado (valor e vencimento definidos pelo operador).
+ * Gera boleto ou PIX personalizado (valor e vencimento definidos).
+ * Usa o mesmo payload de cliente da emissão SICAF (Efí/Gerencianet).
  */
 async function gerarCobrancaPersonalizada(opts) {
   const db = getDb();
@@ -697,20 +698,36 @@ async function gerarCobrancaPersonalizada(opts) {
       return { ok: false, error: 'Forma de pagamento inválida. Use boleto ou pix.' };
     }
 
-    const vencimentoStr = ensureFutureExpireDate(opts.dataVencimento);
+    // Mesma regra de vencimento do boleto SICAF (cliente = D+1; custom = data futura)
+    const vencimentoStr = opts.allowCustomDueDate
+      ? resolveSicafBoletoVencimento({
+          allowCustomDueDate: true,
+          dataVencimento: opts.dataVencimento,
+        })
+      : (forma === 'boleto'
+          ? getSicafBoletoDueDate()
+          : ensureFutureExpireDate(opts.dataVencimento));
+
     const cliente = await db('clientes').where('id', clienteId).first();
     if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
 
+    const email = String(cliente.email || '').trim();
+    if (!email) {
+      return { ok: false, error: 'E-mail do cliente é obrigatório para gerar pagamento. Atualize o cadastro.' };
+    }
+
     const valorCentavos = Math.round(valorReais * 100);
     const ts = Date.now();
-    const protocolo = `PERS-${clienteId}-${ts}`;
+    // custom_id da Efí: padrão curto como SICAF-{ano}-{id} (evita caracteres especiais)
+    const protocolo = String(opts.protocolo || `PERS-${clienteId}-${ts}`)
+      .replace(/[^A-Za-z0-9\-_]/g, '-')
+      .slice(0, 60);
     const descricao = (opts.descricao || 'Cobrança personalizada CadBrasil').slice(0, 200);
 
-    // origem_id NOT NULL — usa o próprio id do pagamento após insert (cobrança avulsa sem taxa/boleto)
     const [pagamentoId] = await db('pagamentos').insert(basePagamentoInsert({
       cliente_id: clienteId,
-      origem: 'avulso',
-      origem_id: clienteId,
+      origem: opts.origem || 'avulso',
+      origem_id: opts.origemId != null ? Number(opts.origemId) : clienteId,
       tipo: forma,
       valor: valorReais,
       valor_centavos: valorCentavos,
@@ -724,23 +741,27 @@ async function gerarCobrancaPersonalizada(opts) {
       gerado_por: opts.geradoPor || null,
     }));
 
-    await db('pagamentos').where('id', pagamentoId).update({ origem_id: pagamentoId });
-
-    const doc = extractValidDoc(cliente.documento);
-    if (!doc.cpf && !doc.cnpj) {
-      await db('pagamentos').where('id', pagamentoId).update(pagamentoErroUpdate('Documento inválido'));
-      return { ok: false, error: 'CPF/CNPJ do cliente inválido. Atualize o cadastro.' };
+    if (opts.origemId == null) {
+      await db('pagamentos').where('id', pagamentoId).update({ origem_id: pagamentoId });
     }
 
-    const isPJ = !!doc.cnpj;
+    // Payload idêntico ao gerarBoletoSicaf (mesmo layout de item aceito pela Efí).
+    // Não enviar endereço parcial — a Efí rejeita com erro interno 4600222 em alguns casos.
+    const isPJ = (cliente.tipo_documento || 'CNPJ') === 'CNPJ';
     const clienteGN = {
       nome: cliente.razao_social || cliente.nome_fantasia || 'Cliente',
       razaoSocial: isPJ ? (cliente.razao_social || cliente.nome_fantasia) : undefined,
       email: cliente.email || '',
       telefone: cliente.telefone || '',
-      cpf: !isPJ ? doc.cpf || undefined : undefined,
-      cnpj: isPJ ? doc.cnpj || undefined : undefined,
+      cpf: !isPJ ? cliente.documento : undefined,
+      cnpj: isPJ ? cliente.documento : undefined,
     };
+
+    const docCheck = extractValidDoc(cliente.documento);
+    if (!docCheck.cpf && !docCheck.cnpj) {
+      await db('pagamentos').where('id', pagamentoId).update(pagamentoErroUpdate('Documento inválido'));
+      return { ok: false, error: 'CPF/CNPJ do cliente inválido. Atualize o cadastro.' };
+    }
 
     if (forma === 'pix') {
       let gnResponse;
@@ -748,7 +769,12 @@ async function gerarCobrancaPersonalizada(opts) {
         gnResponse = await gerencianetService.gerarPix({
           valor: valorCentavos,
           protocolo,
-          cliente: clienteGN,
+          cliente: {
+            ...clienteGN,
+            // PIX aceita documento só com dígitos
+            cpf: !isPJ ? docCheck.cpf || undefined : undefined,
+            cnpj: isPJ ? docCheck.cnpj || undefined : undefined,
+          },
         });
       } catch (gnErr) {
         await db('pagamentos').where('id', pagamentoId).update(pagamentoErroUpdate(gnErr.message));
@@ -770,6 +796,7 @@ async function gerarCobrancaPersonalizada(opts) {
         valor: valorReais,
         vencimento: vencimentoStr,
         protocolo,
+        txid: gnResponse?.txid || null,
         qrcodeText: gnResponse?.qrcode?.qrcode || '',
         qrcodeImage: gnResponse?.qrcode?.imagemQrcode || '',
       };
@@ -777,11 +804,16 @@ async function gerarCobrancaPersonalizada(opts) {
 
     let gnResponse;
     try {
+      // Mesmo itemName/message do boleto SICAF — só o valor/protocolo mudam
       gnResponse = await gerencianetService.gerarBoleto({
         valor: valorCentavos,
         vencimento: vencimentoStr,
         protocolo,
         cliente: clienteGN,
+        itemName: opts.itemName || 'Guia de Processamento SICAF - CadBrasil',
+        message:
+          opts.message
+          || `Assessoria CADBRASIL\nServiços de assessoria para licitações\nReferência: ${protocolo}`,
       });
     } catch (gnErr) {
       await db('pagamentos').where('id', pagamentoId).update(pagamentoErroUpdate(gnErr.message));
@@ -806,6 +838,7 @@ async function gerarCobrancaPersonalizada(opts) {
       valor: valorReais,
       vencimento: vencimentoStr,
       protocolo,
+      chargeId: chargeData?.charge_id,
       barcode: chargeData?.barcode || '',
       link: chargeData?.billet_link || chargeData?.link || '',
       pdf: chargeData?.pdf?.charge || '',
@@ -1028,8 +1061,15 @@ async function atualizarStatus(id, novoStatus, extras = {}) {
           } catch (e) {
             console.error('[Pagamentos] automação pós-status manutenção:', e.message);
           }
+        } else if (pgto.origem === 'avulso' || pgto.origem === 'personalizado') {
+          try {
+            const propostas = require('./propostas-comerciais.service');
+            void propostas.onPagamentoConfirmado(pgto);
+          } catch (e) {
+            console.error('[Pagamentos] proposta pós-status:', e.message);
+          }
         }
-        // avulso: sem tabela de origem — apenas pagamentos
+        // avulso sem proposta: apenas pagamentos
       }
     }
 

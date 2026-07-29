@@ -106,6 +106,9 @@ export interface ClienteDetalhe {
   celular?: string;
   login?: string;
   sicaf: "ok" | "pendente" | "vencido";
+  /** Status bruto do cadastro SICAF (Ativo, Vencendo, Vencido…). */
+  sicafStatusRaw?: string | null;
+  sicafId?: number | null;
   pagou: boolean;
   pagamentoSicafStatus?: string;
   pagamentoSicafDetalhe?: string;
@@ -581,11 +584,36 @@ export function ClienteDetalheModal({
           atualizarPainel();
         }}
         onPaymentGenerated={atualizarPainel}
+        painel={{
+          sicaf: {
+            id: exibicao.sicafId ?? undefined,
+            status:
+              exibicao.sicafStatusRaw
+              || (exibicao.sicaf === "ok"
+                ? "Ativo"
+                : exibicao.sicaf === "vencido"
+                  ? "Vencido"
+                  : exibicao.pagou
+                    ? "Vencendo"
+                    : "Pendente"),
+          },
+          financeiro: { taxaPaga: !!exibicao.pagou },
+        }}
         empresa={{
           clienteId: parseInt(exibicao.id, 10),
+          sicafId: exibicao.sicafId ?? undefined,
           nome: exibicao.razao,
           cnpj: exibicao.cnpj,
-          sicaf: "ativo",
+          sicaf:
+            exibicao.sicaf === "ok"
+              ? "ativo"
+              : exibicao.sicaf === "vencido"
+                ? "vencido"
+                : exibicao.pagou
+                  ? "atencao"
+                  : "sem_cadastro",
+          taxaPendente: !exibicao.pagou,
+          validade: exibicao.validadeSicaf,
           proximoPasso: "",
           acao: { label: "", icon: CreditCard as never },
           endereco: "",

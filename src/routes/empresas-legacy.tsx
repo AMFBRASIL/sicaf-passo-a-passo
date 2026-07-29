@@ -16,6 +16,8 @@ import { PageHeader, StatusBadge } from "@/components/page-header";
 import { ManutencaoModal } from "@/components/manutencao-modal";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { shouldGerenciarAbrirPagamentoFromEmpresa } from "@/lib/sicaf-access-rules";
+import { fetchSicafValores } from "@/lib/empresas-api";
+import { PRECO_FALLBACK, formatBrl } from "@/lib/sicaf-precos";
 import { Wrench } from "lucide-react";
 
 export const Route = createFileRoute("/empresas-legacy")({
@@ -582,6 +584,17 @@ export function EmpresaDetalhesSheet({
   const [manutencaoModal, setManutencaoModal] = useState<"ativar" | "gerenciar" | null>(null);
   const [taxaSicafModal, setTaxaSicafModal] = useState(false);
   const [taxaSicafPaga, setTaxaSicafPaga] = useState<Record<string, boolean>>({});
+  const [precoSicaf, setPrecoSicaf] = useState(PRECO_FALLBACK.valorCadastroSicaf);
+  const [precoManutMensal, setPrecoManutMensal] = useState(PRECO_FALLBACK.valorManutencaoMensal);
+
+  useEffect(() => {
+    if (!open) return;
+    void fetchSicafValores().then((r) => {
+      if (!r.ok || !r.valores) return;
+      setPrecoSicaf(r.valores.valorCadastroSicaf);
+      setPrecoManutMensal(r.valores.valorManutencaoMensal);
+    });
+  }, [open]);
 
   const startEditing = () => {
     if (!empresa) return;
@@ -864,7 +877,7 @@ export function EmpresaDetalhesSheet({
                             Sem ela não conseguimos iniciar a atualização do SICAF.
                           </p>
                           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-                            <span className="font-semibold">A partir de R$ 985,00</span>
+                            <span className="font-semibold">A partir de {formatBrl(precoSicaf)}</span>
                             <span className="text-muted-foreground">· Liberação em até 24h</span>
                           </div>
                           <Button
@@ -892,12 +905,12 @@ export function EmpresaDetalhesSheet({
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="rounded-xl border bg-card p-4">
                       <p className="text-xs uppercase tracking-wider text-muted-foreground">Próxima cobrança</p>
-                      <p className="text-2xl font-bold mt-1">R$ 149,00</p>
+                      <p className="text-2xl font-bold mt-1">{formatBrl(precoManutMensal)}</p>
                       <p className="text-xs text-muted-foreground mt-1">Manutenção · 15/01/2026</p>
                     </div>
                     <div className="rounded-xl border bg-card p-4">
                       <p className="text-xs uppercase tracking-wider text-muted-foreground">Licença anual</p>
-                      <p className="text-2xl font-bold mt-1">R$ 985,00</p>
+                      <p className="text-2xl font-bold mt-1">{formatBrl(precoSicaf)}</p>
                       <p className="text-xs text-muted-foreground mt-1">Renova em 02/01/2027</p>
                     </div>
                   </div>
@@ -999,6 +1012,17 @@ export function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpe
   const [form, setForm] = useState<WizardForm>(emptyForm);
   const [consultando, setConsultando] = useState(false);
   const [consultaOk, setConsultaOk] = useState(false);
+  const [precoPadrao, setPrecoPadrao] = useState(PRECO_FALLBACK.valorCadastroSicaf);
+  const [precoImediato, setPrecoImediato] = useState(PRECO_FALLBACK.valorCadastroSicafImediato);
+
+  useEffect(() => {
+    if (!open) return;
+    void fetchSicafValores().then((r) => {
+      if (!r.ok || !r.valores) return;
+      setPrecoPadrao(r.valores.valorCadastroSicaf);
+      setPrecoImediato(r.valores.valorCadastroSicafImediato || PRECO_FALLBACK.valorCadastroSicafImediato);
+    });
+  }, [open]);
 
   const update = <K extends keyof WizardForm>(k: K, v: WizardForm[K]) =>
     setForm((p) => ({ ...p, [k]: v }));
@@ -1232,8 +1256,8 @@ export function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpe
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {[
-                      { id: "padrao" as const, titulo: "Padrão", preco: "R$ 985,00", prazo: "Em até 24h úteis", icon: Briefcase, desc: "Ideal para quem já se planejou.", badge: "Mais escolhido" },
-                      { id: "emergencial" as const, titulo: "Emergencial", preco: "R$ 1.450,00", prazo: "Início imediato", icon: Zap, desc: "Prioridade máxima na fila.", badge: "Mais rápido" },
+                      { id: "padrao" as const, titulo: "Padrão", preco: formatBrl(precoPadrao), prazo: "Em até 24h úteis", icon: Briefcase, desc: "Ideal para quem já se planejou.", badge: "Mais escolhido" },
+                      { id: "emergencial" as const, titulo: "Emergencial", preco: formatBrl(precoImediato), prazo: "Início imediato", icon: Zap, desc: "Prioridade máxima na fila.", badge: "Mais rápido" },
                     ].map((p) => {
                       const Icon = p.icon;
                       const sel = form.plano === p.id;
@@ -1304,7 +1328,7 @@ export function NovaEmpresaWizard({ open, onOpenChange }: { open: boolean; onOpe
                   <div className="rounded-xl border bg-muted/30 p-4 flex justify-between items-center">
                     <div>
                       <p className="text-xs uppercase tracking-wider text-muted-foreground">Total</p>
-                      <p className="text-2xl font-bold">{form.plano === "emergencial" ? "R$ 1.450,00" : "R$ 985,00"}</p>
+                      <p className="text-2xl font-bold">{form.plano === "emergencial" ? formatBrl(precoImediato) : formatBrl(precoPadrao)}</p>
                     </div>
                     <p className="text-sm text-muted-foreground">Plano {form.plano === "emergencial" ? "Emergencial" : "Padrão"}</p>
                   </div>

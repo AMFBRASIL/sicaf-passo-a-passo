@@ -44,7 +44,7 @@ export function useSicafFlow(cnpj?: string) {
   const [cliente, setCliente] = useState<SicafPageCliente | null>(null);
   const [painel, setPainel] = useState<EmpresaGerenciarPainel | null>(null);
   const [certificado, setCertificado] = useState<CertificadoDigitalInfo | null>(null);
-  const [valorRenovacaoFmt, setValorRenovacaoFmt] = useState("R$ 985,00");
+  const [valorRenovacaoFmt, setValorRenovacaoFmt] = useState("");
 
   const [renovando, setRenovando] = useState(false);
   const [renovacaoModal, setRenovacaoModal] = useState(false);

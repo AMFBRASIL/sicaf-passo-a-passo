@@ -27,7 +27,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ManutencaoModal } from "@/components/manutencao-modal";
 import { statusLabel, type EmpresaData } from "@/lib/empresas-shared";
-import { fetchEmpresas } from "@/lib/empresas-api";
+import { fetchEmpresas, fetchSicafValores } from "@/lib/empresas-api";
 import {
   contratoToContractData,
   fetchClienteContrato,
@@ -35,7 +35,8 @@ import {
   isContratoAssinado,
   type ContratoDigital,
 } from "@/lib/contrato-api";
-import { openContractPreviewWindow } from "@/lib/contract-template";
+import { openContractPreviewWindow, type ContractValores } from "@/lib/contract-template";
+import { PRECOS_FALLBACK_NORMALIZED } from "@/lib/sicaf-precos";
 
 export const Route = createFileRoute("/servicos")({
   head: () => ({
@@ -64,11 +65,19 @@ function ServPage() {
   const [contratoVigente, setContratoVigente] = useState<ContratoDigital | null>(null);
   const [empresaContrato, setEmpresaContrato] = useState<EmpresaData | null>(null);
   const [loadingContrato, setLoadingContrato] = useState(false);
+  const [valoresContrato, setValoresContrato] = useState<ContractValores>(PRECOS_FALLBACK_NORMALIZED);
 
   useEffect(() => {
     void (async () => {
       setLoadingEmpresas(true);
-      const res = await fetchEmpresas();
+      const [res, valRes] = await Promise.all([fetchEmpresas(), fetchSicafValores()]);
+      if (valRes.ok && valRes.valores) {
+        setValoresContrato({
+          valorCadastroSicaf: valRes.valores.valorCadastroSicaf,
+          valorManutencaoMensal: valRes.valores.valorManutencaoMensal,
+          valorManutencaoAnual: valRes.valores.valorManutencaoAnual!,
+        });
+      }
       if (!res.ok) {
         toast.error(res.error || "Erro ao carregar empresas");
         setLoadingEmpresas(false);
@@ -111,7 +120,7 @@ function ServPage() {
       toast.error("Nenhum contrato assinado disponível para abrir.");
       return;
     }
-    const ok = openContractPreviewWindow(contratoToContractData(contratoVigente));
+    const ok = openContractPreviewWindow(contratoToContractData(contratoVigente), valoresContrato);
     if (!ok) {
       toast.error("Popup bloqueado. Permita popups para abrir o contrato.");
       return;

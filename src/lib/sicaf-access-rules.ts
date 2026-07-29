@@ -46,9 +46,12 @@ export function needsSicafTaxaPaymentFromInput(input: SicafTaxaAccessInput): boo
 
 export function needsSicafTaxaPaymentFromPainel(painel: PainelTaxaAccess): boolean {
   if (!painel) return true;
+  const status = normalizeSicafStatus(painel.sicaf?.status);
+  const hasSicaf =
+    !!painel.sicaf?.id || status === "Ativo" || status === "Vencendo" || status === "Vencido";
   return needsSicafTaxaPaymentFromInput({
-    hasSicaf: !!painel.sicaf?.id,
-    status: painel.sicaf?.status || "Sem SICAF",
+    hasSicaf,
+    status,
     financialReleased: !!painel.financeiro?.taxaPaga,
   });
 }
@@ -56,9 +59,11 @@ export function needsSicafTaxaPaymentFromPainel(painel: PainelTaxaAccess): boole
 /** Alias usado em /sicaf, /assistente e /documentos. */
 export function sicafTaxaLiberada(painel: PainelTaxaAccess): boolean {
   if (!painel) return false;
+  const status = normalizeSicafStatus(painel.sicaf?.status);
+  const hasSicaf = !!painel.sicaf?.id || status === "Ativo" || status === "Vencendo";
   return sicafAcessoLiberado({
-    hasSicaf: !!painel.sicaf?.id,
-    status: painel.sicaf?.status || "Sem SICAF",
+    hasSicaf,
+    status,
     financialReleased: !!painel.financeiro?.taxaPaga,
   });
 }
@@ -76,8 +81,12 @@ export function podeAtivarManutencaoFromEmpresa(empresa: {
   if (empresa.taxaPendente === true) return false;
   const s = empresa.sicaf ?? "sem_cadastro";
   if (s === "vencido" || s === "sem_cadastro") return false;
-  if (empresa.taxaPendente === false) return s === "ativo" || s === "atencao";
-  return !!empresa.sicafId && (s === "ativo" || s === "atencao");
+  // Ativo/Vencendo: liberado se a taxa não está pendente (explícito) ou há cadastro SICAF.
+  if (s === "ativo" || s === "atencao") {
+    if (empresa.taxaPendente === false) return true;
+    return !!empresa.sicafId;
+  }
+  return false;
 }
 
 export function getManutencaoBloqueioMotivo(
@@ -93,7 +102,9 @@ export function getManutencaoBloqueioMotivo(
 
   if (painel) {
     const status = normalizeSicafStatus(painel.sicaf?.status);
-    if (!painel.sicaf?.id || status === "Sem SICAF") {
+    const hasSicaf =
+      !!painel.sicaf?.id || status === "Ativo" || status === "Vencendo" || status === "Vencido";
+    if (!hasSicaf || status === "Sem SICAF") {
       return "Cadastre e pague a taxa SICAF antes de ativar a manutenção.";
     }
     if (status === "Vencido") {
@@ -109,10 +120,13 @@ export function getManutencaoBloqueioMotivo(
   if (s === "vencido") {
     return "Seu SICAF está vencido. Renove o cadastro para poder ativar a manutenção.";
   }
-  if (s === "sem_cadastro" || !empresa?.sicafId) {
+  if (s === "sem_cadastro") {
     return "Cadastre e pague a taxa SICAF antes de ativar a manutenção.";
   }
-  return "Conclua o pagamento da taxa SICAF antes de ativar a manutenção.";
+  if (empresa?.taxaPendente === true || (!empresa?.sicafId && empresa?.taxaPendente !== false)) {
+    return "Conclua o pagamento da taxa SICAF antes de ativar a manutenção.";
+  }
+  return "É necessário ter o SICAF pago e vigente antes de ativar a manutenção.";
 }
 
 export type SicafDisplayStatus = "ativo" | "atencao" | "vencido" | "sem_cadastro";

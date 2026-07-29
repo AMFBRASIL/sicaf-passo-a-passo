@@ -32,13 +32,24 @@ import {
   type SeveridadeCobranca,
 } from "@/lib/cobranca-api";
 import { validarPagamentoAdmin } from "@/lib/admin-clientes-api";
-import { buildWhatsAppSuporteUrl } from "@/lib/whatsapp-suporte";
+import { buildWhatsAppClienteUrl } from "@/lib/whatsapp-suporte";
 
 const sevBadge: Record<SeveridadeCobranca, { label: string; cls: string }> = {
   leve: { label: "Leve", cls: "bg-amber-100 text-amber-700 border-amber-200" },
   media: { label: "Atenção", cls: "bg-orange-100 text-orange-700 border-orange-200" },
   critica: { label: "Crítico", cls: "bg-rose-100 text-rose-700 border-rose-200" },
 };
+
+function buildMensagemPadrao(cliente: ClienteCobrancaPendente): string {
+  const nome = cliente.responsavel || "cliente";
+  const linhas = [
+    `Olá ${nome}, identificamos que o pagamento referente a ${cliente.descricao} (${formatBRL(cliente.valor)}) está pendente há ${cliente.diasPendente} dias.`,
+  ];
+  if (cliente.payLink) {
+    linhas.push(``, `Para regularizar, acesse: ${cliente.payLink}`);
+  }
+  return linhas.join("\n");
+}
 
 export function CobrancaClienteModal({
   cliente,
@@ -61,8 +72,10 @@ export function CobrancaClienteModal({
   useEffect(() => {
     if (!cliente || !isOpen) {
       setHistorico([]);
+      setMensagem("");
       return;
     }
+    setMensagem(buildMensagemPadrao(cliente));
     let cancelled = false;
     setLoadingHist(true);
     void fetchCobrancaHistorico(cliente.clienteId).then((res) => {
@@ -73,23 +86,22 @@ export function CobrancaClienteModal({
     return () => {
       cancelled = true;
     };
-  }, [cliente?.clienteId, isOpen]);
+  }, [cliente?.clienteId, cliente?.taxaId, cliente?.pagamentoId, isOpen]);
 
   if (!cliente) return null;
 
   const sev = (cliente.severidade || "leve") as SeveridadeCobranca;
   const payLink = cliente.payLink || "";
-  const whatsappUrl = buildWhatsAppSuporteUrl(
-    [
-      `Olá! Aqui é a equipe CADBRASIL.`,
-      `Identificamos pendência de pagamento (${cliente.descricao}) para ${cliente.company}.`,
-      `Valor: ${formatBRL(cliente.valor)}.`,
-      payLink ? `Link para pagamento: ${payLink}` : "",
-      `Podemos ajudar na regularização?`,
-    ]
-      .filter(Boolean)
-      .join(" "),
-  );
+  const textoWhatsApp = mensagem.trim() || buildMensagemPadrao(cliente);
+  const whatsappUrl = buildWhatsAppClienteUrl(cliente.telefone, textoWhatsApp);
+
+  const abrirWhatsApp = () => {
+    if (!whatsappUrl) {
+      toast.error("Cliente sem telefone válido para WhatsApp");
+      return;
+    }
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  };
 
   const enviarEmail = async () => {
     if (!cliente.email) {
@@ -101,6 +113,7 @@ export function CobrancaClienteModal({
       clienteId: cliente.clienteId,
       taxaId: cliente.taxaId,
       pagamentoId: cliente.pagamentoId,
+      mensagem: mensagem.trim() || undefined,
     });
     setEnviando(false);
     if (!res.ok) {
@@ -223,20 +236,23 @@ export function CobrancaClienteModal({
                   <Send className="h-4 w-4 text-rose-600" /> Disparar cobrança
                 </h3>
                 <p className="text-xs text-muted-foreground mb-3">
-                  O e-mail inclui links de acesso ao portal, página de pagamentos e WhatsApp CADBRASIL.
+                  Edite o texto abaixo — ele será usado no WhatsApp e no e-mail. O valor vem da taxa
+                  pendente deste cliente.
                 </p>
                 <Textarea
                   rows={5}
                   value={mensagem}
                   onChange={(e) => setMensagem(e.target.value)}
-                  placeholder={`Olá ${cliente.responsavel || "cliente"}, identificamos que o pagamento referente a ${cliente.descricao} (${formatBRL(cliente.valor)}) está pendente há ${cliente.diasPendente} dias.`}
                   className="mb-3"
                 />
                 <div className="flex flex-wrap gap-2">
-                  <Button asChild className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
-                    <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
-                      <MessageSquare className="h-4 w-4" /> WhatsApp
-                    </a>
+                  <Button
+                    type="button"
+                    onClick={abrirWhatsApp}
+                    disabled={!whatsappUrl}
+                    className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    <MessageSquare className="h-4 w-4" /> WhatsApp
                   </Button>
                   <Button
                     onClick={() => void enviarEmail()}
@@ -248,6 +264,11 @@ export function CobrancaClienteModal({
                     E-mail de cobrança
                   </Button>
                 </div>
+                {!cliente.telefone && (
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    Sem telefone cadastrado — WhatsApp indisponível para este cliente.
+                  </p>
+                )}
               </Card>
 
               <Card className="p-4">

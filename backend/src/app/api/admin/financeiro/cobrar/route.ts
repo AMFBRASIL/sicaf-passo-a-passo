@@ -11,6 +11,7 @@ type CobrancaTaxaService = {
     taxaId?: number;
     pagamentoId?: number;
     usuarioId: number;
+    mensagemCustom?: string;
   }) => Promise<{ ok: boolean; error?: string; message?: string }>;
 };
 
@@ -26,6 +27,9 @@ export async function POST(request: Request) {
 
     const taxaId = body.taxaId != null ? parseInt(String(body.taxaId), 10) : undefined;
     const pagamentoId = body.pagamentoId != null ? parseInt(String(body.pagamentoId), 10) : undefined;
+    const mensagemCustom = body.mensagem
+      ? String(body.mensagem).trim().slice(0, 5000)
+      : undefined;
 
     const svc = await getSicafAgentModule<CobrancaTaxaService>("services/cobranca-taxa.service");
     const result = await svc.enviarCobrancaTaxa({
@@ -33,6 +37,7 @@ export async function POST(request: Request) {
       taxaId: Number.isFinite(taxaId) && taxaId! > 0 ? taxaId : undefined,
       pagamentoId: Number.isFinite(pagamentoId) && pagamentoId! > 0 ? pagamentoId : undefined,
       usuarioId,
+      mensagemCustom: mensagemCustom || undefined,
     });
 
     return NextResponse.json(result, { status: result.ok ? 200 : 400 });

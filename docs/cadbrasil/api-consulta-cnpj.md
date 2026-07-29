@@ -235,7 +235,7 @@ Cliente informou CNPJ com menos ou mais de 14 dígitos, ou vazio.
 > Para continuar:  
 > 👉 Acesse **https://cadastro.cadbrasil.com.br**  
 > Preencha todas as informações atualizadas e corretas.  
-> Durante o processo será necessário pagar a **taxa anual de R$ 985,00** (credenciamento SICAF).  
+> Durante o processo será necessário pagar a **taxa anual configurada** (`valorTaxaAnual` vem de `configuracoes_sistema.valor_cadastro_sicaf`; nos exemplos desta doc aparece R$ 985,00).  
 > Sem concluir o cadastro e o pagamento, os **níveis do SICAF não serão liberados**.
 
 ### O que a IA deve fazer

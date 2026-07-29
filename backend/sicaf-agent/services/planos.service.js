@@ -93,21 +93,18 @@ async function getPlanoByCodigo(codigo) {
  */
 async function resolveValorTaxaSicaf(planoCodigo) {
   const db = getDb();
-  if (!db) return 985.0;
+  const { getPrecosComerciais } = require('./precos-comerciais.service');
+  const precos = await getPrecosComerciais(db);
 
   if (planoCodigo) {
     const plano = await getPlanoByCodigo(planoCodigo);
     if (plano && Number.isFinite(plano.preco) && plano.preco > 0) {
       return plano.preco;
     }
+    if (planoCodigo === 'sicaf_imediato') return precos.valorCadastroSicafImediato;
   }
 
-  try {
-    const cfg = await db('configuracoes_sistema').where('chave', 'valor_cadastro_sicaf').first();
-    if (cfg) return parseFloat(cfg.valor);
-  } catch (_) {}
-
-  return 985.0;
+  return precos.valorCadastroSicaf;
 }
 
 module.exports = {

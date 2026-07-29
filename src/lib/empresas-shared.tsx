@@ -22,6 +22,7 @@ import {
   salvarEmpresaGerenciar,
   gerarTaxaSicaf,
   registrarEmpresa,
+  fetchSicafValores,
   PLANO_WIZARD_PARA_CODIGO,
   type ColaboradorResumo,
   type EmpresaGerenciarPainel,
@@ -33,6 +34,7 @@ import { PixPaymentModal } from "@/components/sicaf/PixPaymentModal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { shouldGerenciarAbrirPagamentoFromEmpresa } from "@/lib/sicaf-access-rules";
+import { PRECO_FALLBACK, formatBrl } from "@/lib/sicaf-precos";
 import {
   enderecoFromCep,
   fetchCep,
@@ -2055,6 +2057,19 @@ export function NovaEmpresaWizard({
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [pagamentoGerado, setPagamentoGerado] = useState<PagamentoGerado | null>(null);
   const [pixModalOpen, setPixModalOpen] = useState(false);
+  const [precoPadrao, setPrecoPadrao] = useState(PRECO_FALLBACK.valorCadastroSicaf);
+  const [precoImediato, setPrecoImediato] = useState(PRECO_FALLBACK.valorCadastroSicafImediato);
+
+  const fmtPreco = (n: number) => formatBrl(n);
+
+  useEffect(() => {
+    if (!open) return;
+    void fetchSicafValores().then((r) => {
+      if (!r.ok || !r.valores) return;
+      setPrecoPadrao(r.valores.valorCadastroSicaf);
+      setPrecoImediato(r.valores.valorCadastroSicafImediato || PRECO_FALLBACK.valorCadastroSicafImediato);
+    });
+  }, [open]);
 
   const update = <K extends keyof WizardForm>(k: K, v: WizardForm[K]) =>
     setForm((p) => ({ ...p, [k]: v }));
@@ -2402,8 +2417,8 @@ export function NovaEmpresaWizard({
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {[
-                      { id: "padrao" as const, titulo: "Padrão", preco: "R$ 985,00", prazo: "Em até 24h úteis", icon: Briefcase, desc: "Ideal para quem já se planejou.", badge: "Mais escolhido" },
-                      { id: "emergencial" as const, titulo: "Emergencial", preco: "R$ 1.450,00", prazo: "Início imediato", icon: Zap, desc: "Prioridade máxima na fila.", badge: "Mais rápido" },
+                      { id: "padrao" as const, titulo: "Padrão", preco: fmtPreco(precoPadrao), prazo: "Em até 24h úteis", icon: Briefcase, desc: "Ideal para quem já se planejou.", badge: "Mais escolhido" },
+                      { id: "emergencial" as const, titulo: "Emergencial", preco: fmtPreco(precoImediato), prazo: "Início imediato", icon: Zap, desc: "Prioridade máxima na fila.", badge: "Mais rápido" },
                     ].map((p) => {
                       const Icon = p.icon;
                       const sel = form.plano === p.id;
@@ -2474,7 +2489,7 @@ export function NovaEmpresaWizard({
                   <div className="rounded-xl border bg-muted/30 p-4 flex justify-between items-center">
                     <div>
                       <p className="text-xs uppercase tracking-wider text-muted-foreground">Total</p>
-                      <p className="text-2xl font-bold">{form.plano === "emergencial" ? "R$ 1.450,00" : "R$ 985,00"}</p>
+                      <p className="text-2xl font-bold">{form.plano === "emergencial" ? fmtPreco(precoImediato) : fmtPreco(precoPadrao)}</p>
                     </div>
                     <p className="text-sm text-muted-foreground">Plano {form.plano === "emergencial" ? "Emergencial" : "Padrão"}</p>
                   </div>

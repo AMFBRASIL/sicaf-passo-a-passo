@@ -149,7 +149,7 @@ Quando um evento "db-error" for recebido, informe ao cliente sobre o erro e sugi
 
 Se o cliente perguntar sobre valores, preços, custos, mensalidade, plano ou serviços pagos da Cadbrasil, apresente os dois itens:
 
-**1. Licença Anual da Plataforma Cadbrasil — R$ 985,00/ano**
+**1. Licença Anual da Plataforma Cadbrasil — {{VALOR_CADASTRO_SICAF}}/ano**
 A licença anual dá acesso a todas as funcionalidades da plataforma:
 - Acesso a licitações governamentais centralizadas
 - Análise de editais por IA
@@ -158,7 +158,7 @@ A licença anual dá acesso a todas as funcionalidades da plataforma:
 - Gestão completa do processo licitatório
 - Assistente Virtual IA gratuito para o SICAF
 
-**2. Plano de Manutenção SICAF — R$ 155,00/mês (ou R$ 1.860,00/ano)**
+**2. Plano de Manutenção SICAF — {{VALOR_MANUTENCAO_MENSAL}}/mês (ou {{VALOR_MANUTENCAO_ANUAL}}/ano)**
 Serviço opcional para MANTER o cadastro SICAF sempre atualizado:
 - Renovação e manutenção contínua de certidões atualizadas
 - Gestão completa de documentos do fornecedor
@@ -326,7 +326,44 @@ async function getRuntimeParams() {
 
 async function getSystemPrompt() {
   const rt = await iaConfig.getIaRuntime();
-  return rt.systemPrompt || SYSTEM_PROMPT;
+  let prompt = rt.systemPrompt || SYSTEM_PROMPT;
+  try {
+    const { getPrecosComerciais, formatBrl } = require('../../../services/precos-comerciais.service');
+    const precos = await getPrecosComerciais();
+    const sicaf = formatBrl(precos.valorCadastroSicaf);
+    const mensal = formatBrl(precos.valorManutencaoMensal);
+    const anual = formatBrl(precos.valorManutencaoAnual);
+    const map = {
+      '{{VALOR_CADASTRO_SICAF}}': sicaf,
+      '{{VALOR_MANUTENCAO_MENSAL}}': mensal,
+      '{{VALOR_MANUTENCAO_ANUAL}}': anual,
+      '{{valor_cadastro_sicaf}}': sicaf,
+      '{{valor_manutencao_mensal}}': mensal,
+      '{{valor_manutencao_anual}}': anual,
+    };
+    for (const [token, val] of Object.entries(map)) {
+      prompt = prompt.split(token).join(val);
+    }
+    // Templates antigos ainda com preço fixo em texto
+    prompt = prompt
+      .replace(/R\$\s*985([.,]00)?/g, sicaf)
+      .replace(/R\$\s*155([.,]00)?/g, mensal)
+      .replace(/R\$\s*1\.860([.,]00)?/g, anual)
+      .replace(/R\$\s*1860([.,]00)?/g, anual)
+      .replace(
+        /\*\*1\.\s*Licença Anual da Plataforma Cadbrasil — .+?\*\*/i,
+        `**1. Licença Anual da Plataforma Cadbrasil — ${sicaf}/ano**`,
+      )
+      .replace(
+        /\*\*2\.\s*Plano de Manutenção SICAF — .+?\*\*/i,
+        `**2. Plano de Manutenção SICAF — ${mensal}/mês (ou ${anual}/ano)**`,
+      );
+
+    if (!prompt.includes(sicaf) && !prompt.includes('Valores atuais CADBRASIL')) {
+      prompt += `\n\n## Valores atuais CADBRASIL (fonte: configuracoes_sistema)\n- Licença/taxa SICAF anual: ${sicaf}\n- Manutenção mensal: ${mensal}\n- Manutenção anual: ${anual}\n`;
+    }
+  } catch (_) {}
+  return prompt;
 }
 
 function getOpenAI() {

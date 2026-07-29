@@ -27,7 +27,7 @@ const cards: { key: ConfigModuleKey; icon: any; titulo: string; desc: string; ch
   { key: "whatsapp", icon: MessageCircle, titulo: "WhatsApp", desc: "API oficial, webhooks, atendentes", chip: "Conectado", tom: "emerald" },
   { key: "ia", icon: Bot, titulo: "IA", desc: "Modelo, prompts, limites de uso", chip: "Carregando…", tom: "violet" },
   { key: "financeiro", icon: DollarSign, titulo: "Financeiro", desc: "Gateway PIX, cartão, boleto, juros e multa", chip: "PIX + Asaas", tom: "emerald" },
-  { key: "sicaf", icon: FileCheck2, titulo: "SICAF", desc: "Níveis obrigatórios, automações de vencimento", chip: "Níveis I–VI", tom: "amber" },
+  { key: "sicaf", icon: FileCheck2, titulo: "SICAF", desc: "Valores, níveis obrigatórios, automações de vencimento", chip: "Níveis I–VI", tom: "amber" },
   { key: "seguranca", icon: Shield, titulo: "Segurança", desc: "2FA, sessões, política de senhas, IP allow-list", chip: "2FA opcional", tom: "rose" },
   { key: "usuarios", icon: Users, titulo: "Usuários e Papéis", desc: "Admin, Operador, Consulta — RBAC granular", chip: "8 ativos", tom: "blue" },
   { key: "googleads", icon: TrendingUp, titulo: "Google Ads", desc: "Conta MCC, tag de conversão, atribuição", chip: "Conectado", tom: "emerald" },
@@ -75,7 +75,11 @@ function ConfiguracoesPage() {
     }
     try {
       const { status } = await fetchSicafSettings();
-      setSicafChip(`${status.niveisAtivos} níveis · alerta ${status.centralAlertaDias}d`);
+      const sicafFmt =
+        status.valorCadastroSicaf != null
+          ? ` · R$ ${Number(status.valorCadastroSicaf).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}`
+          : "";
+      setSicafChip(`${status.niveisAtivos} níveis${sicafFmt}`);
     } catch {
       setSicafChip("Configurar");
     }

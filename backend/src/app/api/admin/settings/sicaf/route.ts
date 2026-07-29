@@ -13,13 +13,23 @@ export type SicafSettingsPayload = {
   ticketAutomatico: boolean;
   notificarEmailWhatsapp: boolean;
   bloquearRelatorioVencido: boolean;
+  valorCadastroSicaf: number;
+  valorCadastroSicafImediato: number;
+  valorManutencaoMensal: number;
+  valorManutencaoAnual: number;
 };
 
 type SettingsService = {
   getSicafSettings: () => Promise<{
     ok: boolean;
     settings?: SicafSettingsPayload;
-    status?: { niveisAtivos: number; centralAlertaDias: number; avisoAntecedenciaDias: number };
+    status?: {
+      niveisAtivos: number;
+      centralAlertaDias: number;
+      avisoAntecedenciaDias: number;
+      valorCadastroSicaf?: number;
+      valorManutencaoAnual?: number;
+    };
     error?: string;
   }>;
   updateSicafSettings: (updates: SicafSettingsPayload) => Promise<{

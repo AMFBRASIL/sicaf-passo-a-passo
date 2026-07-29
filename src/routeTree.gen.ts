@@ -16,6 +16,7 @@ import { Route as SicafAssistantRouteImport } from './routes/sicaf-assistant'
 import { Route as SicafRouteImport } from './routes/sicaf'
 import { Route as ServicosIaRouteImport } from './routes/servicos-ia'
 import { Route as ServicosRouteImport } from './routes/servicos'
+import { Route as PropostasRouteImport } from './routes/propostas'
 import { Route as ProntidaoRouteImport } from './routes/prontidao'
 import { Route as Pagamentos_naoefetuadoRouteImport } from './routes/pagamentos_naoefetuado'
 import { Route as PagamentosRouteImport } from './routes/pagamentos'
@@ -100,6 +101,11 @@ const ServicosIaRoute = ServicosIaRouteImport.update({
 const ServicosRoute = ServicosRouteImport.update({
   id: '/servicos',
   path: '/servicos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PropostasRoute = PropostasRouteImport.update({
+  id: '/propostas',
+  path: '/propostas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProntidaoRoute = ProntidaoRouteImport.update({
@@ -378,6 +384,7 @@ export interface FileRoutesByFullPath {
   '/pagamentos': typeof PagamentosRoute
   '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
   '/prontidao': typeof ProntidaoRoute
+  '/propostas': typeof PropostasRoute
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
@@ -435,6 +442,7 @@ export interface FileRoutesByTo {
   '/pagamentos': typeof PagamentosRoute
   '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
   '/prontidao': typeof ProntidaoRoute
+  '/propostas': typeof PropostasRoute
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
@@ -494,6 +502,7 @@ export interface FileRoutesById {
   '/pagamentos': typeof PagamentosRoute
   '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
   '/prontidao': typeof ProntidaoRoute
+  '/propostas': typeof PropostasRoute
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
@@ -555,6 +564,7 @@ export interface FileRouteTypes {
     | '/pagamentos'
     | '/pagamentos_naoefetuado'
     | '/prontidao'
+    | '/propostas'
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
@@ -612,6 +622,7 @@ export interface FileRouteTypes {
     | '/pagamentos'
     | '/pagamentos_naoefetuado'
     | '/prontidao'
+    | '/propostas'
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
@@ -670,6 +681,7 @@ export interface FileRouteTypes {
     | '/pagamentos'
     | '/pagamentos_naoefetuado'
     | '/prontidao'
+    | '/propostas'
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
@@ -730,6 +742,7 @@ export interface RootRouteChildren {
   PagamentosRoute: typeof PagamentosRoute
   Pagamentos_naoefetuadoRoute: typeof Pagamentos_naoefetuadoRoute
   ProntidaoRoute: typeof ProntidaoRoute
+  PropostasRoute: typeof PropostasRoute
   ServicosRoute: typeof ServicosRoute
   ServicosIaRoute: typeof ServicosIaRoute
   SicafRoute: typeof SicafRoute
@@ -789,6 +802,13 @@ declare module '@tanstack/react-router' {
       path: '/servicos'
       fullPath: '/servicos'
       preLoaderRoute: typeof ServicosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/propostas': {
+      id: '/propostas'
+      path: '/propostas'
+      fullPath: '/propostas'
+      preLoaderRoute: typeof PropostasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/prontidao': {
@@ -1245,6 +1265,7 @@ const rootRouteChildren: RootRouteChildren = {
   PagamentosRoute: PagamentosRoute,
   Pagamentos_naoefetuadoRoute: Pagamentos_naoefetuadoRoute,
   ProntidaoRoute: ProntidaoRoute,
+  PropostasRoute: PropostasRoute,
   ServicosRoute: ServicosRoute,
   ServicosIaRoute: ServicosIaRoute,
   SicafRoute: SicafRoute,

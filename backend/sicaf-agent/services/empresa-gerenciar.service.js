@@ -87,17 +87,8 @@ const PAPEL_LABEL = {
 };
 
 async function getValoresConfig(db) {
-  let valorCadastroSicaf = 985;
-  let valorManutencaoMensal = 155;
-  try {
-    const [cad, manut] = await Promise.all([
-      db('configuracoes_sistema').where('chave', 'valor_cadastro_sicaf').first(),
-      db('configuracoes_sistema').where('chave', 'valor_manutencao_mensal').first(),
-    ]);
-    if (cad) valorCadastroSicaf = parseFloat(cad.valor);
-    if (manut) valorManutencaoMensal = parseFloat(manut.valor);
-  } catch (_) {}
-  return { valorCadastroSicaf, valorManutencaoMensal };
+  const { getPrecosComerciais } = require('./precos-comerciais.service');
+  return getPrecosComerciais(db);
 }
 
 async function getGerenciarPainel(clienteId, usuarioId) {

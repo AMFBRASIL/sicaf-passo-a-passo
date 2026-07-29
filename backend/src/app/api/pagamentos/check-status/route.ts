@@ -171,6 +171,15 @@ export async function POST(request: Request) {
         } catch (e) {
           console.error("[check-status] automação manutenção:", e instanceof Error ? e.message : e);
         }
+      } else if (pgto.origem === "avulso" || pgto.origem === "personalizado") {
+        try {
+          const propostas = await getSicafAgentModule<{
+            onPagamentoConfirmado: (p: Record<string, unknown>) => Promise<unknown>;
+          }>("services/propostas-comerciais.service");
+          void propostas.onPagamentoConfirmado(pgto as unknown as Record<string, unknown>);
+        } catch (e) {
+          console.error("[check-status] proposta:", e instanceof Error ? e.message : e);
+        }
       }
 
       return NextResponse.json({

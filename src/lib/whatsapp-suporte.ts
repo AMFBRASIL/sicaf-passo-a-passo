@@ -25,6 +25,26 @@ export function buildWhatsAppSuporteUrl(texto: string): string {
   return `https://wa.me/${WHATSAPP_SUPORTE_NUMERO}?text=${encodeURIComponent(texto)}`;
 }
 
+/** Normaliza telefone BR para wa.me (só dígitos, com DDI 55 quando faltar). */
+export function normalizeWhatsAppNumero(telefone: string | null | undefined): string | null {
+  const digits = String(telefone || "").replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.startsWith("55") && digits.length >= 12) return digits;
+  if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
+  if (digits.length >= 12) return digits;
+  return null;
+}
+
+/** Abre conversa no WhatsApp do destinatário (cliente), não do suporte CADBRASIL. */
+export function buildWhatsAppClienteUrl(
+  telefone: string | null | undefined,
+  texto: string,
+): string | null {
+  const num = normalizeWhatsAppNumero(telefone);
+  if (!num) return null;
+  return `https://wa.me/${num}?text=${encodeURIComponent(texto)}`;
+}
+
 type LicitacaoWhatsAppContext = {
   id: string;
   orgao: string;

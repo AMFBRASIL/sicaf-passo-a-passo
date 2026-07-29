@@ -2142,7 +2142,7 @@ function mapBoletoSicafResposta({
 
 /**
  * Por CNPJ: valida cadastro, confirma pendência de pagamento SICAF e retorna link PDF do boleto.
- * Reutiliza boleto vigente (não vencido) ou gera novo de R$ 985,00 (valor configurado no plano).
+ * Reutiliza boleto vigente (não vencido) ou gera novo com valor de configuracoes_sistema / plano.
  */
 async function gerarOuObterBoletoSicafByCnpj(cnpj, options = {}) {
   const db = getDb();

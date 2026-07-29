@@ -4,34 +4,26 @@ import { getSicafAgentModule } from "@/modules/sicaf-assistant/legacy-bridge";
 
 export const runtime = "nodejs";
 
-type DbConnection = {
-  getDb: () => {
-    (table: string): {
-      where: (col: string, val: string) => { first: () => Promise<{ valor: string } | undefined> };
-    };
-  };
+type PrecosService = {
+  getPrecosComerciais: () => Promise<{
+    valorCadastroSicaf: number;
+    valorCadastroSicafImediato: number;
+    valorManutencaoMensal: number;
+    valorManutencaoAnual: number;
+  }>;
 };
 
 export async function GET(request: Request) {
   try {
     await requireLegacyUserId(request);
-    const { getDb } = await getSicafAgentModule<DbConnection>("database/connection");
-    const db = getDb();
-    if (!db) {
-      return NextResponse.json({ ok: false, error: "Banco de dados não disponível" }, { status: 500 });
-    }
-
-    const [cadastroRow, manutRow] = await Promise.all([
-      db("configuracoes_sistema").where("chave", "valor_cadastro_sicaf").first(),
-      db("configuracoes_sistema").where("chave", "valor_manutencao_mensal").first(),
-    ]);
+    const { getPrecosComerciais } = await getSicafAgentModule<PrecosService>(
+      "services/precos-comerciais.service",
+    );
+    const valores = await getPrecosComerciais();
 
     return NextResponse.json({
       ok: true,
-      valores: {
-        valorCadastroSicaf: cadastroRow ? parseFloat(cadastroRow.valor) : 985.0,
-        valorManutencaoMensal: manutRow ? parseFloat(manutRow.valor) : 155.0,
-      },
+      valores,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao buscar valores";

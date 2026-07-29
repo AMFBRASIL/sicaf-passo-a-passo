@@ -23,6 +23,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageContainer, PageHeader } from "@/components/page-header";
 import type { EmpresaData } from "@/lib/empresas-shared";
 import { fetchEmpresas, fetchSicafValores } from "@/lib/empresas-api";
+import { PRECO_FALLBACK } from "@/lib/sicaf-precos";
 import {
   detectarFluxoPagamentoSicaf,
   fetchClienteFinanceiro,
@@ -212,7 +213,9 @@ function MeusPagamentosPage() {
       ]);
 
       const valores: ValoresRef = {
-        valorSicaf: valRes.ok ? valRes.valores?.valorCadastroSicaf ?? 985 : 985,
+        valorSicaf: valRes.ok
+          ? valRes.valores?.valorCadastroSicaf ?? PRECO_FALLBACK.valorCadastroSicaf
+          : PRECO_FALLBACK.valorCadastroSicaf,
         valorManutencao: manutVal,
       };
 

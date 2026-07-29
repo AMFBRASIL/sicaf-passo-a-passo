@@ -152,6 +152,8 @@ export function mapApiClientToDetalhe(c: ApiAdminClient, extra?: Partial<Cliente
     email: c.email,
     telefone: c.phone,
     sicaf: mapSicafUi(c.sicafStatus),
+    sicafStatusRaw: c.sicafStatus ?? null,
+    sicafId: c.sicafId ?? null,
     pagou: !!c.pagou,
     pagamentoSicafStatus: c.pagamentoSicafStatus,
     pagamentoSicafDetalhe: c.pagamentoSicafDetalhe,
@@ -544,6 +546,8 @@ export function mergeDetalheFromApi(
     responsavel: api.responsavel_nome || base.responsavel,
     cidade,
     sicaf: mapSicafUi(api.sicaf?.status),
+    sicafStatusRaw: api.sicaf?.status ?? base.sicafStatusRaw,
+    sicafId: api.sicaf?.id ?? base.sicafId,
     manutencao: api.sicaf?.manutencao_ativa === 1,
     validadeSicaf: api.sicaf?.data_validade ? formatDateBr(api.sicaf.data_validade) : base.validadeSicaf,
     niveis: mapNiveisFromApi(undefined, api.niveisSicaf, {

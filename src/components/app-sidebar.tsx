@@ -7,12 +7,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { fetchPropostasPendentes } from "@/lib/propostas-api";
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   Layers,
   Headphones,
   FileSignature,
+  FileText,
   HelpCircle,
   ShieldCheck,
   Building2,
@@ -46,6 +48,7 @@ type NavItem = {
   title: string;
   url: string;
   icon: LucideIcon;
+  badge?: string;
 };
 
 const visaoGeral: NavItem[] = [
@@ -71,6 +74,7 @@ const licitacoes: NavItem[] = [
 ];
 
 const contaAjuda: NavItem[] = [
+  { title: "Propostas", url: "/propostas", icon: FileText },
   { title: "Meus Serviços", url: "/servicos", icon: FileSignature },
   { title: "Suporte", url: "/suporte", icon: Headphones },
   { title: "Central de Ajuda", url: "/ajuda", icon: HelpCircle },
@@ -86,11 +90,13 @@ function NavGroup({
   items,
   pathname,
   collapsed,
+  badgeByUrl,
 }: {
   label: string;
   items: NavItem[];
   pathname: string;
   collapsed: boolean;
+  badgeByUrl?: Record<string, string | undefined>;
 }) {
   return (
     <SidebarGroup>
@@ -105,6 +111,11 @@ function NavGroup({
                   <Link to={item.url} className="flex items-center gap-2">
                     <item.icon className="h-4 w-4 shrink-0" />
                     {!collapsed && <span className="truncate">{item.title}</span>}
+                    {!collapsed && (badgeByUrl?.[item.url] || item.badge) && (
+                      <span className="ml-auto inline-flex items-center rounded-full border border-warning/40 bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning-foreground">
+                        {badgeByUrl?.[item.url] || item.badge}
+                      </span>
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -151,6 +162,7 @@ export function AppSidebar() {
   const emailUsuario = user?.email?.trim();
   const contentRef = useRef<HTMLDivElement>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);
+  const [hasPropostasAbertas, setHasPropostasAbertas] = useState(false);
 
   const updateScrollHint = useCallback(() => {
     const el = contentRef.current;
@@ -180,6 +192,18 @@ export function AppSidebar() {
       window.removeEventListener("resize", updateScrollHint);
     };
   }, [updateScrollHint, collapsed]);
+
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      const res = await fetchPropostasPendentes();
+      if (!mounted) return;
+      setHasPropostasAbertas(!!res.ok && (res.propostas?.length || 0) > 0);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [pathname]);
 
   const handleLogout = () => {
     logout();
@@ -211,7 +235,15 @@ export function AppSidebar() {
           <NavGroup label="Visão geral" items={visaoGeral} pathname={pathname} collapsed={collapsed} />
           <NavGroup label="SICAF & Cadastro" items={sicafCadastro} pathname={pathname} collapsed={collapsed} />
           <NavGroup label="Licitações" items={licitacoes} pathname={pathname} collapsed={collapsed} />
-          <NavGroup label="Conta & Ajuda" items={contaAjuda} pathname={pathname} collapsed={collapsed} />
+          <NavGroup
+            label="Conta & Ajuda"
+            items={contaAjuda}
+            pathname={pathname}
+            collapsed={collapsed}
+            badgeByUrl={{
+              "/propostas": hasPropostasAbertas ? "Nova" : undefined,
+            }}
+          />
         </SidebarContent>
         <SidebarScrollHint visible={canScrollDown && !collapsed} onScrollDown={scrollMenuDown} />
       </div>

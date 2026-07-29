@@ -158,11 +158,14 @@ export function ProcessoClienteModal({
   onOpenChange,
   empresas,
   empresaInicial,
+  onContinuar,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   empresas: EmpresaData[];
   empresaInicial?: EmpresaData | null;
+  /** Chamado após "Continuar processo" (modal já fechado). */
+  onContinuar?: () => void;
 }) {
   const [cnpjSelecionado, setCnpjSelecionado] = useState("");
 
@@ -330,7 +333,12 @@ export function ProcessoClienteModal({
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => onOpenChange(false)}>
+            <Button
+              onClick={() => {
+                onOpenChange(false);
+                onContinuar?.();
+              }}
+            >
               Continuar processo
             </Button>
           </div>

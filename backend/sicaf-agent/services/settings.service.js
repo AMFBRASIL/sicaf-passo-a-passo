@@ -68,6 +68,7 @@ function detectCategoria(chave) {
   if (chave.startsWith('storage_')) return 'armazenamento';
   if (chave.startsWith('notif_')) return 'notificacoes';
   if (chave.startsWith('empresa_')) return 'empresa';
+  if (chave.startsWith('valor_')) return 'licitacoes';
   if (chave.startsWith('pncp_') || chave.startsWith('sicaf_')) return 'integracoes';
   return 'empresa';
 }

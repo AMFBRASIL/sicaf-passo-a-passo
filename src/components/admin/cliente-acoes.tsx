@@ -783,7 +783,7 @@ function RelatorioModal({ open, onOpenChange, cliente }: { open: boolean; onOpen
             <KpiCard label="Certidões vencendo" value={String(certidoesVencendo)} valueClass="text-amber-600" />
             <KpiCard
               label="Financeiro (taxas pagas)"
-              value={`R$ ${(cliente.ltv ?? 985).toLocaleString("pt-BR")},00`}
+              value={`R$ ${(Number(cliente.ltv) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               valueClass="text-emerald-600"
             />
           </div>

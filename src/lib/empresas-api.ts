@@ -4,6 +4,7 @@ import {
   needsSicafTaxaPaymentFromInput,
   shouldGerenciarAbrirPagamentoFromInput,
 } from "@/lib/sicaf-access-rules";
+import { normalizeSicafPrecos } from "@/lib/sicaf-precos";
 import { Plus, RefreshCw, Rocket } from "lucide-react";
 import { mapNivelStatusFromRaw } from "@/lib/nivel-status";
 
@@ -51,7 +52,9 @@ export type SicafListItem = {
 
 export type SicafValores = {
   valorCadastroSicaf: number;
+  valorCadastroSicafImediato?: number;
   valorManutencaoMensal: number;
+  valorManutencaoAnual?: number;
 };
 
 export type SicafPlano = {
@@ -212,7 +215,7 @@ export async function fetchSicafValores(): Promise<{ ok: boolean; valores?: Sica
   if (!data.ok) {
     return { ok: false, error: data.error || "Erro ao buscar valores" };
   }
-  return { ok: true, valores: data.valores };
+  return { ok: true, valores: normalizeSicafPrecos(data.valores) };
 }
 
 export type GerarTaxaPayload = {

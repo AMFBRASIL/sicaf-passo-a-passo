@@ -117,7 +117,17 @@ async function loadClienteContext(db, clienteId) {
   return { cliente, sicaf, certidoes, taxas, propostas };
 }
 
-function buildVars(ctx, mensagemAdicional) {
+async function resolveValorTaxaPadraoFmt() {
+  try {
+    const { getPrecosComerciais, formatBrl } = require('./precos-comerciais.service');
+    const precos = await getPrecosComerciais();
+    return formatBrl(precos.valorCadastroSicaf);
+  } catch (_) {
+    return 'R$ 0,00';
+  }
+}
+
+async function buildVars(ctx, mensagemAdicional) {
   const { cliente, sicaf, certidoes, taxas, propostas } = ctx;
   const hoje = new Date();
   const portalBase = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://app.cadbrasil.com.br';
@@ -142,6 +152,10 @@ function buildVars(ctx, mensagemAdicional) {
     : 0;
 
   const firstBid = propostas[0] || null;
+  const valorTaxaFmt =
+    pendingTaxa?.valor != null
+      ? Number(pendingTaxa.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      : await resolveValorTaxaPadraoFmt();
 
   const vars = {
     nome: cliente.responsavel_nome || cliente.razao_social || 'Cliente',
@@ -176,9 +190,9 @@ function buildVars(ctx, mensagemAdicional) {
     dias_pendente: String(diasPendente),
     dias_atraso: String(diasPendente),
     data_solicitacao: formatDateBr(pendingTaxa?.created_at),
-    valor_taxa: pendingTaxa?.valor != null ? String(pendingTaxa.valor) : '0,00',
+    valor_taxa: valorTaxaFmt,
     ano_referencia: String(pendingTaxa?.ano_referencia || hoje.getFullYear()),
-    valor: pendingTaxa?.valor != null ? String(pendingTaxa.valor) : '0,00',
+    valor: valorTaxaFmt,
     vencimento: formatDateBr(pendingTaxa?.data_vencimento),
     mes: String(hoje.getMonth() + 1).padStart(2, '0'),
     ano: String(hoje.getFullYear()),
@@ -244,7 +258,7 @@ async function previewAviso({ templateDbId, clienteId, mensagemAdicional, assunt
   const ctx = await loadClienteContext(db, clienteId);
   if (!ctx) return { ok: false, error: 'Cliente não encontrado' };
 
-  const vars = buildVars(ctx, mensagemAdicional);
+  const vars = await buildVars(ctx, mensagemAdicional);
   const { assunto, html } = renderTemplate(template, vars, mensagemAdicional, assuntoCustom);
 
   return {
@@ -286,7 +300,7 @@ async function enviarAvisoCliente({
   const ctx = await loadClienteContext(db, clienteId);
   if (!ctx) return { ok: false, error: 'Cliente não encontrado' };
 
-  const vars = { ...buildVars(ctx, mensagemAdicional), ...(extraVars || {}) };
+  const vars = { ...(await buildVars(ctx, mensagemAdicional)), ...(extraVars || {}) };
   const { assunto, html } = renderTemplate(template, vars, mensagemAdicional, assuntoCustom);
 
   let envio = { sent: false, skipped: true };

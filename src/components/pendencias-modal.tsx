@@ -20,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "@tanstack/react-router";
 import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { fetchSicafValores } from "@/lib/empresas-api";
+import { PRECO_FALLBACK } from "@/lib/sicaf-precos";
 import type { EmpresaData } from "@/routes/empresas";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +42,7 @@ export function PendenciasModal({
   empresas: EmpresaData[];
 }) {
   const [pagamentoEmpresa, setPagamentoEmpresa] = useState<EmpresaData | null>(null);
-  const [valorTaxa, setValorTaxa] = useState(985);
+  const [valorTaxa, setValorTaxa] = useState(PRECO_FALLBACK.valorCadastroSicaf);
 
   useEffect(() => {
     if (!open) return;
@@ -163,7 +164,7 @@ export function PendenciasModal({
                         <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                           Existe uma{" "}
                           <span className="font-semibold text-emerald-600">taxa pendente</span>. Clique em{" "}
-                          <span className="font-semibold text-emerald-600">Gerar Taxa</span> para emitir boleto ou PIX
+                          <span className="font-semibold text-emerald-600">Pagar taxa</span> para emitir boleto ou PIX
                           e liberar o cadastro SICAF.
                         </p>
                       </div>
@@ -234,7 +235,7 @@ export function PendenciasModal({
                           onClick={() => setPagamentoEmpresa(emp)}
                         >
                           <Receipt className="h-3.5 w-3.5" />
-                          Gerar Taxa
+                          Pagar taxa
                         </Button>
                       </div>
                     </div>

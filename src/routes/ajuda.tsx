@@ -265,7 +265,7 @@ function HelpPage() {
               <div>
                 <p className="text-sm font-semibold">Etapa 02 — Cadastramento SICAF</p>
                 <p className="text-xs text-muted-foreground">
-                  Tutoriais oficiais do Compras.gov.br — clique para abrir no portal
+                  Manuais oficiais atuais do Compras.gov.br (PDF) — não usa o sistema antigo
                 </p>
               </div>
             </div>
