@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "@tanstack/react-router";
-import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { fetchSicafValores } from "@/lib/empresas-api";
 import { PRECO_FALLBACK } from "@/lib/sicaf-precos";
 import type { EmpresaData } from "@/routes/empresas";
@@ -41,7 +40,6 @@ export function PendenciasModal({
   onOpenChange: (v: boolean) => void;
   empresas: EmpresaData[];
 }) {
-  const [pagamentoEmpresa, setPagamentoEmpresa] = useState<EmpresaData | null>(null);
   const [valorTaxa, setValorTaxa] = useState(PRECO_FALLBACK.valorCadastroSicaf);
 
   useEffect(() => {
@@ -230,12 +228,14 @@ export function PendenciasModal({
                           </Link>
                         </Button>
                         <Button
+                          asChild
                           size="sm"
                           className="gap-1.5 bg-emerald-600 shadow-md shadow-emerald-600/20 hover:bg-emerald-700"
-                          onClick={() => setPagamentoEmpresa(emp)}
                         >
-                          <Receipt className="h-3.5 w-3.5" />
-                          Pagar taxa
+                          <Link to="/pagamentos" onClick={() => onOpenChange(false)}>
+                            <Receipt className="h-3.5 w-3.5" />
+                            Pagar taxa
+                          </Link>
                         </Button>
                       </div>
                     </div>
@@ -262,18 +262,6 @@ export function PendenciasModal({
           </div>
         </DialogContent>
       </Dialog>
-
-      {pagamentoEmpresa?.clienteId ? (
-        <PagamentoSicafModal
-          open={Boolean(pagamentoEmpresa)}
-          onOpenChange={(v) => !v && setPagamentoEmpresa(null)}
-          empresa={{
-            nome: pagamentoEmpresa.nome,
-            cnpj: pagamentoEmpresa.cnpj,
-            clienteId: pagamentoEmpresa.clienteId,
-          }}
-        />
-      ) : null}
     </>
   );
 }
