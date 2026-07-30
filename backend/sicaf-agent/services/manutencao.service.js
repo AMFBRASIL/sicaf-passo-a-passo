@@ -16,6 +16,13 @@ function isPaidStatus(status) {
   return ['pago', 'paga', 'aprovado', 'aprovada', 'paid', 'quitado', 'liberado', 'liberada'].includes(s);
 }
 
+function formatDateOnlyLocal(dt) {
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 async function assertSicafVigenteParaManutencao(db, clienteId) {
   const sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
   if (!sicaf) {
@@ -399,8 +406,8 @@ async function ativarManutencao({ clienteId, usuarioId, diaVencimento, parcelame
     plano: 'Manutenção CADBRASIL',
     valor: valorMensal * 12,
     status: 'Ativo',
-    data_inicio: dataInicio.toISOString().slice(0, 10),
-    data_fim: dataFim.toISOString().slice(0, 10),
+    data_inicio: formatDateOnlyLocal(dataInicio),
+    data_fim: formatDateOnlyLocal(dataFim),
     dias_restantes: diasRestantes,
     updated_at: db.fn.now(),
   };
@@ -443,7 +450,7 @@ async function ativarManutencao({ clienteId, usuarioId, diaVencimento, parcelame
         mes_referencia: mesRef,
         ano_referencia: anoRef,
         valor: valorBoleto,
-        data_vencimento: dataVenc.toISOString().slice(0, 10),
+        data_vencimento: formatDateOnlyLocal(dataVenc),
         status: 'Pendente',
         created_at: db.fn.now(),
       });
@@ -559,8 +566,8 @@ async function renovarManutencao({ clienteId, usuarioId, diaVencimento, parcelam
     plano: 'Manutenção CADBRASIL',
     valor: valorAnual,
     status: 'Ativo',
-    data_inicio: dataInicio.toISOString().slice(0, 10),
-    data_fim: dataFim.toISOString().slice(0, 10),
+    data_inicio: formatDateOnlyLocal(dataInicio),
+    data_fim: formatDateOnlyLocal(dataFim),
     dias_restantes: diasRestantes,
     updated_at: db.fn.now(),
   });
@@ -586,7 +593,7 @@ async function renovarManutencao({ clienteId, usuarioId, diaVencimento, parcelam
         mes_referencia: mesRef,
         ano_referencia: anoRef,
         valor: valorBoleto,
-        data_vencimento: dataVenc.toISOString().slice(0, 10),
+        data_vencimento: formatDateOnlyLocal(dataVenc),
         status: 'Pendente',
         created_at: db.fn.now(),
       });

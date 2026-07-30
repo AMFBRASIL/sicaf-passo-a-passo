@@ -777,7 +777,11 @@ function isBoletoPago(status: string) {
 
 function mapBoletoUiStatus(b: ManutencaoBoleto): "pago" | "aberto" | "futuro" {
   if (isBoletoPago(b.status)) return "pago";
-  const venc = new Date(b.vencimento);
+  const raw = String(b.vencimento || "").trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  const venc = m
+    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    : new Date(b.vencimento);
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
   if (!Number.isNaN(venc.getTime())) {
@@ -788,8 +792,15 @@ function mapBoletoUiStatus(b: ManutencaoBoleto): "pago" | "aberto" | "futuro" {
 }
 
 function parseBoletoData(b: ManutencaoBoleto, diaFallback: number) {
+  const raw = String(b.vencimento || "").trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
   const parsed = new Date(b.vencimento);
-  if (!Number.isNaN(parsed.getTime())) return parsed;
+  if (!Number.isNaN(parsed.getTime())) {
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
   if (b.mes && b.ano) return new Date(b.ano, b.mes - 1, diaFallback);
   return new Date();
 }

@@ -81,14 +81,45 @@ function mapPagamentoRowToApi(r) {
 
 function toIsoDate(value) {
   if (!value) return null;
-  const d = value instanceof Date ? value : new Date(value);
+  if (typeof value === 'string') {
+    const s = value.trim().slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return formatDateOnlyLocal(value);
+  }
+  const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  // Strings ISO com horário: preferir componentes locais para não “voltar” 1 dia no BR.
+  return formatDateOnlyLocal(d);
+}
+
+/** Interpreta YYYY-MM-DD como data civil (sem timezone UTC). */
+function parseDateOnlyLocal(rawDate) {
+  if (!rawDate) return null;
+  if (rawDate instanceof Date && !Number.isNaN(rawDate.getTime())) {
+    return new Date(rawDate.getFullYear(), rawDate.getMonth(), rawDate.getDate());
+  }
+  const s = String(rawDate).trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  const dt = new Date(y, mo, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo || dt.getDate() !== d) return null;
+  return dt;
+}
+
+function formatDateOnlyLocal(dt) {
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function todayIsoDate() {
-  const t = new Date();
-  return new Date(t.getFullYear(), t.getMonth(), t.getDate()).toISOString().slice(0, 10);
+  return formatDateOnlyLocal(new Date());
 }
 
 function roundMoney(value) {
@@ -183,40 +214,32 @@ function resolveValorEVencimentoManutencao(boleto) {
 }
 
 function ensureFutureExpireDate(rawDate) {
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const parsed = rawDate ? new Date(rawDate) : null;
+  const todayStart = parseDateOnlyLocal(todayIsoDate());
+  const parsedStart = parseDateOnlyLocal(rawDate);
 
-  if (parsed && !Number.isNaN(parsed.getTime())) {
-    const parsedStart = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-    if (parsedStart > todayStart) {
-      return parsedStart.toISOString().slice(0, 10);
-    }
+  if (parsedStart && todayStart && parsedStart > todayStart) {
+    return formatDateOnlyLocal(parsedStart);
   }
 
   // Gateway rejeita expire_at inválida/expirada: usar fallback de +3 dias.
-  const fallback = new Date(todayStart);
-  fallback.setDate(fallback.getDate() + 3);
-  return fallback.toISOString().slice(0, 10);
+  const fallback = new Date(todayStart.getFullYear(), todayStart.getMonth(), todayStart.getDate() + 3);
+  return formatDateOnlyLocal(fallback);
 }
 
 /** Vencimento do boleto SICAF para perfil cliente: sempre o dia seguinte. */
 function getSicafBoletoDueDate() {
   const today = new Date();
   const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
-  return tomorrow.toISOString().slice(0, 10);
+  return formatDateOnlyLocal(tomorrow);
 }
 
 /** Vencimento customizado (equipe): hoje em diante; inválido → null. */
 function normalizeSicafDueDateCustom(rawDate) {
-  if (!rawDate) return null;
-  const d = new Date(rawDate);
-  if (Number.isNaN(d.getTime())) return null;
-  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  if (start < todayStart) return null;
-  return start.toISOString().slice(0, 10);
+  const start = parseDateOnlyLocal(rawDate);
+  if (!start) return null;
+  const todayStart = parseDateOnlyLocal(todayIsoDate());
+  if (!todayStart || start < todayStart) return null;
+  return formatDateOnlyLocal(start);
 }
 
 function resolveSicafBoletoVencimento(opts) {
@@ -227,7 +250,7 @@ function resolveSicafBoletoVencimento(opts) {
   if (custom) return custom;
   const fallback = new Date();
   fallback.setDate(fallback.getDate() + 30);
-  return fallback.toISOString().slice(0, 10);
+  return formatDateOnlyLocal(fallback);
 }
 
 function extractValidDoc(documento) {

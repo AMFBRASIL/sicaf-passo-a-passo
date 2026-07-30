@@ -84,7 +84,13 @@ export function PagamentoModal({
   const { user } = useAuth();
   const [metodo, setMetodo] = useState<Metodo>(initialMethod);
   const [data, setData] = useState<string>(
-    vencimentoPadrao ?? new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+    vencimentoPadrao ?? (() => {
+      const d = new Date(Date.now() + 86400000);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    })(),
   );
   const [processing, setProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -106,12 +112,21 @@ export function PagamentoModal({
   const allowCustomizeDueDate = isStaffTipo(user?.perfil?.tipo);
   const podeEditarVencimento = podeGerar && allowCustomizeDueDate && metodo === "boleto";
 
+  const formatLocalIso = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
   const vencimentoExibicao = useMemo(() => {
+    const hoje = formatLocalIso(new Date());
     if (vencimentoPadrao && /^\d{4}-\d{2}-\d{2}$/.test(vencimentoPadrao)) {
-      const hoje = new Date().toISOString().slice(0, 10);
       return vencimentoPadrao >= hoje ? vencimentoPadrao : hoje;
     }
-    return new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const amanha = new Date();
+    amanha.setDate(amanha.getDate() + 1);
+    return formatLocalIso(amanha);
   }, [vencimentoPadrao]);
 
   useEffect(() => {
@@ -142,10 +157,8 @@ export function PagamentoModal({
     }
 
     if (metodo === "boleto" && podeEditarVencimento) {
-      const hoje = new Date();
-      hoje.setHours(0, 0, 0, 0);
-      const venc = new Date(`${data}T00:00:00`);
-      if (Number.isNaN(venc.getTime()) || venc < hoje) {
+      const hoje = formatLocalIso(new Date());
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || data < hoje) {
         setErrorMsg("Data de vencimento inválida. Informe uma data de hoje em diante.");
         return;
       }
