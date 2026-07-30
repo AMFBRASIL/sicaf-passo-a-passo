@@ -483,20 +483,29 @@ async function gerarBoletoManutencao(opts) {
     }
 
     const resolved = resolveValorEVencimentoManutencao(boleto);
-    const valorReais = resolved.valorReais;
-    const valorCentavos = Math.round(valorReais * 100);
-    const protocolo = `MANUT-${boleto.ano_referencia}-${String(boleto.mes_referencia).padStart(2, '0')}-${boleto.id}`;
 
     let vencimentoStr = resolved.vencimentoStr;
+    let valorReais = resolved.valorReais;
+    let descricaoExtra = resolved.descricaoExtra;
+    let acrescimos = resolved.acrescimos;
+    let numeroBoleto = resolved.numeroBoleto;
+
+    // Admin escolheu nova data (hoje em diante): cobra o valor principal, sem multa/juros do atraso antigo.
     if (opts.allowCustomDueDate && opts.dataVencimento) {
       const custom = normalizeSicafDueDateCustom(opts.dataVencimento);
       if (!custom) {
         return { ok: false, error: 'Data de vencimento inválida. Informe uma data de hoje em diante.' };
       }
       vencimentoStr = custom;
+      const principal = extractValorPrincipalBoleto(boleto);
+      valorReais = principal;
+      acrescimos = null;
+      descricaoExtra = '';
+      numeroBoleto = boleto.numero_boleto;
     }
 
-    const acrescimos = resolved.acrescimos;
+    const valorCentavos = Math.round(valorReais * 100);
+    const protocolo = `MANUT-${boleto.ano_referencia}-${String(boleto.mes_referencia).padStart(2, '0')}-${boleto.id}`;
 
     const [pagamentoId] = await db('pagamentos').insert(basePagamentoInsert({
       cliente_id: opts.clienteId,
@@ -505,7 +514,7 @@ async function gerarBoletoManutencao(opts) {
       tipo: 'boleto',
       valor: valorReais,
       valor_centavos: valorCentavos,
-      descricao: `Manutenção CADBRASIL — ${String(boleto.mes_referencia).padStart(2, '0')}/${boleto.ano_referencia}${resolved.descricaoExtra}`,
+      descricao: `Manutenção CADBRASIL — ${String(boleto.mes_referencia).padStart(2, '0')}/${boleto.ano_referencia}${descricaoExtra}`,
       protocolo,
       data_vencimento: vencimentoStr,
       status: 'aguardando',
@@ -561,7 +570,7 @@ async function gerarBoletoManutencao(opts) {
       status: 'Pendente',
       data_vencimento: vencimentoStr,
       valor: valorReais,
-      numero_boleto: resolved.numeroBoleto || (chargeId ? String(chargeId) : null),
+      numero_boleto: numeroBoleto || (chargeId ? String(chargeId) : null),
       codigo_barras: barcode || null,
     });
 
@@ -575,7 +584,7 @@ async function gerarBoletoManutencao(opts) {
       valor: valorReais,
       vencimento: vencimentoStr,
       protocolo,
-      regeneradoVencido: resolved.vencido,
+      regeneradoVencido: Boolean(resolved.vencido && acrescimos),
       acrescimos,
     };
   } catch (e) {
