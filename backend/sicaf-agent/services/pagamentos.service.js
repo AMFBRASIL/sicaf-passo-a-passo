@@ -129,6 +129,8 @@ function roundMoney(value) {
 /** Multa 2% + juros de mora 1% ao mês (proporcional aos dias de atraso). */
 const MULTA_PERCENT_VENCIDO = 2;
 const JUROS_MENSAL_PERCENT_VENCIDO = 1;
+/** Carência: multa/juros só após ultrapassar este número de dias do vencimento. */
+const DIAS_CARENCIA_MULTA = 5;
 
 function extractValorPrincipalBoleto(boleto) {
   const num = String(boleto?.numero_boleto || '');
@@ -142,6 +144,15 @@ function withValorPrincipalMarker(numeroBoleto, valorPrincipal) {
   return `${base}@VB${roundMoney(valorPrincipal).toFixed(2)}`;
 }
 
+function diasAtrasoDesdeVencimento(dataVencimentoOriginal) {
+  const due = toIsoDate(dataVencimentoOriginal);
+  const hoje = todayIsoDate();
+  if (!due || due >= hoje) return 0;
+  const d1 = new Date(`${due}T12:00:00`);
+  const d2 = new Date(`${hoje}T12:00:00`);
+  return Math.max(0, Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
 function isBoletoManutencaoVencido(boleto) {
   const st = String(boleto?.status || '').trim();
   if (['Pago', 'pago', 'Cancelado', 'cancelado'].includes(st)) return false;
@@ -151,25 +162,24 @@ function isBoletoManutencaoVencido(boleto) {
   return due < todayIsoDate();
 }
 
+/** Acréscimos só depois da carência (ex.: a partir do 6º dia de atraso). */
 function calcularAcrescimosBoletoVencido(valorPrincipal, dataVencimentoOriginal) {
   const principal = roundMoney(valorPrincipal);
-  const due = toIsoDate(dataVencimentoOriginal);
   const hoje = todayIsoDate();
+  const diasAtraso = diasAtrasoDesdeVencimento(dataVencimentoOriginal);
 
-  if (!due || due >= hoje) {
+  if (diasAtraso <= DIAS_CARENCIA_MULTA) {
     return {
       valorPrincipal: principal,
       multa: 0,
       juros: 0,
       valorTotal: principal,
-      diasAtraso: 0,
+      diasAtraso,
+      carenciaDias: DIAS_CARENCIA_MULTA,
       vencimentoNovo: hoje,
     };
   }
 
-  const d1 = new Date(`${due}T12:00:00`);
-  const d2 = new Date(`${hoje}T12:00:00`);
-  const diasAtraso = Math.max(1, Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
   const multa = roundMoney(principal * (MULTA_PERCENT_VENCIDO / 100));
   const juros = roundMoney(principal * (JUROS_MENSAL_PERCENT_VENCIDO / 100) * (diasAtraso / 30));
   const valorTotal = roundMoney(principal + multa + juros);
@@ -180,6 +190,7 @@ function calcularAcrescimosBoletoVencido(valorPrincipal, dataVencimentoOriginal)
     juros,
     valorTotal,
     diasAtraso,
+    carenciaDias: DIAS_CARENCIA_MULTA,
     vencimentoNovo: hoje,
   };
 }
@@ -191,13 +202,16 @@ function resolveValorEVencimentoManutencao(boleto) {
   if (vencido) {
     const principal = extractValorPrincipalBoleto(boleto);
     const acrescimos = calcularAcrescimosBoletoVencido(principal, vencimentoOriginal);
+    const comMulta = acrescimos.multa > 0 || acrescimos.juros > 0;
     return {
       vencido: true,
       valorReais: acrescimos.valorTotal,
       vencimentoStr: acrescimos.vencimentoNovo,
-      acrescimos,
-      numeroBoleto: withValorPrincipalMarker(boleto.numero_boleto, principal),
-      descricaoExtra: acrescimos.multa > 0
+      acrescimos: comMulta ? acrescimos : null,
+      numeroBoleto: comMulta
+        ? withValorPrincipalMarker(boleto.numero_boleto, principal)
+        : boleto.numero_boleto,
+      descricaoExtra: comMulta
         ? ` (multa ${acrescimos.multa.toFixed(2)} + juros ${acrescimos.juros.toFixed(2)})`
         : '',
     };
