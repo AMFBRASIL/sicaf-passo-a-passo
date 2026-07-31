@@ -67,6 +67,30 @@ function shouldBustCache(relativePath) {
   return !MODULES_SEM_CACHE_BUST.has(normalized);
 }
 
+/**
+ * Em dev, limpa o cache de toda a árvore sicaf-agent — não só do módulo pedido.
+ * Sem isso, um service editado continua rodando a versão antiga quando é exigido
+ * de dentro de outro service (ex.: clients.service dentro de cobranca-taxa.service).
+ */
+function bustAgentModuleCache() {
+  const preservados = new Set();
+  for (const rel of MODULES_SEM_CACHE_BUST) {
+    try {
+      preservados.add(resolveModule(rel));
+    } catch {
+      /* módulo inexistente: nada a preservar */
+    }
+  }
+
+  const nodeModules = `${path.sep}node_modules${path.sep}`;
+  for (const cached of Object.keys(require.cache)) {
+    if (!cached.startsWith(agentRoot)) continue;
+    if (cached.includes(nodeModules)) continue;
+    if (preservados.has(cached)) continue;
+    delete require.cache[cached];
+  }
+}
+
 function loadModule(relativePath) {
   const normalized = String(relativePath || "").replace(/\\/g, "/");
   if (normalized === "database/connection") {
@@ -75,7 +99,7 @@ function loadModule(relativePath) {
 
   const resolved = resolveModule(relativePath);
   if (shouldBustCache(relativePath)) {
-    delete require.cache[resolved];
+    bustAgentModuleCache();
   }
   return require(resolved);
 }

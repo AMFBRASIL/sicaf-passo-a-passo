@@ -1199,6 +1199,146 @@ async function autorizarPagamentoManutencao(boletoId, clienteIdEsperado, usuario
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SINCRONIZAÇÃO DE STATUS COM O PROVEDOR
+// ══════════════════════════════════════════════════════════════════════════════
+
+const STATUS_PAGAMENTO_FINALIZADO = ['pago', 'cancelado', 'estornado', 'removido'];
+
+/** Repassa a baixa para a tabela de origem (taxa, boleto de manutenção, proposta). */
+async function propagarPagamentoConfirmado(db, pgto) {
+  if (pgto.origem === 'sicaf' && pgto.origem_id) {
+    const sicafTaxa = require('./sicaf-taxa.service');
+    await sicafTaxa.confirmarPagamento(pgto.origem_id);
+    return;
+  }
+
+  if (pgto.origem === 'manutencao' && pgto.origem_id) {
+    await db('manutencao_boletos').where('id', pgto.origem_id).update({
+      status: 'Pago',
+      data_pagamento: db.fn.now(),
+    });
+    try {
+      const boleto = await db('manutencao_boletos').where('id', pgto.origem_id).first();
+      if (boleto) {
+        const automacoes = require('./automacoes.service');
+        await automacoes.onManutencaoBoletoPago({
+          clienteId: Number(boleto.cliente_id || pgto.cliente_id),
+          manutencaoId: Number(boleto.manutencao_id) || undefined,
+          boletoId: Number(pgto.origem_id),
+        });
+      }
+    } catch (e) {
+      console.error('[Pagamentos] Automação manutenção:', e.message);
+    }
+    return;
+  }
+
+  if (pgto.origem === 'avulso' || pgto.origem === 'personalizado') {
+    try {
+      const propostas = require('./propostas-comerciais.service');
+      await propostas.onPagamentoConfirmado(pgto);
+    } catch (e) {
+      console.error('[Pagamentos] Proposta comercial:', e.message);
+    }
+  }
+}
+
+/**
+ * Consulta o provedor e grava a baixa quando a cobrança já foi quitada.
+ * Usado pela página pública de pagamento para refletir PIX pago na hora.
+ */
+async function sincronizarStatusPagamento(pagamentoId) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  try {
+    const pgto = await pagamentosQuery(db).where('id', pagamentoId).first();
+    if (!pgto) return { ok: false, error: 'Pagamento não encontrado' };
+    if (STATUS_PAGAMENTO_FINALIZADO.includes(String(pgto.status || '').toLowerCase())) {
+      return { ok: true, status: pgto.status, alterado: false };
+    }
+
+    let novoStatus = pgto.status;
+    let dadosPix = null;
+
+    if (pgto.tipo === 'pix' && pgto.provider_txid) {
+      const resp = await gerencianetService.consultarPix(String(pgto.provider_txid));
+      const st = String(resp?.status || '');
+      if (st === 'CONCLUIDA') {
+        novoStatus = 'pago';
+        dadosPix = Array.isArray(resp?.pix) ? resp.pix[0] : null;
+      } else if (st.startsWith('REMOVIDA')) {
+        novoStatus = 'cancelado';
+      }
+    } else if (pgto.tipo === 'boleto' && pgto.provider_charge_id) {
+      const resp = await gerencianetService.consultarCobranca(Number(pgto.provider_charge_id));
+      const st = String(resp?.data?.status || resp?.status || '').toLowerCase();
+      if (['paid', 'settled'].includes(st)) novoStatus = 'pago';
+      else if (['canceled', 'refunded'].includes(st)) novoStatus = 'cancelado';
+    } else {
+      return { ok: true, status: pgto.status, alterado: false };
+    }
+
+    if (novoStatus === pgto.status) {
+      return { ok: true, status: pgto.status, alterado: false };
+    }
+
+    const update = { status: novoStatus };
+    if (novoStatus === 'pago') {
+      update.data_pagamento = dadosPix?.horario ? new Date(dadosPix.horario) : db.fn.now();
+      if (dadosPix?.endToEndId) update.provider_e2eid = dadosPix.endToEndId;
+    }
+    await db(PAGAMENTOS_TABLE).where('id', pgto.id).update(update);
+
+    if (novoStatus === 'pago') {
+      await propagarPagamentoConfirmado(db, pgto);
+    }
+
+    return { ok: true, status: novoStatus, alterado: true };
+  } catch (e) {
+    console.error('[Pagamentos] Erro sincronizarStatusPagamento:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * Sincroniza as cobranças em aberto de uma origem (ex.: taxa SICAF 788).
+ * Consulta só o PIX e o boleto mais recentes para não estourar chamadas ao provedor.
+ */
+async function sincronizarStatusOrigem({ origem, origemId, clienteId }) {
+  const db = getDb();
+  if (!db || !origem || !origemId) return { ok: false, alterado: false };
+
+  try {
+    const query = pagamentosQuery(db).where({ origem, origem_id: origemId });
+    if (clienteId) query.andWhere('cliente_id', clienteId);
+    const rows = await query.orderBy('created_at', 'desc');
+
+    const candidatos = [];
+    for (const tipo of ['pix', 'boleto']) {
+      const recente = rows.find(
+        (r) =>
+          r.tipo === tipo &&
+          !STATUS_PAGAMENTO_FINALIZADO.includes(String(r.status || '').toLowerCase()) &&
+          (r.provider_txid || r.provider_charge_id),
+      );
+      if (recente) candidatos.push(recente);
+    }
+
+    let alterado = false;
+    for (const c of candidatos) {
+      const res = await sincronizarStatusPagamento(c.id);
+      if (res.alterado) alterado = true;
+      if (res.status === 'pago') break;
+    }
+    return { ok: true, alterado };
+  } catch (e) {
+    console.error('[Pagamentos] Erro sincronizarStatusOrigem:', e.message);
+    return { ok: false, alterado: false };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // EXPORTS
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -1220,4 +1360,6 @@ module.exports = {
   getPagamento,
   atualizarStatus,
   cancelarBoletoGerencianet,
+  sincronizarStatusPagamento,
+  sincronizarStatusOrigem,
 };

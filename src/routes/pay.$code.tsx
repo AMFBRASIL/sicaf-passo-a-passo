@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   fetchPublicPayGate,
+  gerarPixPublicPay,
   verifyPublicPayAccess,
   type PublicPayGate,
   type PublicPayGuia,
@@ -223,7 +224,14 @@ function PayPageRoute() {
     );
   }
 
-  return <PayPage cobranca={cobranca} />;
+  return (
+    <PayPage
+      cobranca={cobranca}
+      code={code}
+      documento={docDigits || sessionStorage.getItem(payDocStorageKey(code)) || ""}
+      onAtualizar={setCobranca}
+    />
+  );
 }
 
 function PayDocumentoAccessGate({
@@ -326,9 +334,21 @@ function PayDocumentoAccessGate({
   );
 }
 
-function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
+function PayPage({
+  cobranca,
+  code,
+  documento,
+  onAtualizar,
+}: {
+  cobranca: PublicPayPage;
+  code: string;
+  documento: string;
+  onAtualizar: (page: PublicPayPage) => void;
+}) {
   const guiasAbertas = cobranca.guias.filter((g) => g.status !== "pago");
+  const quitado = cobranca.quitado || (cobranca.guias.length > 0 && guiasAbertas.length === 0);
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
+  const [gerandoPix, setGerandoPix] = useState(false);
 
   useEffect(() => {
     const focus = cobranca.focusGuiaId;
@@ -366,6 +386,28 @@ function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
     setSelecionadas((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
+  const guiaParaPix =
+    guiasSelecionadas.find((g) => g.status !== "pago")?.id ||
+    guiasAbertas[0]?.id ||
+    cobranca.focusGuiaId;
+
+  const gerarPix = async () => {
+    if (!documento) {
+      toast.error("Sessão expirada. Recarregue a página e informe o documento novamente.");
+      return;
+    }
+    setGerandoPix(true);
+    const res = await gerarPixPublicPay(code, documento, guiaParaPix);
+    setGerandoPix(false);
+    if (!res.ok || !res.guias) {
+      toast.error(res.error || "Não foi possível gerar o PIX agora. Fale com a equipe CADBRASIL.");
+      return;
+    }
+    onAtualizar(res as PublicPayPage);
+    setMetodo("pix");
+    toast.success("PIX gerado! Escaneie o QR Code ou copie o código.");
+  };
+
   const copy = (txt: string, label: string) => {
     void navigator.clipboard.writeText(txt);
     toast.success(`${label} copiado!`);
@@ -379,6 +421,10 @@ function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
   const whatsappUrl = buildWhatsAppSuporteUrl(
     `Olá! Estou na página de pagamento CADBRASIL (${cobranca.codigo}) e preciso de ajuda para regularizar ${cobranca.empresa.razao}.`,
   );
+
+  if (quitado) {
+    return <PayPagoLayout cobranca={cobranca} whatsappUrl={whatsappUrl} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
@@ -499,7 +545,7 @@ function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
               <CardContent className="pt-0">
                 <Tabs value={metodo} onValueChange={(v) => setMetodo(v as "pix" | "boleto")}>
                   <TabsList>
-                    <TabsTrigger value="pix" className="gap-2" disabled={!pixAtivo}>
+                    <TabsTrigger value="pix" className="gap-2" disabled={!pixAtivo && !guiaParaPix}>
                       <QrCode className="h-4 w-4" /> PIX
                     </TabsTrigger>
                     <TabsTrigger
@@ -538,9 +584,20 @@ function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm text-slate-500 py-4">
-                        PIX ainda não gerado para esta cobrança. Entre em contato com a equipe CADBRASIL.
-                      </p>
+                      <div className="space-y-3 py-2">
+                        <p className="text-sm text-slate-600">
+                          Esta cobrança foi emitida como boleto. Gere o QR Code PIX agora para pagar
+                          na hora — o boleto continua válido.
+                        </p>
+                        <Button onClick={() => void gerarPix()} disabled={gerandoPix || !guiaParaPix}>
+                          {gerandoPix ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <QrCode className="mr-2 h-4 w-4" />
+                          )}
+                          {gerandoPix ? "Gerando PIX..." : "Gerar PIX"}
+                        </Button>
+                      </div>
                     )}
                   </TabsContent>
 
@@ -637,6 +694,124 @@ function PayPage({ cobranca }: { cobranca: PublicPayPage }) {
 
         <footer className="mt-10 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
           © {new Date().getFullYear()} CADBRASIL | Oficial · Sistema operacional para fornecedores do governo
+        </footer>
+      </main>
+
+      <WhatsappFloatingButton href={whatsappUrl} />
+    </div>
+  );
+}
+
+function PayPagoLayout({
+  cobranca,
+  whatsappUrl,
+}: {
+  cobranca: PublicPayPage;
+  whatsappUrl: string;
+}) {
+  const guias = cobranca.guias;
+  const totalPago = guias.reduce((acc, g) => acc + g.valor, 0);
+  const dataPagamento = guias.find((g) => g.dataPagamento)?.dataPagamento;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-slate-100">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-900 text-white">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div className="leading-tight">
+              <p className="text-sm font-bold tracking-tight text-slate-900">
+                CADBRASIL <span className="font-semibold text-slate-500">| Oficial</span>
+              </p>
+              <p className="text-[11px] text-slate-500">Portal seguro de pagamento</p>
+            </div>
+          </div>
+          <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex">
+            <Lock className="h-3.5 w-3.5" />
+            Conexão criptografada · SSL
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <Card className="border-emerald-200 shadow-sm">
+          <CardContent className="space-y-6 p-8">
+            <div className="text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                <CheckCircle2 className="h-9 w-9" />
+              </div>
+              <h1 className="mt-4 text-2xl font-bold text-slate-900">Fatura paga</h1>
+              <p className="mt-2 text-sm text-slate-600">
+                Recebemos o pagamento desta cobrança. Não é necessário fazer mais nada.
+              </p>
+              {dataPagamento ? (
+                <p className="mt-1 text-sm font-medium text-emerald-700">
+                  Pagamento confirmado em {dataPagamento}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <p className="text-sm font-semibold text-slate-900">{cobranca.empresa.razao}</p>
+              <p className="text-xs text-slate-500">
+                {cobranca.empresa.tipoDocumento || "CNPJ"}{" "}
+                {cobranca.empresa.documento || cobranca.empresa.cnpj}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">Cobrança #{cobranca.codigo}</p>
+            </div>
+
+            <div className="space-y-2">
+              {guias.map((g) => (
+                <div
+                  key={g.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-200 bg-emerald-50/60 px-4 py-3"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{g.descricao}</p>
+                    <p className="text-xs text-slate-500">
+                      {g.tipo} · {g.competencia}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold tabular-nums text-slate-900">
+                      {fmtBRL(g.valor)}
+                    </span>
+                    <Badge className="gap-1 border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                      <CheckCircle2 className="h-3 w-3" /> Pago
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-600">Total pago</span>
+              <span className="text-xl font-bold tabular-nums text-emerald-700">
+                {fmtBRL(totalPago)}
+              </span>
+            </div>
+
+            <p className="text-center text-xs text-slate-500">
+              Precisa do comprovante ou de uma segunda via?{" "}
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-emerald-700 hover:underline"
+              >
+                Fale com a equipe CADBRASIL
+              </a>
+            </p>
+          </CardContent>
+        </Card>
+
+        <footer className="mt-10 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
+          © {new Date().getFullYear()} CADBRASIL | Oficial · Sistema operacional para fornecedores do
+          governo
         </footer>
       </main>
 

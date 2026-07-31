@@ -2849,6 +2849,9 @@ function mapFinanceRow(row, tipo, clienteId) {
     pendente: isPendingFinanceStatus(status),
     vencido: isOverdueFinance(status, venc),
     linkBoleto: payLink,
+    // Arquivo/visualização emitidos pelo provedor — o linkBoleto acima é a página /pay.
+    linkPdf: row.gn_pdf || row.link_pdf || null,
+    linkBoletoBanco: row.gn_link || row.link_boleto || null,
     protocolo: row.protocolo || null,
     barcode: row.gn_barcode || row.barcode || null,
     qrcodeText: row.qrcode_text || row.gnQrcodeText || null,
@@ -2950,6 +2953,41 @@ async function loadAllPagamentosList(db, clienteId) {
   });
 }
 
+/** Status em que boleto/PIX do pagamento não devem mais ser oferecidos ao cliente. */
+const PAGAMENTO_ASSET_STATUS_IGNORADO = [
+  'cancelado', 'cancelada', 'estornado', 'erro', 'removido', 'expirado',
+];
+
+/**
+ * Uma mesma cobrança pode ter boleto e PIX em registros distintos de `pagamentos`.
+ * Combina os dois para que a guia exiba as duas formas de pagamento.
+ */
+function mergePagamentoAssets(base, candidatos) {
+  const merged = {
+    gn_pdf: base?.gn_pdf || null,
+    gn_link: base?.gn_link || null,
+    gn_barcode: base?.gn_barcode || null,
+    qrcode_text: base?.qrcode_text || null,
+    qrcode_image: base?.qrcode_image || null,
+    provider_txid: base?.provider_txid || null,
+    provider_charge_id: base?.provider_charge_id || null,
+  };
+
+  for (const p of candidatos || []) {
+    if (!p || (base && p.id === base.id)) continue;
+    if (PAGAMENTO_ASSET_STATUS_IGNORADO.includes(normPayStatus(p.status))) continue;
+    if (!merged.gn_pdf) merged.gn_pdf = p.gn_pdf || null;
+    if (!merged.gn_link) merged.gn_link = p.gn_link || null;
+    if (!merged.gn_barcode) merged.gn_barcode = p.gn_barcode || null;
+    if (!merged.qrcode_text) merged.qrcode_text = p.qrcode_text || null;
+    if (!merged.qrcode_image) merged.qrcode_image = p.qrcode_image || null;
+    if (!merged.provider_txid) merged.provider_txid = p.provider_txid || null;
+    if (!merged.provider_charge_id) merged.provider_charge_id = p.provider_charge_id || null;
+  }
+
+  return merged;
+}
+
 function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
   const taxasById = Object.fromEntries(taxasSicaf.map((t) => [t.id, t]));
   const rows = [];
@@ -2968,6 +3006,10 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
     taxasComPagamento.add(p.origem_id);
     const t = taxasById[p.origem_id];
     const effectiveStatus = resolveFinanceStatus(t?.status, p.status);
+    const assets = mergePagamentoAssets(
+      p,
+      sicafPagamentos.filter((x) => x.origem_id === p.origem_id),
+    );
     rows.push(mapFinanceRow({
       id: t?.id || p.origem_id,
       valor: p.valor != null ? p.valor : t?.valor,
@@ -2979,13 +3021,13 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
       ano_referencia: t?.ano_referencia,
       created_at: p.created_at || t?.created_at,
       pagamentoId: p.id,
-      gn_pdf: p.gn_pdf,
-      gn_link: p.gn_link,
-      gn_barcode: p.gn_barcode,
-      qrcode_text: p.qrcode_text,
-      qrcode_image: p.qrcode_image,
-      provider_txid: p.provider_txid,
-      provider_charge_id: p.provider_charge_id,
+      gn_pdf: assets.gn_pdf,
+      gn_link: assets.gn_link,
+      gn_barcode: assets.gn_barcode,
+      qrcode_text: assets.qrcode_text,
+      qrcode_image: assets.qrcode_image,
+      provider_txid: assets.provider_txid,
+      provider_charge_id: assets.provider_charge_id,
       protocolo: p.protocolo,
     }, 'sicaf', clienteId));
   }
@@ -3067,6 +3109,10 @@ async function getClientFinanceiro(clienteId) {
     for (const b of boletosManut) {
       const pg = pgByOrigem[`manutencao-${b.id}`];
       const effectiveStatus = resolveFinanceStatus(b.status, pg?.status);
+      const assets = mergePagamentoAssets(
+        pg,
+        allPagamentos.filter((p) => p.origem === 'manutencao' && p.origem_id === b.id),
+      );
       const item = mapFinanceRow({
         id: b.id,
         valor: b.valor,
@@ -3080,25 +3126,53 @@ async function getClientFinanceiro(clienteId) {
         created_at: b.created_at,
         pagamentoId: pg?.id || null,
         protocolo: pg?.protocolo,
+        gn_pdf: assets.gn_pdf,
+        gn_link: assets.gn_link,
+        gn_barcode: assets.gn_barcode,
+        qrcode_text: assets.qrcode_text,
+        qrcode_image: assets.qrcode_image,
+        provider_txid: assets.provider_txid,
+        provider_charge_id: assets.provider_charge_id,
       }, 'manutencao', clienteId);
       if (item.pago) manutPagos.push(item);
       else if (item.pendente) manutPendentes.push(item);
     }
 
-    const personalizados = allPagamentos
-      .filter((p) => p.origem === 'personalizado' || p.origem === 'avulso')
-      .map((p) => mapFinanceRow({
-        id: p.id,
-        valor: p.valor,
-        status: p.status,
-        data_vencimento: p.data_vencimento,
-        data_pagamento: p.data_pagamento,
-        forma_pagamento: p.tipo,
-        descricao: p.descricao || 'Cobrança personalizada',
-        created_at: p.created_at,
-        pagamentoId: p.id,
-        protocolo: p.protocolo,
-      }, 'personalizado', clienteId));
+    // Boleto e PIX da mesma cobrança avulsa compartilham origem_id: viram uma guia só.
+    const avulsos = allPagamentos.filter(
+      (p) => p.origem === 'personalizado' || p.origem === 'avulso',
+    );
+    const avulsosPorOrigem = new Map();
+    for (const p of avulsos) {
+      const key = p.origem_id || p.id;
+      if (!avulsosPorOrigem.has(key)) avulsosPorOrigem.set(key, []);
+      avulsosPorOrigem.get(key).push(p);
+    }
+
+    const personalizados = Array.from(avulsosPorOrigem.entries()).map(([key, grupo]) => {
+      const base = grupo[0];
+      const assets = mergePagamentoAssets(base, grupo);
+      return mapFinanceRow({
+        // id da origem (não do pagamento) para a guia sobreviver a reemissões.
+        id: key,
+        valor: base.valor,
+        status: base.status,
+        data_vencimento: base.data_vencimento,
+        data_pagamento: base.data_pagamento,
+        forma_pagamento: base.tipo,
+        descricao: base.descricao || 'Cobrança personalizada',
+        created_at: base.created_at,
+        pagamentoId: base.id,
+        protocolo: base.protocolo,
+        gn_pdf: assets.gn_pdf,
+        gn_link: assets.gn_link,
+        gn_barcode: assets.gn_barcode,
+        qrcode_text: assets.qrcode_text,
+        qrcode_image: assets.qrcode_image,
+        provider_txid: assets.provider_txid,
+        provider_charge_id: assets.provider_charge_id,
+      }, 'personalizado', clienteId);
+    });
 
     const pendencias = [
       ...sicafPendentes.filter((i) => i.vencido),

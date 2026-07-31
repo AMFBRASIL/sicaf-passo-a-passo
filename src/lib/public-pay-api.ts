@@ -9,6 +9,7 @@ export type PublicPayGuia = {
   vencimentoIso: string | null;
   valor: number;
   status: "pendente" | "vencido" | "pago";
+  dataPagamento?: string | null;
   pagamentoId: number | null;
   taxaId: number | null;
   formaPagamento: string | null;
@@ -23,6 +24,8 @@ export type PublicPayGuia = {
 export type PublicPayPage = {
   codigo: string;
   payLink: string;
+  /** Cobrança já quitada: a página vira comprovante, sem meios de pagamento. */
+  quitado?: boolean;
   cliente: {
     nome: string;
     nomeMascarado: string;
@@ -88,6 +91,24 @@ export async function verifyPublicPayAccess(
     auth: false,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ documento, cnpj: documento, cpf: documento }),
+  });
+  return (await res.json()) as { ok: boolean; error?: string } & Partial<PublicPayPage>;
+}
+
+/** Gera o PIX da guia na hora, quando a cobrança foi emitida só como boleto. */
+export async function gerarPixPublicPay(
+  code: string,
+  documento: string,
+  guiaId?: string | null,
+): Promise<{
+  ok: boolean;
+  error?: string;
+} & Partial<PublicPayPage>> {
+  const res = await apiFetch(`/api/public/pay/${encodeURIComponent(code)}/pix`, {
+    method: "POST",
+    auth: false,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ documento, guiaId: guiaId || undefined }),
   });
   return (await res.json()) as { ok: boolean; error?: string } & Partial<PublicPayPage>;
 }

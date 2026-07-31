@@ -88,6 +88,49 @@ function normalizeDocumentDigits(doc) {
   return String(doc || '').replace(/\D/g, '');
 }
 
+/** Cobrança de origem que o código do link representa (sobrevive a reemissões). */
+async function resolvePayTarget(db, parsed) {
+  if (parsed.type === 'taxa') {
+    return { tipo: 'sicaf', id: parsed.id, pagamentoId: null };
+  }
+
+  if (parsed.type === 'pagamento') {
+    const pg = await db('pagamentos').where('id', parsed.id).whereNull('deleted_at').first();
+    if (!pg) return { tipo: null, id: null, pagamentoId: parsed.id };
+    const tipo =
+      pg.origem === 'sicaf' ? 'sicaf' : pg.origem === 'manutencao' ? 'manutencao' : 'personalizado';
+    return { tipo, id: pg.origem_id || null, pagamentoId: parsed.id };
+  }
+
+  return { tipo: null, id: null, pagamentoId: null };
+}
+
+function matchItemAlvo(itens, alvo) {
+  if (!alvo || !itens?.length) return null;
+
+  if (alvo.pagamentoId) {
+    const porPagamento = itens.find((i) => Number(i.pagamentoId) === Number(alvo.pagamentoId));
+    if (porPagamento) return porPagamento;
+  }
+
+  if (alvo.tipo && alvo.id) {
+    const porOrigem = itens.find(
+      (i) => i.tipo === alvo.tipo && Number(i.id) === Number(alvo.id),
+    );
+    if (porOrigem) return porOrigem;
+  }
+
+  return null;
+}
+
+function collectGuiasPagas(financeiro) {
+  return [
+    ...(financeiro?.sicaf?.pagos || []),
+    ...(financeiro?.manutencao?.pagos || []),
+    ...(financeiro?.personalizados || []).filter((p) => p.pago),
+  ];
+}
+
 async function resolvePublicPayContext(code) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
@@ -101,16 +144,24 @@ async function resolvePublicPayContext(code) {
   const cliente = await db('clientes').where('id', clienteId).first();
   if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
 
+  const alvo = await resolvePayTarget(db, parsed);
+
   const clientsService = require('./clients.service');
   const fin = await clientsService.getClientFinanceiro(clienteId);
   if (!fin.ok) return { ok: false, error: fin.error || 'Erro ao carregar pendências' };
 
   const pendencias = fin.financeiro?.pendencias || [];
   if (!pendencias.length) {
+    // Cobrança quitada: o link continua válido, só que em modo comprovante.
+    const pagas = collectGuiasPagas(fin.financeiro);
+    const paga = matchItemAlvo(pagas, alvo) || (parsed.type === 'cliente' ? pagas[0] : null);
+    if (paga) {
+      return { ok: true, db, parsed, alvo, clienteId, cliente, pendencias: [paga], quitado: true };
+    }
     return { ok: false, error: 'Não há pagamentos pendentes para este link' };
   }
 
-  return { ok: true, db, parsed, clienteId, cliente, pendencias };
+  return { ok: true, db, parsed, alvo, clienteId, cliente, pendencias, quitado: false };
 }
 
 function resolveTipoDocumentoCliente(documento) {
@@ -146,7 +197,8 @@ async function getPublicPayGate(code) {
   };
 }
 
-async function verifyPublicPayAccess(code, documentoInput) {
+/** Valida o documento informado no link público e devolve o contexto da cobrança. */
+async function authenticatePublicPay(code, documentoInput) {
   const digits = normalizeDocumentDigits(documentoInput);
   if (digits.length !== 11 && digits.length !== 14) {
     return { ok: false, error: 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.' };
@@ -177,30 +229,155 @@ async function verifyPublicPayAccess(code, documentoInput) {
     };
   }
 
-  return buildPublicPayPagePayload(ctx);
+  return { ok: true, ctx };
+}
+
+/**
+ * Confere no provedor se as guias em aberto já foram quitadas.
+ * Sem isso o cliente que acabou de pagar via PIX continua vendo a cobrança em aberto.
+ */
+async function sincronizarGuiasAbertas(ctx) {
+  const abertas = (ctx.pendencias || []).filter((i) => !i.pago);
+  if (!abertas.length) return false;
+
+  const pagamentosService = require('./pagamentos.service');
+  let alterado = false;
+
+  for (const item of abertas) {
+    const origem = item.tipo === 'personalizado' ? null : item.tipo;
+    const res = origem
+      ? await pagamentosService.sincronizarStatusOrigem({
+          origem,
+          origemId: item.id,
+          clienteId: ctx.clienteId,
+        })
+      : await pagamentosService.sincronizarStatusPagamento(item.pagamentoId);
+    if (res?.alterado) alterado = true;
+  }
+
+  return alterado;
+}
+
+async function verifyPublicPayAccess(code, documentoInput) {
+  const auth = await authenticatePublicPay(code, documentoInput);
+  if (!auth.ok) return auth;
+
+  const mudou = await sincronizarGuiasAbertas(auth.ctx);
+  if (mudou) {
+    const atualizado = await resolvePublicPayContext(code);
+    if (atualizado.ok) return buildPublicPayPagePayload(atualizado);
+  }
+
+  return buildPublicPayPagePayload(auth.ctx);
+}
+
+/** Guia em aberto que o link aponta, ou a primeira disponível. */
+function resolveGuiaAlvoPublicPay(ctx, guiaId) {
+  const abertas = (ctx.pendencias || []).filter((i) => !i.pago);
+  if (!abertas.length) return null;
+
+  if (guiaId) {
+    const escolhida = abertas.find((i) => `${i.tipo}-${i.id}` === String(guiaId).trim());
+    if (escolhida) return escolhida;
+  }
+
+  return matchItemAlvo(abertas, ctx.alvo) || abertas[0];
+}
+
+/**
+ * Gera o PIX sob demanda na página pública quando a cobrança só tem boleto.
+ * Não substitui o boleto: os dois ficam válidos para a mesma guia.
+ */
+async function gerarPixPublicPay(code, documentoInput, guiaId) {
+  const auth = await authenticatePublicPay(code, documentoInput);
+  if (!auth.ok) return auth;
+
+  const { ctx } = auth;
+  const alvo = resolveGuiaAlvoPublicPay(ctx, guiaId);
+  if (!alvo) {
+    return { ok: false, error: 'Nenhuma guia em aberto para gerar PIX.' };
+  }
+  if (alvo.qrcodeText) {
+    return buildPublicPayPagePayload(ctx);
+  }
+
+  const pagamentosService = require('./pagamentos.service');
+  let result;
+
+  if (alvo.tipo === 'sicaf') {
+    result = await pagamentosService.gerarPixSicaf({
+      taxaId: alvo.id,
+      clienteId: ctx.clienteId,
+    });
+  } else if (alvo.tipo === 'manutencao') {
+    result = await pagamentosService.gerarPixManutencao({
+      boletoId: alvo.id,
+      clienteId: ctx.clienteId,
+    });
+  } else {
+    const base = alvo.pagamentoId
+      ? await ctx.db('pagamentos').where('id', alvo.pagamentoId).first()
+      : null;
+    result = await pagamentosService.gerarCobrancaPersonalizada({
+      clienteId: ctx.clienteId,
+      valor: alvo.valor,
+      formaPagamento: 'pix',
+      descricao: alvo.descricao,
+      origem: base?.origem || 'personalizado',
+      origemId: base?.origem_id || alvo.id,
+    });
+  }
+
+  if (!result?.ok) {
+    console.error('[PublicPay] Falha ao gerar PIX:', result?.error);
+    return { ok: false, error: result?.error || 'Não foi possível gerar o PIX agora.' };
+  }
+
+  const atualizado = await resolvePublicPayContext(code);
+  if (!atualizado.ok) return atualizado;
+  return buildPublicPayPagePayload(atualizado);
 }
 
 function buildPublicPayPagePayload(ctx) {
   const { parsed, cliente, pendencias } = ctx;
   const guias = pendencias.map(mapPendenciaToGuia);
-  const focusGuiaId =
-    parsed.type === 'taxa'
-      ? `sicaf-${parsed.id}`
-      : parsed.type === 'pagamento'
-        ? guias.find((g) => g.pagamentoId === parsed.id)?.id || guias[0]?.id
-        : guias[0]?.id;
+
+  const itemAlvo = matchItemAlvo(pendencias, ctx.alvo);
+  const focusGuiaId = itemAlvo ? `${itemAlvo.tipo}-${itemAlvo.id}` : guias[0]?.id;
 
   const guiasAbertas = guias.filter((g) => g.status !== 'pago');
   const totalAberto = guiasAbertas.reduce((acc, g) => acc + g.valor, 0);
+  const quitado = guias.length > 0 && guiasAbertas.length === 0;
 
   const focusGuia = guias.find((g) => g.id === focusGuiaId) || guiasAbertas[0] || guias[0];
   const pixGuia = guiasAbertas.find((g) => g.pixCopiaCola) || focusGuia;
-  const boletoGuia = guiasAbertas.find((g) => g.linhaDigitavel || g.linkBoleto) || focusGuia;
+  const boletoGuia =
+    guiasAbertas.find((g) => g.linhaDigitavel || g.linkPdf || g.linkBoleto) || focusGuia;
 
   const cidade = [cliente.cidade, cliente.estado].filter(Boolean).join('/') || '';
 
+  // Cobrança quitada não expõe mais meio de pagamento.
+  const pagamento = quitado
+    ? {
+        pixCopiaCola: null,
+        pixQrImage: null,
+        linhaDigitavel: null,
+        linkBoleto: null,
+        linkPdf: null,
+        formaPagamento: focusGuia?.formaPagamento || null,
+      }
+    : {
+        pixCopiaCola: pixGuia?.pixCopiaCola || null,
+        pixQrImage: pixGuia?.pixQrImage || null,
+        linhaDigitavel: boletoGuia?.linhaDigitavel || null,
+        linkBoleto: boletoGuia?.linkBoleto || null,
+        linkPdf: boletoGuia?.linkPdf || null,
+        formaPagamento: focusGuia?.formaPagamento || null,
+      };
+
   return {
     ok: true,
+    quitado,
     codigo: parsed.code,
     payLink: `${getPublicPayBaseUrl()}/pay/${parsed.code}`,
     cliente: {
@@ -225,13 +402,7 @@ function buildPublicPayPagePayload(ctx) {
       totalAberto: Math.round(totalAberto * 100) / 100,
       qtdVencidas: guiasAbertas.filter((g) => g.status === 'vencido').length,
     },
-    pagamento: {
-      pixCopiaCola: pixGuia?.pixCopiaCola || null,
-      pixQrImage: pixGuia?.pixQrImage || null,
-      linhaDigitavel: boletoGuia?.linhaDigitavel || null,
-      linkBoleto: boletoGuia?.linkBoleto || `${getPublicPayBaseUrl()}/pay/${parsed.code}`,
-      formaPagamento: focusGuia?.formaPagamento || null,
-    },
+    pagamento,
     expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),
   };
 }
@@ -1219,13 +1390,16 @@ function mapPendenciaToGuia(item) {
     vencimentoIso: item.dataVencimento || null,
     valor: toNumber(item.valor),
     status: mapGuiaStatus(item),
+    dataPagamento: item.dataPagamento ? formatDateBr(item.dataPagamento) : null,
     pagamentoId: item.pagamentoId || null,
     taxaId: item.tipo === 'sicaf' ? item.id : null,
     formaPagamento: item.formaPagamento || null,
     pixCopiaCola: item.qrcodeText || null,
     pixQrImage: item.qrcodeImage || null,
     linhaDigitavel: item.barcode || null,
-    linkBoleto: item.linkBoleto || null,
+    // Só o arquivo real do provedor — item.linkBoleto aponta para a própria página /pay.
+    linkBoleto: item.linkBoletoBanco || null,
+    linkPdf: item.linkPdf || null,
     protocolo: item.protocolo || null,
   };
 }
@@ -1245,6 +1419,7 @@ module.exports = {
   getPublicPayGate,
   verifyPublicPayAccess,
   getPublicPayPage,
+  gerarPixPublicPay,
   buildPayLink,
   buildPayCode,
   parsePayCode,
