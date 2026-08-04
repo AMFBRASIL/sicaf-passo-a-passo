@@ -262,6 +262,23 @@ async function verifyPublicPayAccess(code, documentoInput) {
   const auth = await authenticatePublicPay(code, documentoInput);
   if (!auth.ok) return auth;
 
+  // Corrige taxa SICAF ainda no preço antigo (ex.: 476,50 após config subir para 985,50).
+  if (auth.ctx.alvo?.tipo === 'sicaf' && auth.ctx.alvo.id) {
+    try {
+      const sicafTaxa = require('./sicaf-taxa.service');
+      const alinhado = await sicafTaxa.alinharValorTaxaSicafPendente(auth.ctx.alvo.id, {
+        clienteId: auth.ctx.clienteId,
+        regenerar: true,
+      });
+      if (alinhado?.alterado) {
+        const atualizado = await resolvePublicPayContext(code);
+        if (atualizado.ok) auth.ctx = atualizado;
+      }
+    } catch (e) {
+      console.warn('[PublicPay] Falha ao alinhar valor da taxa:', e.message);
+    }
+  }
+
   const mudou = await sincronizarGuiasAbertas(auth.ctx);
   if (mudou) {
     const atualizado = await resolvePublicPayContext(code);

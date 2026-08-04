@@ -457,8 +457,143 @@ async function getStatusTaxa(clienteId, ano) {
   }
 }
 
+/**
+ * Confirma se a taxa pendente está com o valor atual da configuração/plano.
+ * Se estiver desatualizada, atualiza a taxa, cancela cobranças abertas no valor antigo
+ * e regenera boleto (+ PIX se já existia), para a página /pay não cobrar preço velho.
+ */
+async function alinharValorTaxaSicafPendente(taxaId, opts = {}) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const id = parseInt(taxaId, 10);
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, error: 'Taxa inválida' };
+
+  try {
+    const taxa = await db('taxas_sicaf').where('id', id).first();
+    if (!taxa) return { ok: false, error: 'Taxa SICAF não encontrada' };
+
+    const st = String(taxa.status || '').trim().toLowerCase();
+    if (['pago', 'cancelado', 'cancelada'].includes(st)) {
+      return { ok: true, alterado: false, valor: Number(taxa.valor), taxaId: id };
+    }
+
+    const planoCodigo =
+      opts.planoCodigo ||
+      planosService.inferPlanoCodigoFromDescricao(taxa.descricao);
+    const valorEsperado = await planosService.resolveValorTaxaSicaf(planoCodigo);
+    const valorAtual = Math.round(Number(taxa.valor) * 100) / 100;
+    const esperado = Math.round(Number(valorEsperado) * 100) / 100;
+
+    const abertos = await db('pagamentos')
+      .where({ origem: 'sicaf', origem_id: id })
+      .whereNull('deleted_at')
+      .whereNotIn('status', ['pago', 'cancelado', 'estornado', 'removido', 'erro']);
+
+    const pagamentoDesatualizado = abertos.some(
+      (p) => Math.round(Number(p.valor) * 100) / 100 !== esperado,
+    );
+
+    if (valorAtual === esperado && !pagamentoDesatualizado) {
+      return { ok: true, alterado: false, valor: valorAtual, taxaId: id };
+    }
+
+    if (valorAtual !== esperado) {
+      await db('taxas_sicaf').where('id', id).update({
+        valor: esperado,
+      });
+    }
+
+    const tinhaPix = abertos.some((p) => p.tipo === 'pix' && p.qrcode_text);
+    const clienteId = opts.clienteId || taxa.cliente_id;
+
+    for (const p of abertos) {
+      if (p.tipo === 'boleto' && p.provider_charge_id) {
+        try {
+          await require('./gerencianet.service').cancelarCobranca(Number(p.provider_charge_id));
+        } catch (_) {
+          /* boleto antigo pode já estar inválido na Efí */
+        }
+      }
+      await db('pagamentos').where('id', p.id).update({
+        status: 'cancelado',
+        deleted_at: db.fn.now(),
+        updated_at: db.fn.now(),
+      });
+    }
+
+    const regenerar = opts.regenerar !== false;
+    let boleto = null;
+    let pix = null;
+
+    if (regenerar && clienteId) {
+      boleto = await pagamentosService.gerarBoletoSicaf({
+        taxaId: id,
+        clienteId,
+        geradoPor: opts.geradoPor || null,
+        skipValorSync: true,
+      });
+      if (tinhaPix || opts.gerarPix) {
+        pix = await pagamentosService.gerarPixSicaf({
+          taxaId: id,
+          clienteId,
+          geradoPor: opts.geradoPor || null,
+          skipValorSync: true,
+        });
+      }
+    }
+
+    console.log(
+      `[Taxa SICAF] Valor alinhado taxa=${id}: R$ ${valorAtual.toFixed(2)} → R$ ${esperado.toFixed(2)}`,
+    );
+
+    return {
+      ok: true,
+      alterado: true,
+      valorAnterior: valorAtual,
+      valor: esperado,
+      taxaId: id,
+      boleto,
+      pix,
+    };
+  } catch (e) {
+    console.error('[Taxa SICAF] Erro alinharValorTaxaSicafPendente:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * Atualiza só o campo valor das taxas pendentes (sem regenerar cobrança na Efí).
+ * Usado ao salvar a configuração SICAF.
+ */
+async function syncValoresTaxasPendentes() {
+  const db = getDb();
+  if (!db) return { ok: false, updated: 0 };
+
+  try {
+    const pendentes = await db('taxas_sicaf').whereIn('status', ['Pendente', 'pendente']);
+    let updated = 0;
+    for (const taxa of pendentes) {
+      const planoCodigo = planosService.inferPlanoCodigoFromDescricao(taxa.descricao);
+      const esperado = await planosService.resolveValorTaxaSicaf(planoCodigo);
+      const atual = Math.round(Number(taxa.valor) * 100) / 100;
+      const exp = Math.round(Number(esperado) * 100) / 100;
+      if (atual !== exp) {
+        await db('taxas_sicaf').where('id', taxa.id).update({ valor: exp });
+        updated += 1;
+      }
+    }
+    return { ok: true, updated };
+  } catch (e) {
+    console.warn('[Taxa SICAF] syncValoresTaxasPendentes:', e.message);
+    return { ok: false, updated: 0, error: e.message };
+  }
+}
+
 module.exports = {
   gerarTaxa,
   confirmarPagamento,
   getStatusTaxa,
+  alinharValorTaxaSicafPendente,
+  syncValoresTaxasPendentes,
 };

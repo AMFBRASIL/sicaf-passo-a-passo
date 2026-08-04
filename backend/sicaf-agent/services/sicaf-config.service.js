@@ -253,6 +253,13 @@ async function updateSicafSettings(payload) {
   const resolvedForSync = rawToSettings({ ...DEFAULTS, ...updates });
   await syncPlanosPrecos(db, resolvedForSync);
 
+  try {
+    const sicafTaxa = require('./sicaf-taxa.service');
+    await sicafTaxa.syncValoresTaxasPendentes();
+  } catch (e) {
+    console.warn('[SICAF Config] syncValoresTaxasPendentes:', e.message);
+  }
+
   invalidateSicafConfigCache();
   return {
     ok: true,

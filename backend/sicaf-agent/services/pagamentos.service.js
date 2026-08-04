@@ -292,12 +292,28 @@ async function gerarBoletoSicaf(opts) {
 
   try {
     // 1. Buscar dados da taxa
-    const taxa = await db('taxas_sicaf').where('id', opts.taxaId).first();
+    let taxa = await db('taxas_sicaf').where('id', opts.taxaId).first();
     if (!taxa) return { ok: false, error: 'Taxa SICAF não encontrada' };
 
     // 2. Buscar dados do cliente
     const cliente = await db('clientes').where('id', opts.clienteId).first();
     if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
+
+    // Alinha o valor da taxa ao preço atual da configuração/plano antes de emitir.
+    if (!opts.skipValorSync) {
+      const st = String(taxa.status || '').trim().toLowerCase();
+      if (!['pago', 'cancelado', 'cancelada'].includes(st)) {
+        const planosService = require('./planos.service');
+        const planoCodigo = planosService.inferPlanoCodigoFromDescricao(taxa.descricao);
+        const valorEsperado = await planosService.resolveValorTaxaSicaf(planoCodigo);
+        const atual = Math.round(Number(taxa.valor) * 100) / 100;
+        const esperado = Math.round(Number(valorEsperado) * 100) / 100;
+        if (atual !== esperado) {
+          await db('taxas_sicaf').where('id', taxa.id).update({ valor: esperado });
+          taxa = { ...taxa, valor: esperado };
+        }
+      }
+    }
 
     const valorReais = parseFloat(taxa.valor);
     const valorCentavos = Math.round(valorReais * 100);
@@ -395,11 +411,26 @@ async function gerarPixSicaf(opts) {
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
   try {
-    const taxa = await db('taxas_sicaf').where('id', opts.taxaId).first();
+    let taxa = await db('taxas_sicaf').where('id', opts.taxaId).first();
     if (!taxa) return { ok: false, error: 'Taxa SICAF não encontrada' };
 
     const cliente = await db('clientes').where('id', opts.clienteId).first();
     if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
+
+    if (!opts.skipValorSync) {
+      const st = String(taxa.status || '').trim().toLowerCase();
+      if (!['pago', 'cancelado', 'cancelada'].includes(st)) {
+        const planosService = require('./planos.service');
+        const planoCodigo = planosService.inferPlanoCodigoFromDescricao(taxa.descricao);
+        const valorEsperado = await planosService.resolveValorTaxaSicaf(planoCodigo);
+        const atual = Math.round(Number(taxa.valor) * 100) / 100;
+        const esperado = Math.round(Number(valorEsperado) * 100) / 100;
+        if (atual !== esperado) {
+          await db('taxas_sicaf').where('id', taxa.id).update({ valor: esperado });
+          taxa = { ...taxa, valor: esperado };
+        }
+      }
+    }
 
     const valorReais = parseFloat(taxa.valor);
     const valorCentavos = Math.round(valorReais * 100);

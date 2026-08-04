@@ -102,14 +102,24 @@ async function resolveValorTaxaSicaf(planoCodigo) {
       return plano.preco;
     }
     if (planoCodigo === 'sicaf_imediato') return precos.valorCadastroSicafImediato;
+    if (planoCodigo === 'sicaf_padrao') return precos.valorCadastroSicaf;
   }
 
   return precos.valorCadastroSicaf;
+}
+
+/** Infere o plano a partir da descrição da taxa (ex.: "Cadastro Padrão"). */
+function inferPlanoCodigoFromDescricao(descricao) {
+  const d = String(descricao || '').toLowerCase();
+  if (d.includes('imediato') || d.includes('imediata')) return 'sicaf_imediato';
+  if (d.includes('padrão') || d.includes('padrao')) return 'sicaf_padrao';
+  return null;
 }
 
 module.exports = {
   listPlanosSicafCadastro,
   getPlanoByCodigo,
   resolveValorTaxaSicaf,
+  inferPlanoCodigoFromDescricao,
   SICAF_CADASTRO_CODIGOS,
 };
