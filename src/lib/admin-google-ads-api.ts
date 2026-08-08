@@ -103,6 +103,8 @@ export type GoogleAdsPeriodoSemana = {
 export type AdminGoogleAdsPainel = {
   periodo: { days: number; since: string };
   palavra?: string;
+  canal?: "google" | "bing";
+  canalLabel?: string;
   kpis: {
     investimento: number;
     investimentoFormatado: string;
@@ -121,17 +123,25 @@ export type AdminGoogleAdsPainel = {
   notas?: string[];
 };
 
+export type AdsCanal = "google" | "bing";
+
 export async function fetchAdminGoogleAds(opts: {
   days?: number;
   palavra?: string;
   pagos?: boolean;
+  canal?: AdsCanal;
 } = {}): Promise<{ ok: boolean; error?: string } & Partial<AdminGoogleAdsPainel>> {
+  const canal = opts.canal === "bing" ? "bing" : "google";
   const params = new URLSearchParams();
-  if (opts.days) params.set("days", String(opts.days));
+  if (opts.days != null && Number.isFinite(opts.days)) params.set("days", String(opts.days));
   if (opts.palavra?.trim()) params.set("palavra", opts.palavra.trim());
   if (opts.pagos) params.set("pagos", "1");
   const qs = params.toString();
-  const res = await apiFetch(`/api/admin/google-ads${qs ? `?${qs}` : ""}`);
+  const path =
+    canal === "bing"
+      ? `/api/admin/bing-ads${qs ? `?${qs}` : ""}`
+      : `/api/admin/google-ads${qs ? `?${qs}` : ""}`;
+  const res = await apiFetch(path);
   return res.json();
 }
 

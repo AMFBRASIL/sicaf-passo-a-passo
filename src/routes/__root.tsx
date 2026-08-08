@@ -176,8 +176,9 @@ function RootLayout() {
     pathname.startsWith("/auth/");
   const isIframeChat =
     pathname === "/sicaf-assistant-chat" || pathname === "/sicaf-assistant";
+  const isAcessoRemoto = pathname === "/acesso-remoto" || pathname.startsWith("/acesso-remoto/");
 
-  if (isAdmin || isAuth || isIframeChat || isPublicPay || isOnboarding) {
+  if (isAdmin || isAuth || isIframeChat || isPublicPay || isOnboarding || isAcessoRemoto) {
     return (
       <ThemeProvider>
         <ClientOnly

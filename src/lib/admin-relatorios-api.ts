@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/api-fetch";
 
-export type RelatorioKey = "clientes" | "financeiro" | "sicaf" | "suporte" | "googleads";
+export type RelatorioKey = "clientes" | "financeiro" | "sicaf" | "suporte" | "googleads" | "acesso-remoto";
 
 export type RelatorioCard = {
   key: RelatorioKey;
@@ -113,6 +113,80 @@ export async function fetchAdminRelatorios(): Promise<{
   resumo?: { totalArquivos: number; tamanhoEstimadoMb: number };
 }> {
   const res = await apiFetch("/api/admin/relatorios");
+  return res.json();
+}
+
+export type AcessoRemotoMensagemRelatorio = {
+  id: number;
+  remetente: "cliente" | "atendente" | string;
+  remetenteNome: string;
+  texto: string;
+  createdAt: string;
+  createdAtLabel: string;
+};
+
+export type AcessoRemotoSessaoRelatorio = {
+  id: number;
+  codigo: string;
+  codigoFormatado: string;
+  clienteId: number;
+  clienteNome: string;
+  atendenteId: number | null;
+  atendenteNome: string | null;
+  status: string;
+  statusLabel: string;
+  resolucao: string | null;
+  webrtcState: string | null;
+  createdAt: string | null;
+  connectedAt: string | null;
+  sharingAt: string | null;
+  endedAt: string | null;
+  createdAtLabel: string;
+  connectedAtLabel: string;
+  sharingAtLabel: string;
+  endedAtLabel: string;
+  duracaoSegundos: number;
+  sharingSeconds: number;
+  tempoAtendimento: string;
+  tempoTela: string;
+  endedBy: string | null;
+  endedByLabel: string;
+  mensagensCount: number;
+  compartilhou: boolean;
+  mensagens?: AcessoRemotoMensagemRelatorio[];
+  conversa?: string;
+};
+
+export async function fetchAcessoRemotoRelatorios(opts?: {
+  periodo?: string;
+  dataIni?: string;
+  dataFim?: string;
+  stRemoto?: string;
+  comTela?: string;
+}): Promise<{
+  ok: boolean;
+  error?: string;
+  sessoes?: AcessoRemotoSessaoRelatorio[];
+  total?: number;
+  periodo?: { since: string; until: string };
+}> {
+  const params = new URLSearchParams();
+  if (opts?.periodo) params.set("periodo", opts.periodo);
+  if (opts?.dataIni) params.set("dataIni", opts.dataIni);
+  if (opts?.dataFim) params.set("dataFim", opts.dataFim);
+  if (opts?.stRemoto) params.set("stRemoto", opts.stRemoto);
+  if (opts?.comTela) params.set("comTela", opts.comTela);
+  const qs = params.toString();
+  const res = await apiFetch(`/api/admin/relatorios/acesso-remoto${qs ? `?${qs}` : ""}`);
+  return res.json();
+}
+
+export async function fetchAcessoRemotoDetalhe(id: number): Promise<{
+  ok: boolean;
+  error?: string;
+  sessao?: AcessoRemotoSessaoRelatorio;
+}> {
+  const res = await apiFetch(`/api/admin/relatorios/acesso-remoto/${id}`);
   return res.json();
 }
 

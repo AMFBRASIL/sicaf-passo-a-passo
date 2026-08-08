@@ -6,9 +6,10 @@ const adminClientsService = require('./admin-clients.service');
 const adminSicafService = require('./admin-sicaf.service');
 const adminGoogleAdsService = require('./admin-google-ads.service');
 const ticketsService = require('./tickets.service');
+const suporteRemotoService = require('./suporte-remoto.service');
 const { calcDaysRemaining } = require('../utils/sicaf-status');
 
-const TIPOS = ['clientes', 'financeiro', 'sicaf', 'suporte', 'googleads'];
+const TIPOS = ['clientes', 'financeiro', 'sicaf', 'suporte', 'googleads', 'acesso-remoto'];
 
 const COLUNAS = {
   clientes: [
@@ -60,6 +61,22 @@ const COLUNAS = {
     { key: 'cpc', label: 'CPC' },
     { key: 'conversoes', label: 'Conversões' },
     { key: 'roas', label: 'ROAS' },
+  ],
+  'acesso-remoto': [
+    { key: 'codigo', label: 'Código' },
+    { key: 'cliente', label: 'Cliente' },
+    { key: 'atendente', label: 'Atendente' },
+    { key: 'iniciado_em', label: 'Iniciado em' },
+    { key: 'conectado_em', label: 'Conectado em' },
+    { key: 'compartilhou_em', label: 'Compartilhou em' },
+    { key: 'encerrado_em', label: 'Encerrado em' },
+    { key: 'tempo_atendimento', label: 'Tempo de atendimento' },
+    { key: 'tempo_tela', label: 'Tempo de tela' },
+    { key: 'mensagens', label: 'Mensagens' },
+    { key: 'resolucao', label: 'Resolução' },
+    { key: 'encerrado_por', label: 'Encerrado por' },
+    { key: 'status', label: 'Status' },
+    { key: 'conversa', label: 'Conversa do chat' },
   ],
 };
 
@@ -171,6 +188,7 @@ function buildFilename(tipo, formato, periodo) {
     sicaf: 'gestao_sicaf',
     suporte: 'suporte_sla',
     googleads: 'google_ads',
+    'acesso-remoto': 'acesso_remoto',
   };
   return `${names[tipo] || tipo}_${periodo || '30d'}_${stamp}.${ext}`;
 }
@@ -498,6 +516,15 @@ async function gerarGoogleAds(filtros, range) {
   return { ok: true, rows, total: rows.length };
 }
 
+async function gerarAcessoRemoto(filtros, range) {
+  return suporteRemotoService.listarSessoesRelatorio({
+    since: range.since,
+    until: range.until,
+    somenteConcluidos: filtros.stRemoto !== 'todos',
+    comTela: filtros.comTela || '',
+  });
+}
+
 async function gerarRelatorio(opts = {}) {
   const tipo = String(opts.tipo || '').toLowerCase();
   if (!TIPOS.includes(tipo)) {
@@ -524,6 +551,9 @@ async function gerarRelatorio(opts = {}) {
       break;
     case 'googleads':
       generated = await gerarGoogleAds(filtros, range);
+      break;
+    case 'acesso-remoto':
+      generated = await gerarAcessoRemoto(filtros, range);
       break;
     default:
       return { ok: false, error: 'Tipo não suportado' };
@@ -700,6 +730,18 @@ async function fetchContagens() {
       counts.googleads = parseInt(g?.total, 10) || 0;
     } else {
       counts.googleads = 0;
+    }
+
+    const hasRemoto = await db.schema.hasTable('suporte_remoto_sessoes');
+    if (hasRemoto) {
+      const remoto = await db('suporte_remoto_sessoes')
+        .where('status', 'ended')
+        .whereNotNull('atendente_id')
+        .count({ total: '*' })
+        .first();
+      counts['acesso-remoto'] = parseInt(remoto?.total, 10) || 0;
+    } else {
+      counts['acesso-remoto'] = 0;
     }
   } catch (e) {
     console.warn('[AdminRelatorios] Contagens:', e.message);

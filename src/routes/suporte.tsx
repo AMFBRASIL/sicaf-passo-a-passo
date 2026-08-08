@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   criarTicket,
@@ -30,6 +30,7 @@ import {
   FileText,
   Headphones,
   HelpCircle,
+  MonitorUp,
   Image as ImageIcon,
   MessageCircle,
   Paperclip,
@@ -900,7 +901,20 @@ function SupportPage() {
         icon={<Headphones className="h-5 w-5" />}
         title="Suporte"
         subtitle="Estamos aqui para te ajudar — sem termos técnicos."
-        action={<NovoChamadoDialog onCreated={() => void carregar()} />}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              asChild
+              className="gap-2 bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-600"
+            >
+              <a href="/acesso-remoto" target="_blank" rel="noopener noreferrer">
+                <MonitorUp className="h-4 w-4" />
+                Acesso Remoto
+              </a>
+            </Button>
+            <NovoChamadoDialog onCreated={() => void carregar()} />
+          </div>
+        }
       />
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">

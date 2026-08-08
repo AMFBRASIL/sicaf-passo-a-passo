@@ -28,17 +28,95 @@ function formatCurrencyBR(value) {
   return toNumber(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function sinceDate(days) {
-  const d = Math.min(Math.max(parseInt(days, 10) || 30, 1), 365);
-  const since = new Date();
-  since.setDate(since.getDate() - d);
-  return { days: d, sinceStr: since.toISOString().split('T')[0] };
+/** Limpa utm_term sujo tipo ["cadastro sicaf","cadastro sicaf"]. */
+function normalizeUtmTerm(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return '';
+  if (s.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed) && parsed.length) {
+        s = String(parsed[0] ?? '').trim();
+      }
+    } catch (_) {
+      const m = s.match(/"([^"]+)"/);
+      if (m) s = m[1];
+    }
+  }
+  return s;
 }
 
-function googleAdsFilter(qb) {
+function formatDateOnlyLocal(dt) {
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** days=0 → hoje; -1 → desde sempre; demais = janela em dias (sem teto de 365). */
+function sinceDate(days) {
+  const parsed = parseInt(days, 10);
+  if (parsed === -1) {
+    return { days: -1, sinceStr: '2000-01-01' };
+  }
+  const d = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), 3650) : 30;
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  since.setDate(since.getDate() - d);
+  return { days: d, sinceStr: formatDateOnlyLocal(since) };
+}
+
+/** Normaliza canal da inteligência de ads: google | bing. */
+function normalizeCanal(canal) {
+  const c = String(canal || 'google').trim().toLowerCase();
+  return c === 'bing' || c === 'microsoft' || c === 'msn' ? 'bing' : 'google';
+}
+
+/**
+ * Filtro de sessões por canal de mídia paga.
+ * Bing: msclkid ou utm_source bing/microsoft (aceita valor sujo tipo ["bing","bing"]).
+ * Google: gclid ou utm_source=google.
+ */
+function canalAdsFilter(qb, canal) {
+  const c = normalizeCanal(canal);
+  if (c === 'bing') {
+    qb.where(function () {
+      this.where(function () {
+        this.whereNotNull('ts.msclkid').where('ts.msclkid', '!=', '');
+      })
+        .orWhereRaw("LOWER(TRIM(COALESCE(ts.utm_source,''))) IN ('bing','microsoft','msn')")
+        .orWhereRaw("LOWER(COALESCE(ts.utm_source,'')) LIKE '%bing%'")
+        .orWhereRaw("LOWER(COALESCE(ts.utm_source,'')) LIKE '%microsoft%'");
+    });
+    return;
+  }
   qb.where(function () {
-    this.whereNotNull('ts.gclid').where('ts.gclid', '!=', '').orWhereRaw("LOWER(TRIM(ts.utm_source)) = 'google'");
+    this.whereNotNull('ts.gclid')
+      .where('ts.gclid', '!=', '')
+      .orWhereRaw("LOWER(TRIM(COALESCE(ts.utm_source,''))) = 'google'");
   });
+}
+
+/** @deprecated use canalAdsFilter(qb, 'google') */
+function googleAdsFilter(qb) {
+  canalAdsFilter(qb, 'google');
+}
+
+/** Fragmento SQL AND (...) para unions raw. */
+function canalAdsSql(canal) {
+  const c = normalizeCanal(canal);
+  if (c === 'bing') {
+    return `(
+      (ts.msclkid IS NOT NULL AND TRIM(ts.msclkid) <> '')
+      OR LOWER(TRIM(COALESCE(ts.utm_source,''))) IN ('bing','microsoft','msn')
+      OR LOWER(COALESCE(ts.utm_source,'')) LIKE '%bing%'
+      OR LOWER(COALESCE(ts.utm_source,'')) LIKE '%microsoft%'
+    )`;
+  }
+  return `(
+    (ts.gclid IS NOT NULL AND TRIM(ts.gclid) <> '')
+    OR LOWER(TRIM(COALESCE(ts.utm_source,''))) = 'google'
+  )`;
 }
 
 async function safeQuery(fallback, fn) {
@@ -83,13 +161,13 @@ async function fetchInvestimento(db, sinceStr) {
   return total;
 }
 
-async function fetchPalavrasValidadas(db, sinceStr) {
+async function fetchPalavrasValidadas(db, sinceStr, canal = 'google') {
   const keywordRows = await safeQuery([], () => {
     const q = db('tracking_sessoes as ts')
       .where('ts.created_at', '>=', sinceStr)
       .whereNotNull('ts.utm_term')
       .where('ts.utm_term', '!=', '');
-    googleAdsFilter(q);
+    canalAdsFilter(q, canal);
     return q
       .groupByRaw('LOWER(TRIM(ts.utm_term))')
       .select(
@@ -102,6 +180,8 @@ async function fetchPalavrasValidadas(db, sinceStr) {
       .orderBy('clicks', 'desc')
       .limit(100);
   });
+
+  const canalSql = canalAdsSql(canal);
 
   const pagosRows = await safeQuery([], async () => {
     const hasPg = await hasTable(db, 'pagamentos_gerencianet');
@@ -125,7 +205,7 @@ async function fetchPalavrasValidadas(db, sinceStr) {
         WHERE ts.created_at >= ?
           AND ts.utm_term IS NOT NULL AND TRIM(ts.utm_term) <> ''
           AND ts.cliente_id IS NOT NULL
-          AND (ts.gclid IS NOT NULL AND TRIM(ts.gclid) <> '' OR LOWER(TRIM(ts.utm_source)) = 'google')
+          AND ${canalSql}
       `);
       bindings.push(sinceStr, sinceStr);
     }
@@ -144,7 +224,7 @@ async function fetchPalavrasValidadas(db, sinceStr) {
         WHERE ts.created_at >= ?
           AND ts.utm_term IS NOT NULL AND TRIM(ts.utm_term) <> ''
           AND ts.cliente_id IS NOT NULL
-          AND (ts.gclid IS NOT NULL AND TRIM(ts.gclid) <> '' OR LOWER(TRIM(ts.utm_source)) = 'google')
+          AND ${canalSql}
       `);
       bindings.push(sinceStr, sinceStr);
     }
@@ -165,7 +245,7 @@ async function fetchPalavrasValidadas(db, sinceStr) {
 
   const pagosMap = Object.fromEntries(
     pagosRows.map((r) => [
-      String(r.palavra || '').toLowerCase().trim(),
+      normalizeUtmTerm(String(r.palavra || '')).toLowerCase().trim(),
       {
         pagos: toNumber(r.pagos),
         qtdPagamentos: toNumber(r.qtd_pagamentos),
@@ -174,8 +254,28 @@ async function fetchPalavrasValidadas(db, sinceStr) {
     ]),
   );
 
-  return keywordRows.map((row) => {
-    const palavra = fixMojibake(String(row.palavra || '').trim());
+  /** Reagrupa após normalizar termos sujos (arrays JSON no utm_term). */
+  const merged = new Map();
+  for (const row of keywordRows) {
+    const palavra = fixMojibake(normalizeUtmTerm(String(row.palavra || '').trim()));
+    if (!palavra) continue;
+    const key = palavra.toLowerCase();
+    const cur = merged.get(key) || {
+      palavra,
+      clicks: 0,
+      cadastros: 0,
+      usuarios: 0,
+      conversoes_tracking: 0,
+    };
+    cur.clicks += toNumber(row.clicks);
+    cur.cadastros += toNumber(row.cadastros);
+    cur.usuarios += toNumber(row.usuarios);
+    cur.conversoes_tracking += toNumber(row.conversoes_tracking);
+    merged.set(key, cur);
+  }
+
+  return Array.from(merged.values()).map((row) => {
+    const palavra = row.palavra;
     const key = palavra.toLowerCase();
     const pago = pagosMap[key] || { pagos: 0, qtdPagamentos: 0, receita: 0 };
     const clicks = toNumber(row.clicks);
@@ -197,7 +297,7 @@ async function fetchPalavrasValidadas(db, sinceStr) {
   });
 }
 
-async function fetchClientesPorPalavra(db, sinceStr, palavra) {
+async function fetchClientesPorPalavra(db, sinceStr, palavra, canal = 'google') {
   if (!palavra?.trim()) return [];
 
   const term = palavra.trim().toLowerCase();
@@ -205,8 +305,13 @@ async function fetchClientesPorPalavra(db, sinceStr, palavra) {
     db('tracking_sessoes as ts')
       .innerJoin('clientes as c', 'ts.cliente_id', 'c.id')
       .where('ts.created_at', '>=', sinceStr)
-      .whereRaw('LOWER(TRIM(ts.utm_term)) = ?', [term])
-      .modify((qb) => googleAdsFilter(qb))
+      .where(function () {
+        this.whereRaw('LOWER(TRIM(ts.utm_term)) = ?', [term]).orWhereRaw(
+          'LOWER(ts.utm_term) LIKE ?',
+          [`%"${term}"%`],
+        );
+      })
+      .modify((qb) => canalAdsFilter(qb, canal))
       .groupBy('ts.cliente_id', 'c.razao_social', 'c.nome_fantasia', 'c.documento')
       .select(
         'ts.cliente_id',
@@ -257,7 +362,7 @@ async function fetchClientesPorPalavra(db, sinceStr, palavra) {
   }));
 }
 
-async function fetchPagosDetalhePorPalavra(db, sinceStr, palavra) {
+async function fetchPagosDetalhePorPalavra(db, sinceStr, palavra, canal = 'google') {
   if (!palavra?.trim()) {
     return {
       clientes: [],
@@ -269,8 +374,13 @@ async function fetchPagosDetalhePorPalavra(db, sinceStr, palavra) {
   const sessoes = await safeQuery([], () =>
     db('tracking_sessoes as ts')
       .where('ts.created_at', '>=', sinceStr)
-      .whereRaw('LOWER(TRIM(ts.utm_term)) = ?', [term])
-      .modify((qb) => googleAdsFilter(qb))
+      .where(function () {
+        this.whereRaw('LOWER(TRIM(ts.utm_term)) = ?', [term]).orWhereRaw(
+          'LOWER(ts.utm_term) LIKE ?',
+          [`%"${term}"%`],
+        );
+      })
+      .modify((qb) => canalAdsFilter(qb, canal))
       .whereNotNull('ts.cliente_id')
       .groupBy('ts.cliente_id')
       .select(
@@ -454,15 +564,16 @@ function enrichPalavrasMetrics(palavras, investimento) {
 
 /**
  * Clientes pagantes (taxa SICAF / Gerencianet) atribuídos ao dia da semana da
- * primeira sessão Google Ads deles no período. Retorna Map dia_num(1-7) → { pagos, receita }.
+ * primeira sessão do canal no período. Retorna Map dia_num(1-7) → { pagos, receita }.
  */
-async function fetchPagosPorDiaSemana(db, sinceStr) {
+async function fetchPagosPorDiaSemana(db, sinceStr, canal = 'google') {
   const vazio = new Map();
   return safeQuery(vazio, async () => {
     const hasPg = await hasTable(db, 'pagamentos_gerencianet');
     const hasTaxa = await hasTable(db, 'taxas_sicaf');
     if (!hasPg && !hasTaxa) return vazio;
 
+    const canalSql = canalAdsSql(canal);
     const unions = [];
     const bindings = [];
 
@@ -475,7 +586,7 @@ async function fetchPagosPorDiaSemana(db, sinceStr) {
           AND ${PG_PAGO_WHERE}
         WHERE ts.created_at >= ?
           AND ts.cliente_id IS NOT NULL
-          AND (ts.gclid IS NOT NULL AND TRIM(ts.gclid) <> '' OR LOWER(TRIM(ts.utm_source)) = 'google')
+          AND ${canalSql}
       `);
       bindings.push(sinceStr, sinceStr);
     }
@@ -489,7 +600,7 @@ async function fetchPagosPorDiaSemana(db, sinceStr) {
           AND ${TAXA_SICAF_PAGA_WHERE}
         WHERE ts.created_at >= ?
           AND ts.cliente_id IS NOT NULL
-          AND (ts.gclid IS NOT NULL AND TRIM(ts.gclid) <> '' OR LOWER(TRIM(ts.utm_source)) = 'google')
+          AND ${canalSql}
       `);
       bindings.push(sinceStr, sinceStr);
     }
@@ -511,7 +622,7 @@ async function fetchPagosPorDiaSemana(db, sinceStr) {
         FROM tracking_sessoes ts
         WHERE ts.created_at >= ?
           AND ts.cliente_id IS NOT NULL
-          AND (ts.gclid IS NOT NULL AND TRIM(ts.gclid) <> '' OR LOWER(TRIM(ts.utm_source)) = 'google')
+          AND ${canalSql}
         GROUP BY ts.cliente_id
       ) AS fs ON fs.cliente_id = pagos_attr.cliente_id
       GROUP BY DAYOFWEEK(fs.primeira_sessao)
@@ -531,7 +642,7 @@ async function fetchPagosPorDiaSemana(db, sinceStr) {
   });
 }
 
-async function fetchClicksPorPeriodoSemana(db, sinceStr) {
+async function fetchClicksPorPeriodoSemana(db, sinceStr, canal = 'google') {
   const DIAS = [
     { mysql: 2, label: 'Seg', tipo: 'semana' },
     { mysql: 3, label: 'Ter', tipo: 'semana' },
@@ -550,7 +661,7 @@ async function fetchClicksPorPeriodoSemana(db, sinceStr) {
   async function queryDia(diaSql) {
     return safeQuery([], () => {
       const q = db('tracking_sessoes as ts').where('ts.created_at', '>=', sinceStr);
-      googleAdsFilter(q);
+      canalAdsFilter(q, canal);
       return q
         .groupByRaw(diaSql)
         .select(
@@ -565,7 +676,7 @@ async function fetchClicksPorPeriodoSemana(db, sinceStr) {
   async function queryHora(diaSql, horaSql) {
     return safeQuery([], () => {
       const q = db('tracking_sessoes as ts').where('ts.created_at', '>=', sinceStr);
-      googleAdsFilter(q);
+      canalAdsFilter(q, canal);
       return q
         .groupByRaw(`${diaSql}, ${horaSql}`)
         .select(
@@ -579,7 +690,7 @@ async function fetchClicksPorPeriodoSemana(db, sinceStr) {
   const [porDiaRows, porHoraRows, pagosPorDia] = await Promise.all([
     queryDia(diaExpr),
     queryHora(diaExpr, horaExpr),
-    fetchPagosPorDiaSemana(db, sinceStr),
+    fetchPagosPorDiaSemana(db, sinceStr, canal),
   ]);
   const timezone = 'America/Sao_Paulo';
 
@@ -651,14 +762,15 @@ async function fetchClicksPorPeriodoSemana(db, sinceStr) {
   const taxaSemana = taxa(semanaPagos, semanaClicks);
   const taxaFim = taxa(fimPagos, fimClicks);
 
-  let insight = 'Sem cliques Google Ads no período para analisar dia da semana.';
+  const canalNome = normalizeCanal(canal) === 'bing' ? 'Bing Ads' : 'Google Ads';
+  let insight = `Sem cliques ${canalNome} no período para analisar dia da semana.`;
   if (totalClicks > 0) {
     if (pctFim >= 35) {
-      insight = `${pctFim}% dos cliques caem no fim de semana — vale testar orçamento e anúncios também em Sáb/Dom no Google Ads.`;
+      insight = `${pctFim}% dos cliques caem no fim de semana — vale testar orçamento e anúncios também em Sáb/Dom no ${canalNome}.`;
     } else if (pctFim <= 15) {
       insight = `Só ${pctFim}% dos cliques no fim de semana — priorize agenda e lances de segunda a sexta.`;
     } else {
-      insight = `${pctSemana}% dos cliques na semana e ${pctFim}% no fim de semana — use isso no agendamento de anúncios (Ad schedule).`;
+      insight = `${pctSemana}% dos cliques na semana e ${pctFim}% no fim de semana — use isso no agendamento de anúncios.`;
     }
   }
 
@@ -743,9 +855,20 @@ async function getAdminGoogleAds(opts = {}) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
+  const canal = normalizeCanal(opts.canal);
+  const isBing = canal === 'bing';
+  const canalLabel = isBing ? 'Bing Ads' : 'Google Ads';
+
   const hasTracking = await hasTable(db, 'tracking_sessoes');
   if (!hasTracking) {
-    return { ok: true, periodo: sinceDate(opts.days), kpis: {}, palavras: [], clientesPorPalavra: [] };
+    return {
+      ok: true,
+      canal,
+      periodo: sinceDate(opts.days),
+      kpis: {},
+      palavras: [],
+      clientesPorPalavra: [],
+    };
   }
 
   const { days, sinceStr } = sinceDate(opts.days);
@@ -754,9 +877,10 @@ async function getAdminGoogleAds(opts = {}) {
     opts.pagos === true || opts.pagos === 1 || opts.pagos === '1' || opts.pagos === 'true';
 
   if (palavraDetalhe && somentePagos) {
-    const pagosDetalhe = await fetchPagosDetalhePorPalavra(db, sinceStr, palavraDetalhe);
+    const pagosDetalhe = await fetchPagosDetalhePorPalavra(db, sinceStr, palavraDetalhe, canal);
     return {
       ok: true,
+      canal,
       periodo: { days, since: sinceStr },
       palavra: palavraDetalhe,
       pagosDetalhe,
@@ -766,7 +890,7 @@ async function getAdminGoogleAds(opts = {}) {
   const [totalsRow, investimento, palavrasBase, clientesPorPalavra, periodoSemana] = await Promise.all([
     safeQuery({}, () => {
       const q = db('tracking_sessoes as ts').where('ts.created_at', '>=', sinceStr);
-      googleAdsFilter(q);
+      canalAdsFilter(q, canal);
       return q
         .select(
           db.raw('COUNT(*) as clicks'),
@@ -775,10 +899,10 @@ async function getAdminGoogleAds(opts = {}) {
         )
         .first();
     }),
-    fetchInvestimento(db, sinceStr),
-    fetchPalavrasValidadas(db, sinceStr),
-    palavraDetalhe ? fetchClientesPorPalavra(db, sinceStr, palavraDetalhe) : Promise.resolve([]),
-    fetchClicksPorPeriodoSemana(db, sinceStr),
+    isBing ? Promise.resolve(0) : fetchInvestimento(db, sinceStr),
+    fetchPalavrasValidadas(db, sinceStr, canal),
+    palavraDetalhe ? fetchClientesPorPalavra(db, sinceStr, palavraDetalhe, canal) : Promise.resolve([]),
+    fetchClicksPorPeriodoSemana(db, sinceStr, canal),
   ]);
 
   const palavras = enrichPalavrasMetrics(palavrasBase, investimento);
@@ -789,8 +913,27 @@ async function getAdminGoogleAds(opts = {}) {
   const roasMedio =
     investimento > 0 && receitaTotal > 0 ? Math.round((receitaTotal / investimento) * 10) / 10 : null;
 
+  const notas = isBing
+    ? [
+        'Filtro Bing: sessões com msclkid ou utm_source bing/microsoft.',
+        'Pagos = clientes com taxa SICAF ou pagamento Gerencianet quitado no período, atribuídos à palavra-chave da sessão Bing Ads.',
+        'Receita = soma dos pagamentos reais desses clientes (não usa apenas o flag converted do tracking).',
+        'Semana vs fim de semana usa o horário do clique (tracking_sessoes.created_at) em horário de Brasília.',
+        'Investimento Bing ainda não sincronizado nesta tela — ROAS/CPA ficam sem custo até haver importação de gasto.',
+      ]
+    : [
+        'Pagos = clientes com taxa SICAF ou pagamento Gerencianet quitado no período, atribuídos à palavra-chave da sessão Google Ads.',
+        'Receita = soma dos pagamentos reais desses clientes (não usa apenas o flag converted do tracking).',
+        'Semana vs fim de semana usa o horário do clique (tracking_sessoes.created_at) em horário de Brasília — útil para Ad schedule no Google Ads.',
+        investimento > 0
+          ? 'ROAS/CPA usam investimento das campanhas sincronizadas em google_ads_campanhas.'
+          : 'Investimento não sincronizado — ROAS/CPA exibidos por palavra só quando houver custo em campanhas.',
+      ];
+
   return {
     ok: true,
+    canal,
+    canalLabel,
     periodo: { days, since: sinceStr },
     kpis: {
       investimento: Math.round(investimento),
@@ -806,15 +949,8 @@ async function getAdminGoogleAds(opts = {}) {
     palavras,
     clientesPorPalavra,
     periodoSemana,
-    notas: [
-      'Pagos = clientes com taxa SICAF ou pagamento Gerencianet quitado no período, atribuídos à palavra-chave da sessão Google Ads.',
-      'Receita = soma dos pagamentos reais desses clientes (não usa apenas o flag converted do tracking).',
-      'Semana vs fim de semana usa o horário do clique (tracking_sessoes.created_at) em horário de Brasília — útil para Ad schedule no Google Ads.',
-      investimento > 0
-        ? 'ROAS/CPA usam investimento das campanhas sincronizadas em google_ads_campanhas.'
-        : 'Investimento não sincronizado — ROAS/CPA exibidos por palavra só quando houver custo em campanhas.',
-    ],
+    notas,
   };
 }
 
-module.exports = { getAdminGoogleAds };
+module.exports = { getAdminGoogleAds, normalizeCanal };

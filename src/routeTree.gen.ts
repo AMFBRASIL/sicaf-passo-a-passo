@@ -40,11 +40,13 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AssistenteRouteImport } from './routes/assistente'
 import { Route as AjudaRouteImport } from './routes/ajuda'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AcessoRemotoRouteImport } from './routes/acesso-remoto'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthIndexRouteImport } from './routes/auth.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as PayCodeRouteImport } from './routes/pay.$code'
 import { Route as AuthRecuperarSenhaRouteImport } from './routes/auth.recuperar-senha'
+import { Route as AdminSuporteRemotoRouteImport } from './routes/admin.suporte-remoto'
 import { Route as AdminSuporteRouteImport } from './routes/admin.suporte'
 import { Route as AdminSicafRouteImport } from './routes/admin.sicaf'
 import { Route as AdminRelatoriosRouteImport } from './routes/admin.relatorios'
@@ -61,6 +63,7 @@ import { Route as AdminCrmClientesRouteImport } from './routes/admin.crm-cliente
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
 import { Route as AdminCobrancaRouteImport } from './routes/admin.cobranca'
 import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
+import { Route as AdminBingAdsRouteImport } from './routes/admin.bing-ads'
 import { Route as AdminAutomacoesRouteImport } from './routes/admin.automacoes'
 import { Route as AdminAuditoriaRouteImport } from './routes/admin.auditoria'
 import { Route as AdminAtendimentoRouteImport } from './routes/admin.atendimento'
@@ -223,6 +226,11 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AcessoRemotoRoute = AcessoRemotoRouteImport.update({
+  id: '/acesso-remoto',
+  path: '/acesso-remoto',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -247,6 +255,11 @@ const AuthRecuperarSenhaRoute = AuthRecuperarSenhaRouteImport.update({
   id: '/recuperar-senha',
   path: '/recuperar-senha',
   getParentRoute: () => AuthRoute,
+} as any)
+const AdminSuporteRemotoRoute = AdminSuporteRemotoRouteImport.update({
+  id: '/suporte-remoto',
+  path: '/suporte-remoto',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminSuporteRoute = AdminSuporteRouteImport.update({
   id: '/suporte',
@@ -328,6 +341,11 @@ const AdminClientesRoute = AdminClientesRouteImport.update({
   path: '/clientes',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminBingAdsRoute = AdminBingAdsRouteImport.update({
+  id: '/bing-ads',
+  path: '/bing-ads',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAutomacoesRoute = AdminAutomacoesRouteImport.update({
   id: '/automacoes',
   path: '/automacoes',
@@ -361,6 +379,7 @@ const AdminSuporteTicketIdRoute = AdminSuporteTicketIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/acesso-remoto': typeof AcessoRemotoRoute
   '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
@@ -396,6 +415,7 @@ export interface FileRoutesByFullPath {
   '/admin/atendimento': typeof AdminAtendimentoRoute
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
+  '/admin/bing-ads': typeof AdminBingAdsRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
@@ -412,6 +432,7 @@ export interface FileRoutesByFullPath {
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRouteWithChildren
+  '/admin/suporte-remoto': typeof AdminSuporteRemotoRoute
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
   '/pay/$code': typeof PayCodeRoute
   '/admin/': typeof AdminIndexRoute
@@ -421,6 +442,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/acesso-remoto': typeof AcessoRemotoRoute
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
   '/certidoes': typeof CertidoesRoute
@@ -454,6 +476,7 @@ export interface FileRoutesByTo {
   '/admin/atendimento': typeof AdminAtendimentoRoute
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
+  '/admin/bing-ads': typeof AdminBingAdsRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
@@ -469,6 +492,7 @@ export interface FileRoutesByTo {
   '/admin/processos': typeof AdminProcessosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
+  '/admin/suporte-remoto': typeof AdminSuporteRemotoRoute
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
   '/pay/$code': typeof PayCodeRoute
   '/admin': typeof AdminIndexRoute
@@ -479,6 +503,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/acesso-remoto': typeof AcessoRemotoRoute
   '/admin': typeof AdminRouteWithChildren
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
@@ -514,6 +539,7 @@ export interface FileRoutesById {
   '/admin/atendimento': typeof AdminAtendimentoRoute
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
+  '/admin/bing-ads': typeof AdminBingAdsRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
@@ -530,6 +556,7 @@ export interface FileRoutesById {
   '/admin/relatorios': typeof AdminRelatoriosRoute
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRouteWithChildren
+  '/admin/suporte-remoto': typeof AdminSuporteRemotoRoute
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
   '/pay/$code': typeof PayCodeRoute
   '/admin/': typeof AdminIndexRoute
@@ -541,6 +568,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/acesso-remoto'
     | '/admin'
     | '/ajuda'
     | '/assistente'
@@ -576,6 +604,7 @@ export interface FileRouteTypes {
     | '/admin/atendimento'
     | '/admin/auditoria'
     | '/admin/automacoes'
+    | '/admin/bing-ads'
     | '/admin/clientes'
     | '/admin/cobranca'
     | '/admin/configuracoes'
@@ -592,6 +621,7 @@ export interface FileRouteTypes {
     | '/admin/relatorios'
     | '/admin/sicaf'
     | '/admin/suporte'
+    | '/admin/suporte-remoto'
     | '/auth/recuperar-senha'
     | '/pay/$code'
     | '/admin/'
@@ -601,6 +631,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/acesso-remoto'
     | '/ajuda'
     | '/assistente'
     | '/certidoes'
@@ -634,6 +665,7 @@ export interface FileRouteTypes {
     | '/admin/atendimento'
     | '/admin/auditoria'
     | '/admin/automacoes'
+    | '/admin/bing-ads'
     | '/admin/clientes'
     | '/admin/cobranca'
     | '/admin/configuracoes'
@@ -649,6 +681,7 @@ export interface FileRouteTypes {
     | '/admin/processos'
     | '/admin/relatorios'
     | '/admin/sicaf'
+    | '/admin/suporte-remoto'
     | '/auth/recuperar-senha'
     | '/pay/$code'
     | '/admin'
@@ -658,6 +691,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/acesso-remoto'
     | '/admin'
     | '/ajuda'
     | '/assistente'
@@ -693,6 +727,7 @@ export interface FileRouteTypes {
     | '/admin/atendimento'
     | '/admin/auditoria'
     | '/admin/automacoes'
+    | '/admin/bing-ads'
     | '/admin/clientes'
     | '/admin/cobranca'
     | '/admin/configuracoes'
@@ -709,6 +744,7 @@ export interface FileRouteTypes {
     | '/admin/relatorios'
     | '/admin/sicaf'
     | '/admin/suporte'
+    | '/admin/suporte-remoto'
     | '/auth/recuperar-senha'
     | '/pay/$code'
     | '/admin/'
@@ -719,6 +755,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AcessoRemotoRoute: typeof AcessoRemotoRoute
   AdminRoute: typeof AdminRouteWithChildren
   AjudaRoute: typeof AjudaRoute
   AssistenteRoute: typeof AssistenteRoute
@@ -972,6 +1009,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/acesso-remoto': {
+      id: '/acesso-remoto'
+      path: '/acesso-remoto'
+      fullPath: '/acesso-remoto'
+      preLoaderRoute: typeof AcessoRemotoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -1006,6 +1050,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/auth/recuperar-senha'
       preLoaderRoute: typeof AuthRecuperarSenhaRouteImport
       parentRoute: typeof AuthRoute
+    }
+    '/admin/suporte-remoto': {
+      id: '/admin/suporte-remoto'
+      path: '/suporte-remoto'
+      fullPath: '/admin/suporte-remoto'
+      preLoaderRoute: typeof AdminSuporteRemotoRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/suporte': {
       id: '/admin/suporte'
@@ -1119,6 +1170,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminClientesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/bing-ads': {
+      id: '/admin/bing-ads'
+      path: '/bing-ads'
+      fullPath: '/admin/bing-ads'
+      preLoaderRoute: typeof AdminBingAdsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/automacoes': {
       id: '/admin/automacoes'
       path: '/automacoes'
@@ -1183,6 +1241,7 @@ interface AdminRouteChildren {
   AdminAtendimentoRoute: typeof AdminAtendimentoRoute
   AdminAuditoriaRoute: typeof AdminAuditoriaRoute
   AdminAutomacoesRoute: typeof AdminAutomacoesRoute
+  AdminBingAdsRoute: typeof AdminBingAdsRoute
   AdminClientesRoute: typeof AdminClientesRoute
   AdminCobrancaRoute: typeof AdminCobrancaRoute
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
@@ -1199,6 +1258,7 @@ interface AdminRouteChildren {
   AdminRelatoriosRoute: typeof AdminRelatoriosRoute
   AdminSicafRoute: typeof AdminSicafRoute
   AdminSuporteRoute: typeof AdminSuporteRouteWithChildren
+  AdminSuporteRemotoRoute: typeof AdminSuporteRemotoRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -1207,6 +1267,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminAtendimentoRoute: AdminAtendimentoRoute,
   AdminAuditoriaRoute: AdminAuditoriaRoute,
   AdminAutomacoesRoute: AdminAutomacoesRoute,
+  AdminBingAdsRoute: AdminBingAdsRoute,
   AdminClientesRoute: AdminClientesRoute,
   AdminCobrancaRoute: AdminCobrancaRoute,
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
@@ -1223,6 +1284,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminRelatoriosRoute: AdminRelatoriosRoute,
   AdminSicafRoute: AdminSicafRoute,
   AdminSuporteRoute: AdminSuporteRouteWithChildren,
+  AdminSuporteRemotoRoute: AdminSuporteRemotoRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -1242,6 +1304,7 @@ const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AcessoRemotoRoute: AcessoRemotoRoute,
   AdminRoute: AdminRouteWithChildren,
   AjudaRoute: AjudaRoute,
   AssistenteRoute: AssistenteRoute,

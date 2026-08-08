@@ -9,20 +9,21 @@ type AdminGoogleAdsService = {
   getAdminGoogleAds: (opts: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
 };
 
+/** Inteligência Bing Ads — reutiliza o painel Google com filtro msclkid/utm bing. */
 export async function GET(request: Request) {
   try {
     await requireStaffAccess(request);
     const url = new URL(request.url);
     const svc = await getSicafAgentModule<AdminGoogleAdsService>("services/admin-google-ads.service");
     const result = await svc.getAdminGoogleAds({
-      days: parseInt(url.searchParams.get("days") || "30", 10),
+      days: parseInt(url.searchParams.get("days") || "7", 10),
       palavra: url.searchParams.get("palavra") || "",
       pagos: url.searchParams.get("pagos") || "",
-      canal: url.searchParams.get("canal") || "google",
+      canal: "bing",
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 500 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erro ao carregar Google Ads";
+    const message = error instanceof Error ? error.message : "Erro ao carregar Bing Ads";
     const status =
       message.includes("Token") || message.includes("Sessão")
         ? 401

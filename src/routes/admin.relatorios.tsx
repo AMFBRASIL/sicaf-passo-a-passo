@@ -13,11 +13,13 @@ import {
   FileCheck2,
   Ticket,
   TrendingUp,
+  MonitorUp,
   Filter,
   Loader2,
   RefreshCw,
 } from "lucide-react";
 import { RelatorioFiltrosModal } from "@/components/admin/relatorio-filtros-modal";
+import { AcessoRemotoRelatoriosModal } from "@/components/admin/acesso-remoto-relatorios-modal";
 import { toast } from "sonner";
 import {
   downloadRelatorio,
@@ -61,6 +63,11 @@ const META: Record<
     desc: "Palavras, ROAS, CPA e conversões validadas",
     icon: TrendingUp,
   },
+  "acesso-remoto": {
+    nome: "Acesso Remoto",
+    desc: "Atendimentos concluídos, tempo de tela e conversa do chat",
+    icon: MonitorUp,
+  },
 };
 
 const ORDEM: RelatorioKey[] = [
@@ -68,6 +75,7 @@ const ORDEM: RelatorioKey[] = [
   "financeiro",
   "sicaf",
   "suporte",
+  "acesso-remoto",
   "googleads",
 ];
 
@@ -75,6 +83,7 @@ function RelatoriosPage() {
   const [loading, setLoading] = useState(true);
   const [exportando, setExportando] = useState<RelatorioKey | null>(null);
   const [openKey, setOpenKey] = useState<RelatorioKey | null>(null);
+  const [openAcessoRemoto, setOpenAcessoRemoto] = useState(false);
   const [cards, setCards] = useState<RelatorioCard[]>([]);
   const [historico, setHistorico] = useState<RelatorioHistorico[]>([]);
   const [resumo, setResumo] = useState<{ totalArquivos: number; tamanhoEstimadoMb: number }>();
@@ -190,9 +199,21 @@ function RelatoriosPage() {
                 </div>
               </div>
 
+              {key === "acesso-remoto" && (
+                <Button
+                  size="sm"
+                  className="mt-4 w-full bg-violet-600 text-white hover:bg-violet-700"
+                  onClick={() => setOpenAcessoRemoto(true)}
+                  disabled={busy}
+                >
+                  <MonitorUp className="mr-2 h-3.5 w-3.5" /> Ver relatórios
+                </Button>
+              )}
+
               <Button
                 size="sm"
-                className="mt-4 w-full"
+                variant={key === "acesso-remoto" ? "outline" : "default"}
+                className={key === "acesso-remoto" ? "mt-2 w-full" : "mt-4 w-full"}
                 onClick={() => setOpenKey(key)}
                 disabled={busy}
               >
@@ -305,6 +326,7 @@ function RelatoriosPage() {
         onOpenChange={(o) => !o && setOpenKey(null)}
         onGerado={() => void carregar()}
       />
+      <AcessoRemotoRelatoriosModal open={openAcessoRemoto} onOpenChange={setOpenAcessoRemoto} />
     </div>
   );
 }

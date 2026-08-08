@@ -14,6 +14,14 @@ type ClientAccessModule = {
 export async function GET(request: Request) {
   try {
     const { usuarioId } = await requireLegacyAuth(request);
+    try {
+      const menus = await getSicafAgentModule<{ syncAdminPanelPermissions: () => Promise<unknown> }>(
+        "services/admin-menus-sync.service",
+      );
+      await menus.syncAdminPanelPermissions();
+    } catch {
+      /* sync opcional */
+    }
     const access = await getSicafAgentModule<ClientAccessModule>("services/client-access.service");
     const isStaff = await access.checkUsuarioIsStaff(usuarioId);
 

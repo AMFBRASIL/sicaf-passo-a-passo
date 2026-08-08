@@ -16,6 +16,7 @@ const ADMIN_PANEL_MANIFEST = [
   { paginaId: 'documents', paginaNome: 'Documentos', categoria: 'Operação', rota: '/admin/documentos' },
   { paginaId: 'tickets-admin', paginaNome: 'Suporte (Kanban)', categoria: 'Atendimento', rota: '/admin/suporte' },
   { paginaId: 'atendimento', paginaNome: 'Central de Atendimento', categoria: 'Atendimento', rota: '/admin/atendimento' },
+  { paginaId: 'suporte-remoto', paginaNome: 'Suporte Remoto', categoria: 'Atendimento', rota: '/admin/suporte-remoto' },
   { paginaId: 'alerts', paginaNome: 'Central de Alertas', categoria: 'Atendimento', rota: '/admin/alertas' },
   { paginaId: 'crm-clientes', paginaNome: 'CRM Clientes', categoria: 'CRM', rota: '/admin/crm-clientes' },
   { paginaId: 'email-marketing', paginaNome: 'Email Marketing', categoria: 'CRM', rota: '/admin/email-marketing' },

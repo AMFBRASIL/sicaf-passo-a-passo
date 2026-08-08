@@ -42,6 +42,7 @@ import {
   Rocket,
   PlayCircle,
   Headphones,
+  MonitorUp,
   Bot,
   Building2,
   Gauge,
@@ -533,6 +534,15 @@ function HomePage() {
               <CardTitle className="text-sm font-semibold">Precisa de ajuda?</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
+              <Button
+                asChild
+                className="w-full justify-start bg-red-600 text-white shadow-sm hover:bg-red-700 hover:text-white"
+              >
+                <a href="/acesso-remoto" target="_blank" rel="noopener noreferrer">
+                  <MonitorUp className="mr-2 h-4 w-4" />
+                  Acesso Remoto
+                </a>
+              </Button>
               <Button asChild variant="ghost" className="w-full justify-start">
                 <Link to="/ajuda">
                   <Bot className="mr-2 h-4 w-4 text-primary" />

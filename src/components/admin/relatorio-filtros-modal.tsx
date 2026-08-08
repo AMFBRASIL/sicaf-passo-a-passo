@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { useState } from "react";
 import {
   X, FileSpreadsheet, FileType, FileText, Calendar, Filter, CheckCircle2, Mail,
-  Users, DollarSign, FileCheck2, Ticket, TrendingUp, Sparkles, Loader2,
+  Users, DollarSign, FileCheck2, Ticket, TrendingUp, MonitorUp, Sparkles, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,6 +26,7 @@ const META: Record<RelatorioKey, { icon: any; titulo: string; desc: string; tom:
   sicaf: { icon: FileCheck2, titulo: "Gestão SICAF", desc: "Níveis I a VI, vencimentos e pendências", tom: "amber" },
   suporte: { icon: Ticket, titulo: "Suporte e SLA", desc: "Tickets resolvidos, tempo médio, NPS", tom: "violet" },
   googleads: { icon: TrendingUp, titulo: "Google Ads", desc: "Palavras, ROAS, CPA, atribuição", tom: "rose" },
+  "acesso-remoto": { icon: MonitorUp, titulo: "Acesso Remoto", desc: "Atendimentos concluídos, tempo de tela e chat", tom: "violet" },
 };
 
 const tomCls: Record<string, string> = {
@@ -42,6 +43,22 @@ const COLUNAS: Record<RelatorioKey, string[]> = {
   sicaf: ["Empresa", "CNPJ", "Nível", "Status", "Validade", "Dias restantes", "Pendências", "Responsável"],
   suporte: ["Ticket", "Cliente", "Assunto", "Categoria", "Aberto em", "Resolvido em", "Tempo", "Avaliação"],
   googleads: ["Campanha", "Palavra-chave", "Impressões", "Cliques", "CTR", "CPC", "Conversões", "ROAS"],
+  "acesso-remoto": [
+    "Código",
+    "Cliente",
+    "Atendente",
+    "Iniciado em",
+    "Conectado em",
+    "Compartilhou em",
+    "Encerrado em",
+    "Tempo de atendimento",
+    "Tempo de tela",
+    "Mensagens",
+    "Resolução",
+    "Encerrado por",
+    "Status",
+    "Conversa do chat",
+  ],
 };
 
 interface Props {
@@ -298,6 +315,30 @@ export function RelatorioFiltrosModal({ relatorio, open, onOpenChange, onGerado 
                 <p className="text-xs text-muted-foreground">
                   Dados de palavras-chave com pagamentos validados no período selecionado (tracking Google Ads + taxas SICAF / Gerencianet).
                 </p>
+              )}
+
+              {relatorio === "acesso-remoto" && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Situação">
+                    <Select value={filtros.stRemoto ?? "concluidos"} onValueChange={(v) => setF("stRemoto", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="concluidos">Somente concluídos</SelectItem>
+                        <SelectItem value="todos">Todos os acessos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Compartilhou tela">
+                    <Select value={filtros.comTela ?? "todos"} onValueChange={(v) => setF("comTela", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos</SelectItem>
+                        <SelectItem value="sim">Com tela compartilhada</SelectItem>
+                        <SelectItem value="nao">Sem compartilhamento</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
               )}
             </Section>
 

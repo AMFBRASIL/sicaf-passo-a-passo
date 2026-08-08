@@ -18,6 +18,7 @@ import {
 import {
   fetchAdminGoogleAds,
   formatBRL,
+  type AdsCanal,
   type GoogleAdsClientePago,
   type GoogleAdsPalavra,
 } from "@/lib/admin-google-ads-api";
@@ -47,9 +48,10 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   palavra: GoogleAdsPalavra | null;
   days: number;
+  canal?: AdsCanal;
 }
 
-export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props) {
+export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days, canal = "google" }: Props) {
   const [loading, setLoading] = useState(false);
   const [clientes, setClientes] = useState<GoogleAdsClientePago[]>([]);
   const [resumo, setResumo] = useState<{
@@ -67,7 +69,7 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
     setClientes([]);
     setResumo(null);
 
-    void fetchAdminGoogleAds({ days, palavra: palavra.palavra, pagos: true }).then((res) => {
+    void fetchAdminGoogleAds({ days, palavra: palavra.palavra, pagos: true, canal }).then((res) => {
       if (cancelled) return;
       setLoading(false);
       if (!res.ok) {
@@ -81,7 +83,7 @@ export function GoogleAdsPagosModal({ open, onOpenChange, palavra, days }: Props
     return () => {
       cancelled = true;
     };
-  }, [open, palavra?.palavra, days]);
+  }, [open, palavra?.palavra, days, canal]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
