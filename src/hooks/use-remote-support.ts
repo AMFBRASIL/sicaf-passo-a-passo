@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   pollSessaoRemota,
   postSessaoRemota,
+  type RemoteLaserPoint,
   type RemoteSupportMensagem,
   type RemoteSupportRole,
   type RemoteSupportSessao,
@@ -14,11 +15,25 @@ const ICE_CONFIG: RTCConfiguration = {
   ],
 };
 
+const POINTER_HTTP_MIN_MS = 120;
+const CLICK_TTL_MS = 700;
+
 type Options = {
   role: RemoteSupportRole;
   sessaoId: number | null;
   enabled?: boolean;
 };
+
+export type RemoteLaserClick = RemoteLaserPoint & { id: number };
+
+type LaserMsg =
+  | { t: "m"; x: number; y: number }
+  | { t: "c"; x: number; y: number }
+  | { t: "h" };
+
+function clamp01(n: number) {
+  return Math.min(1, Math.max(0, n));
+}
 
 export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
   const [sessao, setSessao] = useState<RemoteSupportSessao | null>(null);
@@ -29,8 +44,12 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [webrtcState, setWebrtcState] = useState<string>("new");
   const [resolucao, setResolucao] = useState<string | null>(null);
+  const [laserPoint, setLaserPoint] = useState<RemoteLaserPoint | null>(null);
+  const [laserClicks, setLaserClicks] = useState<RemoteLaserClick[]>([]);
+  const [laserReady, setLaserReady] = useState(false);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const afterMessageRef = useRef(0);
   const afterSignalRef = useRef(0);
@@ -39,12 +58,85 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
   const localStreamRef = useRef<MediaStream | null>(null);
   const sessaoIdRef = useRef(sessaoId);
   const roleRef = useRef(role);
+  const lastPointerHttpRef = useRef(0);
+  const clickSeqRef = useRef(0);
+  const laserHideTimerRef = useRef<number | null>(null);
 
   sessaoIdRef.current = sessaoId;
   roleRef.current = role;
 
+  const clearLaserHideTimer = useCallback(() => {
+    if (laserHideTimerRef.current != null) {
+      window.clearTimeout(laserHideTimerRef.current);
+      laserHideTimerRef.current = null;
+    }
+  }, []);
+
+  const pushLaserClick = useCallback((x: number, y: number) => {
+    const id = ++clickSeqRef.current;
+    const point = { id, x: clamp01(x), y: clamp01(y) };
+    setLaserClicks((prev) => [...prev.slice(-8), point]);
+    window.setTimeout(() => {
+      setLaserClicks((prev) => prev.filter((c) => c.id !== id));
+    }, CLICK_TTL_MS);
+  }, []);
+
+  const applyLaserMessage = useCallback(
+    (msg: LaserMsg) => {
+      if (msg.t === "h") {
+        setLaserPoint(null);
+        return;
+      }
+      if (msg.t === "m") {
+        clearLaserHideTimer();
+        setLaserPoint({ x: clamp01(msg.x), y: clamp01(msg.y) });
+        laserHideTimerRef.current = window.setTimeout(() => setLaserPoint(null), 2500);
+        return;
+      }
+      if (msg.t === "c") {
+        clearLaserHideTimer();
+        setLaserPoint({ x: clamp01(msg.x), y: clamp01(msg.y) });
+        pushLaserClick(msg.x, msg.y);
+        laserHideTimerRef.current = window.setTimeout(() => setLaserPoint(null), 2500);
+      }
+    },
+    [clearLaserHideTimer, pushLaserClick],
+  );
+
+  const wireDataChannel = useCallback(
+    (channel: RTCDataChannel) => {
+      dataChannelRef.current = channel;
+      channel.binaryType = "arraybuffer";
+
+      const syncReady = () => setLaserReady(channel.readyState === "open");
+      channel.onopen = () => syncReady();
+      channel.onclose = () => {
+        if (dataChannelRef.current === channel) dataChannelRef.current = null;
+        setLaserReady(false);
+      };
+      channel.onerror = () => syncReady();
+      channel.onmessage = (ev) => {
+        if (roleRef.current !== "cliente") return;
+        try {
+          const raw = typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data);
+          const msg = JSON.parse(raw) as LaserMsg;
+          if (!msg || typeof msg !== "object" || !("t" in msg)) return;
+          applyLaserMessage(msg);
+        } catch {
+          /* ignore */
+        }
+      };
+      syncReady();
+    },
+    [applyLaserMessage],
+  );
+
   const sendSignal = useCallback(
-    async (tipo: "offer" | "answer" | "ice", payload: unknown, extra: Record<string, unknown> = {}) => {
+    async (
+      tipo: "offer" | "answer" | "ice" | "pointer" | "click",
+      payload: unknown,
+      extra: Record<string, unknown> = {},
+    ) => {
       const id = sessaoIdRef.current;
       if (!id) return;
       await postSessaoRemota(roleRef.current, id, {
@@ -55,6 +147,57 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
       });
     },
     [],
+  );
+
+  const sendLaserPayload = useCallback(
+    (msg: LaserMsg) => {
+      const ch = dataChannelRef.current;
+      if (ch && ch.readyState === "open") {
+        try {
+          ch.send(JSON.stringify(msg));
+          return true;
+        } catch {
+          /* fallback HTTP */
+        }
+      }
+      return false;
+    },
+    [],
+  );
+
+  const enviarPonteiro = useCallback(
+    (point: RemoteLaserPoint | null) => {
+      if (roleRef.current !== "atendente") return;
+      if (!point) {
+        if (!sendLaserPayload({ t: "h" })) {
+          const now = Date.now();
+          if (now - lastPointerHttpRef.current >= POINTER_HTTP_MIN_MS) {
+            lastPointerHttpRef.current = now;
+            void sendSignal("pointer", { t: "h" });
+          }
+        }
+        return;
+      }
+      const msg: LaserMsg = { t: "m", x: clamp01(point.x), y: clamp01(point.y) };
+      if (sendLaserPayload(msg)) return;
+      const now = Date.now();
+      if (now - lastPointerHttpRef.current < POINTER_HTTP_MIN_MS) return;
+      lastPointerHttpRef.current = now;
+      void sendSignal("pointer", msg);
+    },
+    [sendLaserPayload, sendSignal],
+  );
+
+  const enviarCliqueLaser = useCallback(
+    (point: RemoteLaserPoint) => {
+      if (roleRef.current !== "atendente") return;
+      const msg: LaserMsg = { t: "c", x: clamp01(point.x), y: clamp01(point.y) };
+      // feedback local no atendente
+      pushLaserClick(msg.x, msg.y);
+      if (sendLaserPayload(msg)) return;
+      void sendSignal("click", msg);
+    },
+    [pushLaserClick, sendLaserPayload, sendSignal],
   );
 
   const flushIce = useCallback(async (pc: RTCPeerConnection) => {
@@ -71,11 +214,30 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
 
   const closePc = useCallback(() => {
     pendingIceRef.current = [];
+    const channel = dataChannelRef.current;
+    dataChannelRef.current = null;
+    if (channel) {
+      try {
+        channel.onopen = null;
+        channel.onclose = null;
+        channel.onerror = null;
+        channel.onmessage = null;
+        channel.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    setLaserReady(false);
+    setLaserPoint(null);
+    setLaserClicks([]);
+    clearLaserHideTimer();
+
     const pc = pcRef.current;
     pcRef.current = null;
     if (pc) {
       pc.onicecandidate = null;
       pc.ontrack = null;
+      pc.ondatachannel = null;
       pc.onconnectionstatechange = null;
       try {
         pc.close();
@@ -85,7 +247,7 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
     }
     setWebrtcState("closed");
     setRemoteStream(null);
-  }, []);
+  }, [clearLaserHideTimer]);
 
   const stopLocalTracks = useCallback(() => {
     const stream = localStreamRef.current;
@@ -125,6 +287,10 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
       }
     };
 
+    pc.ondatachannel = (ev) => {
+      if (ev.channel?.label === "laser") wireDataChannel(ev.channel);
+    };
+
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       setWebrtcState(state);
@@ -137,12 +303,22 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
     };
 
     return pc;
-  }, [sendSignal]);
+  }, [sendSignal, wireDataChannel]);
 
   const handleSignal = useCallback(
     async (sinal: RemoteSupportSinal) => {
       const tipo = sinal.tipo;
-      const payload = sinal.payload as RTCSessionDescriptionInit | RTCIceCandidateInit | null;
+      const payload = sinal.payload;
+
+      if (tipo === "pointer" || tipo === "click") {
+        if (roleRef.current !== "cliente") return;
+        if (sinal.remetente !== "atendente") return;
+        const msg = payload as LaserMsg;
+        if (!msg || typeof msg !== "object" || !("t" in msg)) return;
+        applyLaserMessage(msg);
+        return;
+      }
+
       if (!payload) return;
 
       if (tipo === "ice") {
@@ -180,7 +356,7 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
         await flushIce(pc);
       }
     },
-    [closePc, ensurePc, flushIce, sendSignal],
+    [applyLaserMessage, closePc, ensurePc, flushIce, sendSignal],
   );
 
   useEffect(() => {
@@ -255,6 +431,8 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
     setMensagens([]);
     setError(null);
     setResolucao(null);
+    setLaserPoint(null);
+    setLaserClicks([]);
     stopLocalTracks();
     closePc();
     setWebrtcState("new");
@@ -321,6 +499,9 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
 
       closePc();
       const pc = ensurePc();
+      const laserChannel = pc.createDataChannel("laser", { ordered: false, maxRetransmits: 0 });
+      wireDataChannel(laserChannel);
+
       for (const track of stream.getTracks()) {
         pc.addTrack(track, stream);
       }
@@ -348,7 +529,7 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
     } finally {
       makingOfferRef.current = false;
     }
-  }, [closePc, ensurePc, pararCompartilhamento, sendSignal, stopLocalTracks]);
+  }, [closePc, ensurePc, pararCompartilhamento, sendSignal, stopLocalTracks, wireDataChannel]);
 
   return {
     sessao,
@@ -359,7 +540,12 @@ export function useRemoteSupport({ role, sessaoId, enabled = true }: Options) {
     remoteStream,
     webrtcState,
     resolucao: resolucao || sessao?.resolucao || null,
+    laserPoint,
+    laserClicks,
+    laserReady,
     enviarMensagem,
+    enviarPonteiro,
+    enviarCliqueLaser,
     encerrar,
     compartilharTela,
     pararCompartilhamento,

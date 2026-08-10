@@ -21,6 +21,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { RemoteLaserOverlay } from "@/components/suporte-remoto/remote-laser-overlay";
 import { RemoteSupportChat, StatusPill } from "@/components/suporte-remoto/remote-support-chat";
 import { useRemoteSupport } from "@/hooks/use-remote-support";
 import { criarSessaoRemota, type RemoteSupportSessao } from "@/lib/suporte-remoto-api";
@@ -50,6 +51,8 @@ function AcessoRemotoPage() {
     error,
     sharing,
     webrtcState,
+    laserPoint,
+    laserClicks,
     enviarMensagem,
     encerrar,
     compartilharTela,
@@ -126,6 +129,9 @@ function AcessoRemotoPage() {
 
   return (
     <div className="min-h-dvh bg-[#F4F6FA] text-slate-900">
+      {sharing && !ended ? (
+        <RemoteLaserOverlay point={laserPoint} clicks={laserClicks} mapToViewport />
+      ) : null}
       <header className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-white px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -243,7 +249,9 @@ function AcessoRemotoPage() {
                       </button>
                     </div>
                     {sharing ? (
-                      <p className="mt-4 text-xs text-slate-400">WebRTC: {webrtcState}</p>
+                      <p className="mt-4 text-xs text-slate-400">
+                        WebRTC: {webrtcState} · O atendente pode apontar com um laser vermelho na sua tela
+                      </p>
                     ) : null}
                   </>
                 ) : (

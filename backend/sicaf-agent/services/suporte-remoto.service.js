@@ -402,7 +402,7 @@ async function enviarSinal(usuarioId, sessaoId, dados, role) {
   await ensureTables(db);
 
   const tipo = String(dados?.tipo || '').toLowerCase();
-  if (!['offer', 'answer', 'ice'].includes(tipo)) {
+  if (!['offer', 'answer', 'ice', 'pointer', 'click'].includes(tipo)) {
     return { ok: false, error: 'Sinal WebRTC inválido.' };
   }
   if (dados?.payload == null) return { ok: false, error: 'Payload do sinal ausente.' };

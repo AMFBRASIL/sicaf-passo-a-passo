@@ -1,7 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Headphones, LogOut, MonitorPlay } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { ArrowRight, Headphones, LogOut, MonitorPlay, MousePointer2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  pointerNormFromVideoEvent,
+  RemoteLaserOverlay,
+  type LaserPoint,
+} from "@/components/suporte-remoto/remote-laser-overlay";
 import { RemoteSupportChat, StatusPill } from "@/components/suporte-remoto/remote-support-chat";
 import { useRemoteSupport } from "@/hooks/use-remote-support";
 import {
@@ -33,7 +38,9 @@ function AdminSuporteRemotoPage() {
   const [joining, setJoining] = useState(false);
   const [boot, setBoot] = useState<RemoteSupportSessao | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [localLaser, setLocalLaser] = useState<LaserPoint>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoBoxRef = useRef<HTMLDivElement>(null);
 
   const {
     sessao,
@@ -42,7 +49,11 @@ function AdminSuporteRemotoPage() {
     remoteStream,
     webrtcState,
     resolucao,
+    laserClicks,
+    laserReady,
     enviarMensagem,
+    enviarPonteiro,
+    enviarCliqueLaser,
     encerrar,
     setSessao,
   } = useRemoteSupport({
@@ -98,6 +109,31 @@ function AdminSuporteRemotoPage() {
     setBoot(null);
     setSessao(null);
     setCodigo("");
+    setLocalLaser(null);
+  };
+
+  const onVideoPointerMove = (ev: MouseEvent<HTMLDivElement>) => {
+    if (!sharing || ended) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const norm = pointerNormFromVideoEvent(ev, video);
+    setLocalLaser(norm);
+    enviarPonteiro(norm);
+  };
+
+  const onVideoPointerLeave = () => {
+    setLocalLaser(null);
+    enviarPonteiro(null);
+  };
+
+  const onVideoClick = (ev: MouseEvent<HTMLDivElement>) => {
+    if (!sharing || ended) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const norm = pointerNormFromVideoEvent(ev, video);
+    if (!norm) return;
+    setLocalLaser(norm);
+    enviarCliqueLaser(norm);
   };
 
   if (!current) {
@@ -177,10 +213,14 @@ function AdminSuporteRemotoPage() {
       <div className="grid min-h-0 flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:p-5">
         <section className="flex min-h-0 flex-col">
           <div
+            ref={videoBoxRef}
             className={cn(
               "relative flex min-h-[360px] flex-1 items-center justify-center overflow-hidden rounded-2xl",
-              sharing ? "bg-slate-950" : "bg-[#0B1B33]",
+              sharing ? "bg-slate-950 cursor-none" : "bg-[#0B1B33]",
             )}
+            onMouseMove={onVideoPointerMove}
+            onMouseLeave={onVideoPointerLeave}
+            onClick={onVideoClick}
           >
             <video
               ref={videoRef}
@@ -189,6 +229,15 @@ function AdminSuporteRemotoPage() {
               playsInline
               muted
             />
+            {sharing ? (
+              <RemoteLaserOverlay
+                point={localLaser}
+                clicks={laserClicks}
+                localMode
+                mapToViewport={false}
+                videoRef={videoRef}
+              />
+            ) : null}
             {!sharing && (
               <div className="max-w-md px-6 text-center text-white">
                 <MonitorPlay className="mx-auto mb-4 h-12 w-12 text-white/70" />
@@ -201,6 +250,14 @@ function AdminSuporteRemotoPage() {
               </div>
             )}
           </div>
+
+          {sharing ? (
+            <p className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+              <MousePointer2 className="h-3.5 w-3.5 text-rose-500" />
+              Mova o mouse sobre a tela e clique para destacar — o cliente vê o ponteiro laser.
+              {laserReady ? " (tempo real)" : " (conectando canal…)"}
+            </p>
+          ) : null}
 
           <div className="mt-3 grid grid-cols-3 gap-3">
             <InfoBox label="Resolução" value={resolucao || "—"} />

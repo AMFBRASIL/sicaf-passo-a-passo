@@ -39,10 +39,12 @@ export type RemoteSupportMensagem = {
 export type RemoteSupportSinal = {
   id: number;
   remetente: RemoteSupportRole;
-  tipo: "offer" | "answer" | "ice";
+  tipo: "offer" | "answer" | "ice" | "pointer" | "click";
   payload: unknown;
   createdAt: string;
 };
+
+export type RemoteLaserPoint = { x: number; y: number };
 
 type OkSessao = { ok: true; sessao: RemoteSupportSessao; error?: string };
 type Fail = { ok: false; error?: string };
