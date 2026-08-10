@@ -31,6 +31,14 @@ const QUICK_REPLIES = [
   "Clique no botão azul.",
   "Volte para a tela anterior.",
   "Conseguiu encontrar?",
+  {
+    label: "Link SICAF",
+    text: "Acesse o SICAF: https://www3.comprasnet.gov.br/sicaf-web/index.jsf",
+  },
+  {
+    label: "Link Assistente",
+    text: "Abra o Assistente: https://fornecedor.cadbrasil.com.br/assistente",
+  },
 ];
 
 function AdminSuporteRemotoPage() {

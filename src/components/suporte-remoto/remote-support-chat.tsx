@@ -44,6 +44,8 @@ export function ChatText({ text, mine }: { text: string; mine: boolean }) {
   );
 }
 
+export type RemoteSupportQuickReply = string | { label: string; text: string };
+
 type Props = {
   title?: string;
   subtitle?: string;
@@ -51,10 +53,18 @@ type Props = {
   mensagens: RemoteSupportMensagem[];
   selfRole: RemoteSupportRole;
   placeholder?: string;
-  quickReplies?: string[];
+  quickReplies?: RemoteSupportQuickReply[];
   disabled?: boolean;
   onSend: (texto: string) => Promise<unknown> | unknown;
 };
+
+function quickReplyLabel(q: RemoteSupportQuickReply) {
+  return typeof q === "string" ? q : q.label;
+}
+
+function quickReplyText(q: RemoteSupportQuickReply) {
+  return typeof q === "string" ? q : q.text;
+}
 
 export function RemoteSupportChat({
   title = "Chat",
@@ -138,17 +148,22 @@ export function RemoteSupportChat({
 
       {quickReplies && quickReplies.length > 0 && (
         <div className="flex flex-wrap gap-1.5 border-t border-slate-100 px-3 py-2">
-          {quickReplies.map((q) => (
-            <button
-              key={q}
-              type="button"
-              disabled={disabled || sending}
-              onClick={() => void enviar(q)}
-              className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-primary/40 hover:text-primary disabled:opacity-50"
-            >
-              {q}
-            </button>
-          ))}
+          {quickReplies.map((q) => {
+            const label = quickReplyLabel(q);
+            const text = quickReplyText(q);
+            return (
+              <button
+                key={`${label}:${text}`}
+                type="button"
+                disabled={disabled || sending}
+                onClick={() => void enviar(text)}
+                title={text !== label ? text : undefined}
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-primary/40 hover:text-primary disabled:opacity-50"
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       )}
 
