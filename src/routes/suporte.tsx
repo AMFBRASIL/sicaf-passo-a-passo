@@ -57,8 +57,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { PageHeader, StatusBadge, PageContainer } from "@/components/page-header";
+import { AcessoRemotoModal } from "@/components/suporte-remoto/acesso-remoto-modal";
 import { useAuth } from "@/contexts/AuthContext";
-import { ACESSO_REMOTO_DOWNLOAD_URL } from "@/lib/acesso-remoto-download";
 import {
   TELEFONE_SUPORTE_DISPLAY,
   TELEFONE_SUPORTE_HORARIO,
@@ -911,19 +911,14 @@ function SupportPage() {
         subtitle="Estamos aqui para te ajudar — sem termos técnicos."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              asChild
-              className="gap-2 bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-600"
-            >
-              <a
-                href={ACESSO_REMOTO_DOWNLOAD_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <MonitorUp className="h-4 w-4" />
-                Acesso Remoto
-              </a>
-            </Button>
+            <AcessoRemotoModal
+              trigger={
+                <Button className="gap-2 bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-600">
+                  <MonitorUp className="h-4 w-4" />
+                  Acesso Remoto
+                </Button>
+              }
+            />
             <NovoChamadoDialog onCreated={() => void carregar()} />
           </div>
         }
