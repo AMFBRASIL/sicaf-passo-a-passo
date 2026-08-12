@@ -26,7 +26,6 @@ import {
   Users,
   Bot,
   FolderOpen,
-  FileCheck2,
   Wallet,
   ChevronDown,
 } from "lucide-react";
@@ -63,7 +62,6 @@ const sicafCadastro: NavItem[] = [
   { title: "Diagnóstico SICAF", url: "/diagnostico", icon: Stethoscope },
   { title: "Assistente SICAF", url: "/assistente", icon: Bot },
   { title: "Documentos", url: "/documentos", icon: FolderOpen },
-  { title: "Certidões", url: "/certidoes", icon: FileCheck2 },
   { title: "Pagamentos", url: "/pagamentos", icon: Wallet },
 ];
 
