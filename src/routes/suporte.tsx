@@ -58,6 +58,14 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader, StatusBadge, PageContainer } from "@/components/page-header";
 import { useAuth } from "@/contexts/AuthContext";
+import { ACESSO_REMOTO_DOWNLOAD_URL } from "@/lib/acesso-remoto-download";
+import {
+  TELEFONE_SUPORTE_DISPLAY,
+  TELEFONE_SUPORTE_HORARIO,
+  TELEFONE_SUPORTE_TEL_HREF,
+  buildWhatsAppSuporteUrl,
+  getWhatsAppMensagemPorPath,
+} from "@/lib/whatsapp-suporte";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import wizardBg from "@/assets/wizard-bg.jpg";
@@ -907,7 +915,11 @@ function SupportPage() {
               asChild
               className="gap-2 bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-600"
             >
-              <a href="/acesso-remoto" target="_blank" rel="noopener noreferrer">
+              <a
+                href={ACESSO_REMOTO_DOWNLOAD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <MonitorUp className="h-4 w-4" />
                 Acesso Remoto
               </a>
@@ -918,25 +930,51 @@ function SupportPage() {
       />
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <Card className="border-primary/20">
-          <CardContent className="flex items-start gap-3 p-5">
-            <MessageCircle className="mt-0.5 h-6 w-6 text-success" />
-            <div>
-              <p className="font-semibold">WhatsApp</p>
-              <p className="mt-0.5 text-sm text-muted-foreground">Resposta em até 5 minutos no horário comercial.</p>
-              <Button variant="link" className="mt-1 h-auto p-0">Iniciar conversa →</Button>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-start gap-3 p-5">
-            <PhoneCall className="mt-0.5 h-6 w-6 text-primary" />
-            <div>
-              <p className="font-semibold">Telefone</p>
-              <p className="mt-0.5 text-sm text-muted-foreground">0800 123 4567 — seg a sex, 8h às 18h.</p>
-            </div>
-          </CardContent>
-        </Card>
+        <a
+          href={buildWhatsAppSuporteUrl(getWhatsAppMensagemPorPath("/suporte"))}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366] focus-visible:ring-offset-2"
+        >
+          <Card className="h-full border-[#25D366]/25 transition group-hover:border-[#25D366]/50 group-hover:shadow-md">
+            <CardContent className="flex items-start gap-3 p-5">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#25D366]/15 text-[#128C7E]">
+                <MessageCircle className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-900">WhatsApp</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {TELEFONE_SUPORTE_DISPLAY} · resposta em até 5 minutos no horário comercial.
+                </p>
+                <span className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-[#128C7E] group-hover:underline">
+                  Iniciar conversa
+                  <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </a>
+        <a
+          href={TELEFONE_SUPORTE_TEL_HREF}
+          className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
+          <Card className="h-full border-primary/20 transition group-hover:border-primary/40 group-hover:shadow-md">
+            <CardContent className="flex items-start gap-3 p-5">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <PhoneCall className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-900">Telefone</p>
+                <p className="mt-0.5 text-sm font-medium text-slate-800">{TELEFONE_SUPORTE_DISPLAY}</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">{TELEFONE_SUPORTE_HORARIO}</p>
+                <span className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-primary group-hover:underline">
+                  Ligar agora
+                  <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </a>
       </div>
 
       <Card className="mt-4">

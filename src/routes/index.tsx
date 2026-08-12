@@ -37,6 +37,7 @@ import {
   type PropostaComercial,
 } from "@/lib/propostas-api";
 import { cn } from "@/lib/utils";
+import { ACESSO_REMOTO_DOWNLOAD_URL } from "@/lib/acesso-remoto-download";
 import { toast } from "sonner";
 import {
   Rocket,
@@ -538,7 +539,11 @@ function HomePage() {
                 asChild
                 className="w-full justify-start bg-red-600 text-white shadow-sm hover:bg-red-700 hover:text-white"
               >
-                <a href="/acesso-remoto" target="_blank" rel="noopener noreferrer">
+                <a
+                  href={ACESSO_REMOTO_DOWNLOAD_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   <MonitorUp className="mr-2 h-4 w-4" />
                   Acesso Remoto
                 </a>

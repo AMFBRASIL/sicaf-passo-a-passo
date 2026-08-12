@@ -1,5 +1,8 @@
-/** WhatsApp suporte CADBRASIL — +55 11 2122-0202 */
+/** WhatsApp / telefone suporte CADBRASIL — +55 11 2122-0202 */
 export const WHATSAPP_SUPORTE_NUMERO = "551121220202";
+export const TELEFONE_SUPORTE_DISPLAY = "(11) 2122-0202";
+export const TELEFONE_SUPORTE_TEL_HREF = "tel:+551121220202";
+export const TELEFONE_SUPORTE_HORARIO = "Seg a sex, 8h às 18h";
 
 export const WHATSAPP_MENSAGENS_POR_ROTA: Record<string, string> = {
   "/sicaf":
@@ -8,6 +11,8 @@ export const WHATSAPP_MENSAGENS_POR_ROTA: Record<string, string> = {
   "/documentos": "Olá! Estou na página Documentos e preciso de ajuda.",
   "/assistente": "Olá! Estou na página Assistente e preciso de ajuda.",
   "/certidoes": "Olá! Estou na página Certidões e preciso de ajuda.",
+  "/suporte":
+    "Olá! Estou na página de Suporte do Portal CADBRASIL e gostaria de falar com a equipe.",
   "/acesso-remoto":
     "Olá! Estou no Acesso Remoto (/acesso-remoto) e preciso de ajuda nesse processo. Podem me orientar para compartilhar a tela e falar com o atendente?",
 };
