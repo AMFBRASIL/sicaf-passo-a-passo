@@ -7,20 +7,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { fetchPropostasPendentes } from "@/lib/propostas-api";
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   Layers,
   Headphones,
   FileSignature,
-  FileText,
   HelpCircle,
   ShieldCheck,
-  Building2,
   Gavel,
   Sparkles,
-  Gauge,
   Stethoscope,
   LogOut,
   Users,
@@ -57,8 +53,6 @@ const visaoGeral: NavItem[] = [
 
 const sicafCadastro: NavItem[] = [
   { title: "Central SICAF", url: "/sicaf", icon: ShieldCheck },
-  { title: "Minhas Empresas", url: "/empresas", icon: Building2 },
-  { title: "Prontidão", url: "/prontidao", icon: Gauge },
   { title: "Diagnóstico SICAF", url: "/diagnostico", icon: Stethoscope },
   { title: "Assistente SICAF", url: "/assistente", icon: Bot },
   { title: "Documentos", url: "/documentos", icon: FolderOpen },
@@ -72,7 +66,6 @@ const licitacoes: NavItem[] = [
 ];
 
 const contaAjuda: NavItem[] = [
-  { title: "Propostas", url: "/propostas", icon: FileText },
   { title: "Meus Serviços", url: "/servicos", icon: FileSignature },
   { title: "Suporte", url: "/suporte", icon: Headphones },
   { title: "Central de Ajuda", url: "/ajuda", icon: HelpCircle },
@@ -160,7 +153,6 @@ export function AppSidebar() {
   const emailUsuario = user?.email?.trim();
   const contentRef = useRef<HTMLDivElement>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);
-  const [hasPropostasAbertas, setHasPropostasAbertas] = useState(false);
 
   const updateScrollHint = useCallback(() => {
     const el = contentRef.current;
@@ -190,18 +182,6 @@ export function AppSidebar() {
       window.removeEventListener("resize", updateScrollHint);
     };
   }, [updateScrollHint, collapsed]);
-
-  useEffect(() => {
-    let mounted = true;
-    void (async () => {
-      const res = await fetchPropostasPendentes();
-      if (!mounted) return;
-      setHasPropostasAbertas(!!res.ok && (res.propostas?.length || 0) > 0);
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [pathname]);
 
   const handleLogout = () => {
     logout();
@@ -233,15 +213,7 @@ export function AppSidebar() {
           <NavGroup label="Visão geral" items={visaoGeral} pathname={pathname} collapsed={collapsed} />
           <NavGroup label="SICAF & Cadastro" items={sicafCadastro} pathname={pathname} collapsed={collapsed} />
           <NavGroup label="Licitações" items={licitacoes} pathname={pathname} collapsed={collapsed} />
-          <NavGroup
-            label="Conta & Ajuda"
-            items={contaAjuda}
-            pathname={pathname}
-            collapsed={collapsed}
-            badgeByUrl={{
-              "/propostas": hasPropostasAbertas ? "Nova" : undefined,
-            }}
-          />
+          <NavGroup label="Conta & Ajuda" items={contaAjuda} pathname={pathname} collapsed={collapsed} />
         </SidebarContent>
         <SidebarScrollHint visible={canScrollDown && !collapsed} onScrollDown={scrollMenuDown} />
       </div>

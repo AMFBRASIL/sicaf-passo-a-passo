@@ -255,7 +255,7 @@ function HomePage() {
               </p>
             </div>
             <Button asChild variant="outline" className="gap-2">
-              <Link to="/empresas">
+              <Link to="/sicaf">
                 <Plus className="h-4 w-4" />
                 Nova empresa
               </Link>
@@ -387,7 +387,8 @@ function HomePage() {
                   {ranking.map((e, i) => (
                     <li key={e.id}>
                       <Link
-                        to="/empresas"
+                        to="/sicaf"
+                        search={{ cnpj: e.cnpj }}
                         className="group flex items-center gap-3 rounded-xl border border-transparent bg-muted/30 p-3 transition hover:border-primary/30 hover:bg-primary/5"
                       >
                         <span
@@ -451,7 +452,7 @@ function HomePage() {
                   <p className="mt-0.5 text-xs text-muted-foreground">Pendências nas suas empresas</p>
                 </div>
                 <Button asChild variant="ghost" size="sm" className="gap-1 text-xs">
-                  <Link to="/certidoes">
+                  <Link to="/sicaf">
                     Ver todos <ArrowRight className="h-3 w-3" />
                   </Link>
                 </Button>
@@ -495,7 +496,7 @@ function HomePage() {
               desc="Score 0–100 por CNPJ com ranking e plano de ação."
             />
             <FeatureCard
-              to="/certidoes"
+              to="/sicaf"
               icon={<Bell className="h-5 w-5" />}
               tag="Automático"
               title="Monitor de Certidões"
@@ -635,7 +636,7 @@ function FeatureCard({
   title,
   desc,
 }: {
-  to: "/prontidao" | "/certidoes" | "/licitacoes";
+  to: "/prontidao" | "/sicaf" | "/licitacoes";
   icon: ReactNode;
   tag: string;
   title: string;

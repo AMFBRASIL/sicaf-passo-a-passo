@@ -13,7 +13,7 @@ type Tarefa = {
   descricao: string;
   empresa: string;
   acaoLabel: string;
-  link: "/empresas" | "/sicaf" | "/certidoes" | "/pagamentos" | "/assistente";
+  link: "/sicaf" | "/pagamentos" | "/assistente";
   linkSearch?: { cnpj?: string };
   tempoEstimado?: string;
 };

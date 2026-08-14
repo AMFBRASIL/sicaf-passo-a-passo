@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageContainer } from "@/components/page-header";
 import { useAuth } from "@/contexts/AuthContext";
-import { fetchEmpresas } from "@/lib/empresas-api";
-import { fetchProntidao } from "@/lib/prontidao-api";
 import { fetchLicitacoesKpis } from "@/lib/licitacoes-api";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
@@ -23,7 +21,6 @@ import {
   FileText,
   FolderOpen,
   Gavel,
-  Gauge,
   Globe,
   GraduationCap,
   Layers,
@@ -34,10 +31,10 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Stethoscope,
   Target,
   Users,
   Wallet,
-  Zap,
 } from "lucide-react";
 
 export const Route = createFileRoute("/inicio2")({
@@ -97,22 +94,6 @@ const PLATFORM_TOOLS: PlatformTool[] = [
     accent: "from-violet-500/15 to-violet-600/5",
   },
   {
-    id: "prontidao",
-    label: "Prontidão",
-    description: "Score de preparo para licitar",
-    icon: Gauge,
-    category: "sicaf",
-    to: "/prontidao",
-  },
-  {
-    id: "empresas",
-    label: "Minhas Empresas",
-    description: "Portfólio de CNPJs cadastrados",
-    icon: Building2,
-    category: "sicaf",
-    to: "/empresas",
-  },
-  {
     id: "pagamentos",
     label: "Pagamentos SICAF",
     description: "Taxas, boletos e PIX",
@@ -159,7 +140,7 @@ const PLATFORM_TOOLS: PlatformTool[] = [
     description: "Controle de vencimentos e alertas",
     icon: FileCheck2,
     category: "documentos",
-    to: "/certidoes",
+    to: "/sicaf",
   },
   {
     id: "assinatura",
@@ -376,8 +357,6 @@ function Inicio2() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
-    empresas: 0,
-    scoreMedio: 0,
     naMira: 0,
     oportunidades: 0,
   });
@@ -386,18 +365,8 @@ function Inicio2() {
     void (async () => {
       setLoading(true);
       try {
-        const [empRes, prontRes, licRes] = await Promise.all([
-          fetchEmpresas(),
-          fetchProntidao(),
-          fetchLicitacoesKpis().catch(() => ({ ok: false as const })),
-        ]);
-
-        const empresas = empRes.ok ? (empRes.empresas?.length ?? 0) : 0;
-        const scoreMedio = prontRes.ok ? (prontRes.resumo?.media ?? 0) : 0;
-
+        const licRes = await fetchLicitacoesKpis().catch(() => ({ ok: false as const }));
         setStats({
-          empresas,
-          scoreMedio: Math.round(scoreMedio),
           naMira: licRes.ok ? (licRes.kpis?.na_mira ?? 0) : 0,
           oportunidades: licRes.ok
             ? (licRes.kpis?.abertas_hoje ?? licRes.kpis?.na_mira ?? 0)
@@ -469,21 +438,7 @@ function Inicio2() {
       </section>
 
       {/* KPIs */}
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Empresas"
-          value={stats.empresas}
-          hint="CNPJs no portfólio"
-          loading={loading}
-          to="/empresas"
-        />
-        <StatCard
-          label="Prontidão média"
-          value={stats.scoreMedio > 0 ? `${stats.scoreMedio}%` : "—"}
-          hint="Preparo para licitar"
-          loading={loading}
-          to="/prontidao"
-        />
+      <section className="grid gap-3 sm:grid-cols-2">
         <StatCard
           label="Na mira"
           value={stats.naMira}
@@ -532,7 +487,7 @@ function Inicio2() {
                 { icon: FileCheck2, title: "Documentos", desc: "Validade e pendências" },
                 { icon: Wallet, title: "Taxas", desc: "Boleto e PIX" },
                 { icon: Bot, title: "Assistente", desc: "Passo a passo com IA" },
-                { icon: Zap, title: "Prontidão", desc: "Score de preparo" },
+                { icon: Stethoscope, title: "Diagnóstico", desc: "Situação do cadastro" },
               ].map((item) => (
                 <div
                   key={item.title}

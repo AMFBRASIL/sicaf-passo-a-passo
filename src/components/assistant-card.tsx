@@ -74,7 +74,7 @@ export function AssistantCard({ alerts = [] }: { alerts?: AssistantAlert[] }) {
         </ul>
         ) : (
           <Button asChild size="sm" variant="outline" className="mt-4 w-full gap-1">
-            <Link to="/empresas">
+            <Link to="/sicaf">
               Ver empresas
               <ArrowRight className="h-3 w-3" />
             </Link>

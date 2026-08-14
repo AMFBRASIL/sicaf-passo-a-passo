@@ -138,7 +138,7 @@ export function buildTarefas(empresas: EmpresaData[], prontidao: EmpresaProntida
         descricao: `${dangerCentral} certidão(ões) vencida(s) ou ausente(s).`,
         empresa: e.nome,
         acaoLabel: "Renovar agora",
-        link: "/certidoes",
+        link: "/sicaf",
         linkSearch: { cnpj },
         tempoEstimado: "5 min",
       });
@@ -152,7 +152,7 @@ export function buildTarefas(empresas: EmpresaData[], prontidao: EmpresaProntida
           descricao: `${warnCentral} certidão(ões) precisam de atenção.`,
           empresa: e.nome,
           acaoLabel: "Ver certidões",
-          link: "/certidoes",
+          link: "/sicaf",
           linkSearch: { cnpj },
           tempoEstimado: "5 min",
         });
