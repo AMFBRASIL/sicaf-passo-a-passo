@@ -142,6 +142,13 @@ function initSicafAgentModules() {
   } catch (e) {
     console.warn("[sicaf-bridge] Cron Google Ads conversões:", e.message);
   }
+  try {
+    if (!process.env.VERCEL) {
+      loadModule("services/efi-pagamentos-cron.service").start();
+    }
+  } catch (e) {
+    console.warn("[sicaf-bridge] Cron validação pagamentos Efí:", e.message);
+  }
   initialized = true;
 }
 

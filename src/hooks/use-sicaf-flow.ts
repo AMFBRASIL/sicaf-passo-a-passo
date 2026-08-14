@@ -213,35 +213,6 @@ export function useSicafFlow(cnpj?: string) {
     void abrirPagamentoEtapa1();
   }, [abrirPagamentoEtapa1, painel?.sicaf?.status]);
 
-  const abrirEtapaModal = useCallback(
-    (modalKey: PipelineModalKey) => {
-      switch (modalKey) {
-        case "pagamento":
-          void abrirPagamentoEtapa1();
-          break;
-        case "certificado":
-          setCertificadoModal(true);
-          break;
-        case "documentos":
-          setModalAberto(2);
-          break;
-        case "assistente":
-          setModalAberto(3);
-          break;
-        case "nivel3":
-          setModalAberto(4);
-          break;
-        case "nivel4":
-          setModalAberto(5);
-          break;
-        case "validar":
-          setModalAberto(6);
-          break;
-      }
-    },
-    [abrirPagamentoEtapa1],
-  );
-
   const abrirAssistente = useCallback(() => {
     if (!pagamentoConfirmado) {
       bloquearAssistente();
@@ -249,6 +220,20 @@ export function useSicafFlow(cnpj?: string) {
     }
     void openSICAF();
   }, [bloquearAssistente, openSICAF, pagamentoConfirmado]);
+
+  const abrirEtapaModal = useCallback(
+    (modalKey: PipelineModalKey) => {
+      switch (modalKey) {
+        case "pagamento":
+          void abrirPagamentoEtapa1();
+          break;
+        case "assistente":
+          abrirAssistente();
+          break;
+      }
+    },
+    [abrirAssistente, abrirPagamentoEtapa1],
+  );
 
   return {
     passos: SICAF_PASSOS,

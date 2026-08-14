@@ -201,7 +201,7 @@ export function pagamentoSicafConfirmado(painel: EmpresaGerenciarPainel | null |
 export function deriveEtapaAtual(
   painel: EmpresaGerenciarPainel,
   _certificado: CertificadoDigitalInfo | null | undefined,
-  extensionInstalled: boolean,
+  _extensionInstalled: boolean,
   renovando: boolean,
   total: number,
 ): number {
@@ -217,15 +217,9 @@ export function deriveEtapaAtual(
     return total + 1;
   }
 
-  // Fluxo passo a passo — certificado digital é opcional (Assistente / configurações)
+  // Fluxo simplificado: pagamento → Assistente (documentos e certidões ficam no Assistente)
   if (needsSicafTaxaPaymentFromPainel(painel)) return 1;
-  if (!hasRequiredDocumentos(painel)) return 2;
-  if (!extensionInstalled) return 3;
-  if (!nivelValidado(painel.niveisDetail, 3)) return 4;
-  if (!nivelValidado(painel.niveisDetail, 4)) return 5;
-  if (!todosNiveisValidados(painel.niveisDetail)) return 6;
-
-  return total + 1;
+  return 2;
 }
 
 function mapPainelToCliente(painel: EmpresaGerenciarPainel): SicafPageCliente {

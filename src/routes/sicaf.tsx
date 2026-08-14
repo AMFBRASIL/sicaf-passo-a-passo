@@ -45,10 +45,6 @@ import { SelecionarEmpresaModal } from "@/components/selecionar-empresa-modal";
 import { detectarFluxoPagamentoSicaf } from "@/lib/cliente-financeiro-api";
 import { CertificadoDigitalCard } from "@/components/certificado-digital-card";
 import {
-  SaudeDocumentalCard,
-} from "@/components/saude-documental-card";
-import { fetchDocumentosChecklist, type DocChecklistItem } from "@/lib/documentos-api";
-import {
   CADBRASIL_EXTENSION_STORE_URL,
   useCadBrasilExtension,
 } from "@/hooks/use-cadbrasil-extension";
@@ -58,7 +54,6 @@ import {
 import { uploadDocumentoEmpresa } from "@/lib/documentos-api";
 import type { EmpresaGerenciarPainel } from "@/lib/empresas-api";
 import {
-  calcSaudeDocumentalSicaf,
   deriveEtapaAtual,
   loadSicafPageData,
   pagamentoSicafConfirmado,
@@ -698,7 +693,7 @@ function SicafPage() {
   const { cnpj } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const total = passosBase.length;
-  const { extensionInstalled, openSICAF } = useCadBrasilExtension();
+  const { extensionInstalled } = useCadBrasilExtension();
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -710,39 +705,11 @@ function SicafPage() {
   const [renovando, setRenovando] = useState(false);
   const [renovacaoModal, setRenovacaoModal] = useState(false);
   const [etapaAtual, setEtapaAtual] = useState(1);
-  const [modalAberto, setModalAberto] = useState<number | null>(null);
   const [pagamentoModal, setPagamentoModal] = useState(false);
   const [pagamentosWizardOpen, setPagamentosWizardOpen] = useState(false);
   const [verificandoPagamento, setVerificandoPagamento] = useState(false);
-  const [docsSaude, setDocsSaude] = useState<DocChecklistItem[]>([]);
-  const [docsLoading, setDocsLoading] = useState(false);
-  const [ultimaVerificacao, setUltimaVerificacao] = useState<string | null>(null);
   const [trocarEmpresaOpen, setTrocarEmpresaOpen] = useState(false);
   const [manutencaoModal, setManutencaoModal] = useState<"ativar" | "gerenciar" | null>(null);
-
-  const carregarDocumentos = useCallback(async (clienteId: number) => {
-    setDocsLoading(true);
-    const checklist = await fetchDocumentosChecklist(clienteId);
-    setDocsLoading(false);
-    if (!checklist.ok || !checklist.docsPorNivel) {
-      setDocsSaude([]);
-      return;
-    }
-    setDocsSaude(Object.values(checklist.docsPorNivel).flat());
-    setUltimaVerificacao(
-      new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-    );
-  }, []);
-
-  const saudeStats = useMemo(() => {
-    const etapasConcluidas = etapaAtual > total;
-    const base = calcSaudeDocumentalSicaf(docsSaude, painel?.niveisDetail, { etapasConcluidas });
-    return {
-      ...base,
-      ultimaVerificacao,
-      labelMonitorado: `${base.total} documento${base.total === 1 ? "" : "s"} do SICAF monitorados`,
-    };
-  }, [docsSaude, ultimaVerificacao, painel?.niveisDetail, etapaAtual, total]);
 
   const aplicarDados = useCallback(
     (
@@ -760,18 +727,11 @@ function SicafPage() {
   const recarregar = useCallback(async () => {
     if (!cliente?.clienteId) return;
     const id = cliente.clienteId;
-    const [data] = await Promise.all([
-      reloadSicafPainel(id),
-      carregarDocumentos(id),
-    ]);
+    const data = await reloadSicafPainel(id);
     if (data.ok && data.painel && data.cliente) {
       aplicarDados(data.cliente, data.painel, data.certificado ?? null);
     }
-  }, [aplicarDados, carregarDocumentos, cliente?.clienteId, renovando]);
-
-  useEffect(() => {
-    if (cliente?.clienteId) void carregarDocumentos(cliente.clienteId);
-  }, [cliente?.clienteId, carregarDocumentos]);
+  }, [aplicarDados, cliente?.clienteId, renovando]);
 
   useEffect(() => {
     let cancelled = false;
@@ -889,7 +849,7 @@ function SicafPage() {
         <PageHeader
           icon={<Bot className="h-5 w-5" />}
           title="Atualizar SICAF"
-          subtitle="Não se preocupe — vamos fazer juntos, um passo de cada vez."
+          subtitle="Dois passos: pague a taxa e valide tudo no Assistente."
         />
         <Card className="mt-6 border-danger/30">
           <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
@@ -912,7 +872,7 @@ function SicafPage() {
       <PageHeader
         icon={<Bot className="h-5 w-5" />}
         title="Atualizar SICAF"
-        subtitle="Não se preocupe — vamos fazer juntos, um passo de cada vez."
+        subtitle="Dois passos: pague a taxa e valide tudo no Assistente."
       />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
@@ -1069,29 +1029,6 @@ function SicafPage() {
         </Button>
       </div>
 
-      {docsLoading ? (
-        <Card className="mt-4 border-primary/20">
-          <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            Calculando saúde documental…
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="mt-4">
-          <SaudeDocumentalCard
-            stats={saudeStats}
-            cnpj={cliente.cnpj}
-            assistenteDisponivel={pagamentoConfirmado}
-            onAssistenteBloqueado={bloquearAssistente}
-            secondaryLink={{
-              to: "/documentos",
-              label: "Ver todos os documentos →",
-              search: { cnpj: cliente.cnpj },
-            }}
-          />
-        </div>
-      )}
-
       {cliente.estado === "vencido" && !renovando && tudoConcluido ? (
         <Card className="mt-6 border-danger/40 bg-gradient-to-br from-danger/10 via-danger/5 to-transparent shadow-soft overflow-hidden">
           <CardContent className="p-5">
@@ -1140,7 +1077,7 @@ function SicafPage() {
                     : "Sua empresa ainda não possui SICAF ativo. Vamos cadastrar agora?"}
               </p>
               <p className="mt-1 text-muted-foreground">
-                Leva cerca de 5 minutos. Comece pela próxima etapa em destaque abaixo.
+                Primeiro confirme o pagamento. Depois abra o Assistente para validar os documentos no Compras.gov.br.
               </p>
             </div>
           </CardContent>
@@ -1274,16 +1211,42 @@ function SicafPage() {
                   <p className="mt-0.5 text-sm text-muted-foreground">{p.descricao}</p>
                   {status === "current" && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => (p.n === 1 ? void abrirPagamentoEtapa1() : setModalAberto(p.n))}
-                        disabled={p.n === 1 && verificandoPagamento}
-                      >
-                        {p.n === 1 && verificandoPagamento ? (
-                          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                        ) : null}
-                        Resolver agora
-                        <ArrowRight className="ml-1.5 h-4 w-4" />
+                      {p.n === 1 ? (
+                        <Button
+                          size="sm"
+                          onClick={() => void abrirPagamentoEtapa1()}
+                          disabled={verificandoPagamento}
+                        >
+                          {verificandoPagamento ? (
+                            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                          ) : null}
+                          Resolver agora
+                          <ArrowRight className="ml-1.5 h-4 w-4" />
+                        </Button>
+                      ) : pagamentoConfirmado ? (
+                        <Button asChild size="sm">
+                          <Link to="/assistente" search={{ cnpj: cliente.cnpj }}>
+                            <Bot className="mr-1.5 h-4 w-4" />
+                            Abrir Assistente
+                            <ArrowRight className="ml-1.5 h-4 w-4" />
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button size="sm" onClick={bloquearAssistente}>
+                          <Bot className="mr-1.5 h-4 w-4" />
+                          Abrir Assistente
+                          <ArrowRight className="ml-1.5 h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {status === "done" && p.n === 2 && pagamentoConfirmado && (
+                    <div className="mt-3">
+                      <Button asChild size="sm" variant="outline">
+                        <Link to="/assistente" search={{ cnpj: cliente.cnpj }}>
+                          <Bot className="mr-1.5 h-4 w-4" />
+                          Abrir Assistente
+                        </Link>
                       </Button>
                     </div>
                   )}
@@ -1315,61 +1278,6 @@ function SicafPage() {
       </div>
 
       {/* Modais */}
-      <DocumentacaoDialog
-        open={modalAberto === 2}
-        onOpenChange={(v) => !v && setModalAberto(null)}
-        onConcluido={concluirEtapa}
-        clienteId={cliente.clienteId}
-      />
-      <AssistenteDialog
-        open={modalAberto === 3}
-        onOpenChange={(v) => !v && setModalAberto(null)}
-        onConcluido={concluirEtapa}
-      />
-      <AssistenteRodandoDialog
-        open={modalAberto === 4}
-        onOpenChange={(v) => !v && setModalAberto(null)}
-        onConcluido={concluirEtapa}
-        onIniciar={() => { void openSICAF(); }}
-        titulo="Atualizar Nível III — Receita Federal"
-        subtitulo="O Assistente CADBRASIL vai acessar o Compras.gov.br e atualizar os documentos federais."
-        etapas={[
-          "Acessando Compras.gov.br",
-          "Consultando documentos do Nível III na Receita Federal",
-          "Baixando certidões negativas atualizadas",
-          "Anexando ao seu cadastro SICAF",
-          "Validando atualização junto ao sistema",
-        ]}
-      />
-      <AssistenteRodandoDialog
-        open={modalAberto === 5}
-        onOpenChange={(v) => !v && setModalAberto(null)}
-        onConcluido={concluirEtapa}
-        onIniciar={() => { void openSICAF(); }}
-        titulo="Atualizar Nível IV — Qualificação técnica"
-        subtitulo="O assistente vai consolidar e enviar seus documentos de qualificação técnica."
-        etapas={[
-          "Conferindo CNAEs cadastrados na Receita Federal",
-          "Validando atestados e documentos técnicos",
-          "Preenchendo formulário de qualificação no Compras.gov.br",
-          "Confirmando envio do Nível IV",
-        ]}
-      />
-      <AssistenteRodandoDialog
-        open={modalAberto === 6}
-        onOpenChange={(v) => !v && setModalAberto(null)}
-        onConcluido={concluirEtapa}
-        onIniciar={() => { void openSICAF(); }}
-        titulo="Validar e enviar"
-        subtitulo="Última etapa! Confirmação final e ativação do seu SICAF."
-        etapas={[
-          "Revisando todos os níveis cadastrados",
-          "Gerando comprovante de inscrição",
-          "Confirmando ativação no SICAF",
-        ]}
-      />
-
-
       {tudoConcluido && (
         <div className="fixed bottom-6 right-6 z-50 hidden sm:block">
           {cliente.estado === "vencido" && !renovando ? (
@@ -1399,7 +1307,7 @@ function SicafPage() {
             <DialogTitle className="text-center text-xl">Renovar SICAF</DialogTitle>
             <DialogDescription className="text-center">
               Vamos reativar o SICAF de <span className="font-semibold text-foreground">{cliente.nome}</span>.
-              O processo é idêntico ao cadastro inicial — pagamento da taxa, verificação dos documentos e atualização automática dos níveis.
+              O processo é simples: pagamento da taxa e validação dos documentos no Assistente CADBRASIL.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-xl border bg-muted/30 p-4 text-sm space-y-2">

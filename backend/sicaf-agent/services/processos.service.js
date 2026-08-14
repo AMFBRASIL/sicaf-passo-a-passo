@@ -4,11 +4,31 @@
 const { getDb } = require('../database/connection');
 
 const PROCESSO_GOOGLE_ADS = 'google-ads-conversoes';
+const PROCESSO_EFI_PAGAMENTOS = 'efi-pagamentos';
 
 const DEFAULT_SCHEDULES = [
   { id: 'manha', label: 'Manhã', hour: 8, minute: 0 },
   { id: 'tarde', label: 'Tarde', hour: 18, minute: 0 },
 ];
+
+function parseEfiScheduleEnv() {
+  const raw =
+    process.env.CRON_EFI_PAGAMENTOS_SCHEDULE ||
+    process.env.CRON_GOOGLE_ADS_CONVERSOES_SCHEDULE ||
+    '08:00,18:00';
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  const slotIds = ['manha', 'tarde', 'noite', 'extra'];
+  const slotLabels = ['Manhã', 'Tarde', 'Noite', 'Extra'];
+  return parts.map((part, i) => {
+    const [h, m] = part.split(':').map((n) => parseInt(n, 10));
+    return {
+      id: slotIds[i] || `slot-${i}`,
+      label: slotLabels[i] || `Horário ${i + 1}`,
+      hour: Number.isFinite(h) ? h : 8,
+      minute: Number.isFinite(m) ? m : 0,
+    };
+  });
+}
 
 function parseScheduleEnv() {
   const raw = process.env.CRON_GOOGLE_ADS_CONVERSOES_SCHEDULE || '08:00,18:00';
@@ -85,13 +105,26 @@ async function getLastExecutions(db, processoId, limit = 10) {
     startedAt: r.started_at,
     finishedAt: r.finished_at,
     message: r.message,
-    details: r.details ? (typeof r.details === 'string' ? JSON.parse(r.details) : r.details) : null,
+    details: r.details
+      ? typeof r.details === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(r.details);
+            } catch {
+              return null;
+            }
+          })()
+        : r.details
+      : null,
   }));
 }
 
 function getProcessDefinitions() {
   const enabled = (process.env.CRON_GOOGLE_ADS_CONVERSOES_ENABLED || 'true').toLowerCase() !== 'false';
   const schedules = parseScheduleEnv();
+
+  const efiEnabled = (process.env.CRON_EFI_PAGAMENTOS_ENABLED || 'true').toLowerCase() !== 'false';
+  const efiSchedules = parseEfiScheduleEnv();
 
   return [
     {
@@ -103,6 +136,14 @@ function getProcessDefinitions() {
       schedules: schedules.length ? schedules : DEFAULT_SCHEDULES,
       npmScript: 'sync:google-ads-conversoes',
     },
+    {
+      id: PROCESSO_EFI_PAGAMENTOS,
+      name: 'Validar pagamentos Efí',
+      description:
+        'Consulta PIX e boletos em aberto na Efí Bank (Gerencianet), baixa os que já foram pagos e gera a conferência com os pagamentos já marcados no sistema.',
+      enabled: efiEnabled,
+      schedules: efiSchedules.length ? efiSchedules : DEFAULT_SCHEDULES,
+    },
   ];
 }
 
@@ -112,11 +153,17 @@ async function listProcessos() {
 
   const definitions = getProcessDefinitions();
   const googleAdsCron = require('./google-ads-conversoes-cron.service');
+  const efiCron = require('./efi-pagamentos-cron.service');
 
   const processos = [];
   for (const def of definitions) {
     const history = await getLastExecutions(db, def.id, 15);
-    const cronStatus = def.id === PROCESSO_GOOGLE_ADS ? googleAdsCron.getStatus() : null;
+    const cronStatus =
+      def.id === PROCESSO_GOOGLE_ADS
+        ? googleAdsCron.getStatus()
+        : def.id === PROCESSO_EFI_PAGAMENTOS
+          ? efiCron.getStatus()
+          : null;
     processos.push({
       ...def,
       cron: cronStatus,
@@ -130,6 +177,7 @@ async function listProcessos() {
 
 module.exports = {
   PROCESSO_GOOGLE_ADS,
+  PROCESSO_EFI_PAGAMENTOS,
   getProcessDefinitions,
   parseScheduleEnv,
   ensureExecucoesTable,

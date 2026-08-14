@@ -547,7 +547,7 @@ function EtapaSicafCard({
               <CheckCircle2 className="h-3.5 w-3.5" /> Validado
             </p>
           )}
-          {etapa.id === "validar" && (isDone || tudoConcluido) && (
+          {etapa.id === "assistente" && (isDone || tudoConcluido) && (
             <div className="mt-3">
               {pagamentoConfirmado ? (
                 <Button asChild size="sm" className="gap-1.5 text-xs font-semibold">

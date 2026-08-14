@@ -12,6 +12,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Clock,
   Loader2,
   Play,
@@ -23,12 +30,18 @@ import {
   Sun,
   Sunset,
   Moon,
+  ListChecks,
+  Banknote,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchAdminProcessos,
+  runEfiPagamentosValidacao,
   runGoogleAdsConversoesSync,
   type AdminProcesso,
+  type EfiPagamentoConferencia,
+  type ProcessHistory,
+  type ProcessHistoryDetails,
 } from "@/lib/admin-processos-api";
 
 export const Route = createFileRoute("/admin/processos")({
@@ -42,6 +55,10 @@ function formatDateTime(value: string | null | undefined) {
   return d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
+function formatMoney(value: number | null | undefined) {
+  return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 function scheduleIcon(id: string) {
   if (id === "manha") return Sun;
   if (id === "tarde") return Sunset;
@@ -52,22 +69,22 @@ function scheduleIcon(id: string) {
 function statusBadge(status: string) {
   if (status === "success") {
     return (
-      <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/15">
-        <CheckCircle2 className="w-3 h-3 mr-1" /> Sucesso
+      <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15">
+        <CheckCircle2 className="mr-1 h-3 w-3" /> Sucesso
       </Badge>
     );
   }
   if (status === "error") {
     return (
-      <Badge variant="destructive" className="bg-red-500/15 text-red-700 border-red-500/30 hover:bg-red-500/15">
-        <XCircle className="w-3 h-3 mr-1" /> Erro
+      <Badge variant="destructive" className="border-red-500/30 bg-red-500/15 text-red-700 hover:bg-red-500/15">
+        <XCircle className="mr-1 h-3 w-3" /> Erro
       </Badge>
     );
   }
   if (status === "running") {
     return (
-      <Badge className="bg-amber-500/15 text-amber-800 border-amber-500/30 hover:bg-amber-500/15">
-        <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Em execução
+      <Badge className="border-amber-500/30 bg-amber-500/15 text-amber-800 hover:bg-amber-500/15">
+        <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Em execução
       </Badge>
     );
   }
@@ -87,10 +104,132 @@ function slotLabel(slot: string | null) {
   return map[slot] || slot;
 }
 
+function isEfiProcess(id: string) {
+  return id === "efi-pagamentos";
+}
+
+function hasEfiDetails(details?: ProcessHistoryDetails | null) {
+  return !!details && (details.validadosAgora != null || Array.isArray(details.validados));
+}
+
+function ConferenciaTable({
+  rows,
+  empty,
+}: {
+  rows: EfiPagamentoConferencia[];
+  empty: string;
+}) {
+  if (!rows.length) {
+    return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>;
+  }
+  return (
+    <div className="overflow-x-auto rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Cliente</TableHead>
+            <TableHead>Tipo</TableHead>
+            <TableHead>Origem</TableHead>
+            <TableHead className="text-right">Valor</TableHead>
+            <TableHead>Sistema</TableHead>
+            <TableHead>Efí</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={`${r.id}-${r.acao || ""}`}>
+              <TableCell className="max-w-[220px] truncate text-xs font-medium">{r.clienteNome}</TableCell>
+              <TableCell className="text-xs uppercase">{r.tipo || "—"}</TableCell>
+              <TableCell className="text-xs">{r.origem || "—"}</TableCell>
+              <TableCell className="text-right text-xs">{formatMoney(r.valor)}</TableCell>
+              <TableCell className="text-xs">{r.statusSistema || "—"}</TableCell>
+              <TableCell className="text-xs">{r.statusEfi || "—"}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function EfiConferenciaModal({
+  open,
+  onOpenChange,
+  history,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  history: ProcessHistory | null;
+}) {
+  const d = history?.details;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Conferência de pagamentos Efí × sistema</DialogTitle>
+          <DialogDescription>
+            {history?.message ||
+              "Pagamentos confirmados na Efí nesta execução versus os já marcados como pagos no CADBRASIL."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border bg-emerald-50 p-3 text-center">
+            <p className="text-2xl font-bold text-emerald-700">{d?.validadosAgora ?? 0}</p>
+            <p className="text-xs text-emerald-800">Validados agora na Efí</p>
+          </div>
+          <div className="rounded-lg border bg-slate-50 p-3 text-center">
+            <p className="text-2xl font-bold text-slate-800">{d?.jaPagosSistema ?? 0}</p>
+            <p className="text-xs text-slate-600">Já pagos no sistema (30d)</p>
+          </div>
+          <div className="rounded-lg border bg-amber-50 p-3 text-center">
+            <p className="text-2xl font-bold text-amber-700">{d?.pendentesEfi ?? 0}</p>
+            <p className="text-xs text-amber-800">Ainda pendentes na Efí</p>
+          </div>
+          <div className="rounded-lg border bg-rose-50 p-3 text-center">
+            <p className="text-2xl font-bold text-rose-700">{(d?.erros ?? 0) + (d?.cancelados ?? 0)}</p>
+            <p className="text-xs text-rose-800">Erros / encerrados</p>
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-emerald-800">Validados na Efí e baixados agora</h3>
+            <ConferenciaTable
+              rows={d?.validados || []}
+              empty="Nenhum pagamento novo foi confirmado na Efí nesta execução."
+            />
+          </section>
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">Já pagos no sistema (últimos 30 dias)</h3>
+            <ConferenciaTable
+              rows={d?.pagosSistema || []}
+              empty="Nenhum pagamento marcado como pago no sistema nos últimos 30 dias."
+            />
+          </section>
+          {(d?.pendentes?.length || 0) > 0 && (
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-amber-800">Consultados na Efí e ainda em aberto</h3>
+              <ConferenciaTable rows={d?.pendentes || []} empty="" />
+            </section>
+          )}
+          {(d?.falhas?.length || 0) > 0 && (
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-rose-800">Falhas ao consultar a Efí</h3>
+              <ConferenciaTable rows={d?.falhas || []} empty="" />
+            </section>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ProcessosPage() {
   const [loading, setLoading] = useState(true);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [processos, setProcessos] = useState<AdminProcesso[]>([]);
+  const [conferencia, setConferencia] = useState<ProcessHistory | null>(null);
 
   const carregar = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -115,10 +254,14 @@ function ProcessosPage() {
   }, [carregar]);
 
   const handleRun = async (processoId: string) => {
-    if (processoId !== "google-ads-conversoes") return;
     setRunningId(processoId);
     try {
-      const res = await runGoogleAdsConversoesSync();
+      const res =
+        processoId === "efi-pagamentos"
+          ? await runEfiPagamentosValidacao()
+          : processoId === "google-ads-conversoes"
+            ? await runGoogleAdsConversoesSync()
+            : { ok: false, error: "Processo sem execução manual" };
       if (!res.ok) {
         toast.error(res.error || "Falha ao iniciar o processo");
         return;
@@ -126,6 +269,7 @@ function ProcessosPage() {
       toast.success(res.message || "Processo iniciado");
       window.setTimeout(() => void carregar(true), 2000);
       window.setTimeout(() => void carregar(true), 8000);
+      window.setTimeout(() => void carregar(true), 20000);
     } catch {
       toast.error("Erro de conexão");
     } finally {
@@ -136,7 +280,7 @@ function ProcessosPage() {
   const enabledCount = processos.filter((p) => p.enabled).length;
   const runningAny = processos.some((p) => p.cron?.running || p.lastRun?.status === "running");
   const horariosDia = useMemo(
-    () => processos[0]?.schedules?.length ?? 2,
+    () => Math.max(...processos.map((p) => p.schedules?.length ?? 0), 0),
     [processos],
   );
 
@@ -198,14 +342,14 @@ function ProcessosPage() {
                   <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
                     {proc.name}
                     {proc.enabled ? (
-                      <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-500/30">
+                      <Badge className="border-emerald-500/30 bg-emerald-500/15 text-emerald-700">
                         Cron ativo
                       </Badge>
                     ) : (
                       <Badge variant="secondary">Cron desativado</Badge>
                     )}
                     {proc.cron?.running && (
-                      <Badge className="bg-amber-500/15 text-amber-800 border-amber-500/30">
+                      <Badge className="border-amber-500/30 bg-amber-500/15 text-amber-800">
                         <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Rodando
                       </Badge>
                     )}
@@ -217,18 +361,30 @@ function ProcessosPage() {
                     </p>
                   )}
                 </div>
-                <Button
-                  className="shrink-0 bg-blue-600 hover:bg-blue-700"
-                  disabled={!!proc.cron?.running || runningId === proc.id}
-                  onClick={() => void handleRun(proc.id)}
-                >
-                  {proc.cron?.running || runningId === proc.id ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Play className="mr-2 h-4 w-4" />
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {isEfiProcess(proc.id) && hasEfiDetails(proc.lastRun?.details) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setConferencia(proc.lastRun)}
+                    >
+                      <ListChecks className="mr-2 h-4 w-4" />
+                      Ver conferência
+                    </Button>
                   )}
-                  Executar agora
-                </Button>
+                  <Button
+                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={!!proc.cron?.running || runningId === proc.id}
+                    onClick={() => void handleRun(proc.id)}
+                  >
+                    {proc.cron?.running || runningId === proc.id ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Play className="mr-2 h-4 w-4" />
+                    )}
+                    Executar agora
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -255,13 +411,43 @@ function ProcessosPage() {
                 </div>
                 <p className="mt-2 flex items-start gap-1 text-xs text-muted-foreground">
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  Horários configuráveis via{" "}
-                  <code className="rounded bg-muted px-1 text-[11px]">
-                    CRON_GOOGLE_ADS_CONVERSOES_SCHEDULE
-                  </code>{" "}
-                  no servidor (padrão: 08:00 e 18:00). Em VPS/PM2 use TZ=America/Sao_Paulo.
+                  {isEfiProcess(proc.id) ? (
+                    <>
+                      Horários via{" "}
+                      <code className="rounded bg-muted px-1 text-[11px]">CRON_EFI_PAGAMENTOS_SCHEDULE</code>{" "}
+                      (padrão: mesmos 08:00 e 18:00).
+                    </>
+                  ) : (
+                    <>
+                      Horários via{" "}
+                      <code className="rounded bg-muted px-1 text-[11px]">
+                        CRON_GOOGLE_ADS_CONVERSOES_SCHEDULE
+                      </code>{" "}
+                      no servidor (padrão: 08:00 e 18:00).
+                    </>
+                  )}
                 </p>
               </div>
+
+              {isEfiProcess(proc.id) && proc.lastRun?.details && hasEfiDetails(proc.lastRun.details) && (
+                <button
+                  type="button"
+                  onClick={() => setConferencia(proc.lastRun)}
+                  className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-left transition hover:bg-emerald-50"
+                >
+                  <Banknote className="h-5 w-5 text-emerald-700" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-emerald-900">
+                      {proc.lastRun.details.validadosAgora ?? 0} pagamento(s) validados na Efí
+                    </p>
+                    <p className="text-xs text-emerald-800/80">
+                      {proc.lastRun.details.jaPagosSistema ?? 0} já pagos no sistema ·{" "}
+                      {proc.lastRun.details.pendentesEfi ?? 0} pendentes na Efí · clique para conferir
+                    </p>
+                  </div>
+                  <ListChecks className="h-5 w-5 text-emerald-700" />
+                </button>
+              )}
 
               {proc.lastRun && (
                 <div className="rounded-lg border bg-muted/20 p-3 text-sm">
@@ -307,9 +493,25 @@ function ProcessosPage() {
                             <TableCell className="text-xs capitalize">{h.triggerType}</TableCell>
                             <TableCell className="text-xs">{slotLabel(h.scheduleSlot)}</TableCell>
                             <TableCell>{statusBadge(h.status)}</TableCell>
-                            <TableCell className="max-w-[240px] truncate text-xs text-muted-foreground">
-                              {h.message ||
-                                (h.details?.inserted != null ? `${h.details.inserted} inseridas` : "—")}
+                            <TableCell className="max-w-[280px] text-xs text-muted-foreground">
+                              <div className="flex items-center gap-2">
+                                <span className="truncate">
+                                  {h.message ||
+                                    (h.details?.inserted != null ? `${h.details.inserted} inseridas` : "—")}
+                                </span>
+                                {isEfiProcess(proc.id) && hasEfiDetails(h.details) && (
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 shrink-0"
+                                    title="Ver conferência"
+                                    onClick={() => setConferencia(h)}
+                                  >
+                                    <ListChecks className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -330,6 +532,14 @@ function ProcessosPage() {
           </CardContent>
         </Card>
       )}
+
+      <EfiConferenciaModal
+        open={!!conferencia}
+        onOpenChange={(open) => {
+          if (!open) setConferencia(null);
+        }}
+        history={conferencia}
+      />
     </div>
   );
 }

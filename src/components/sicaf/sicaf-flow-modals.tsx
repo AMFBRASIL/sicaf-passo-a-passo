@@ -12,11 +12,6 @@ import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { PagamentosPendentesWizard } from "@/components/pagamentos-pendentes-wizard";
 import { SelecionarEmpresaModal } from "@/components/selecionar-empresa-modal";
 import { CertificadoUploadWizard } from "@/components/certificado-upload-wizard";
-import { UploadNiveisModal } from "@/components/upload-niveis-modal";
-import {
-  AssistenteDialog,
-  AssistenteRodandoDialog,
-} from "@/components/sicaf/sicaf-step-dialogs";
 import type { SicafFlow } from "@/hooks/use-sicaf-flow";
 import { toast } from "sonner";
 
@@ -31,68 +26,6 @@ export function SicafFlowModals({ flow, onSelectEmpresa }: Props) {
 
   return (
     <>
-      <UploadNiveisModal
-        open={flow.modalAberto === 2}
-        onOpenChange={(v) => !v && flow.setModalAberto(null)}
-        clienteId={cliente.clienteId}
-        empresaNome={cliente.nome}
-        empresaCnpj={cliente.cnpj}
-        onConcluido={flow.concluirEtapa}
-      />
-      <AssistenteDialog
-        open={flow.modalAberto === 3}
-        onOpenChange={(v) => !v && flow.setModalAberto(null)}
-        onConcluido={flow.concluirEtapa}
-      />
-      <AssistenteRodandoDialog
-        open={flow.modalAberto === 4}
-        onOpenChange={(v) => !v && flow.setModalAberto(null)}
-        onConcluido={flow.concluirEtapa}
-        onIniciar={() => {
-          void flow.openSICAF();
-        }}
-        titulo="Atualizar Nível III — Receita Federal"
-        subtitulo="O Assistente CADBRASIL vai acessar o Compras.gov.br e atualizar os documentos federais."
-        etapas={[
-          "Acessando Compras.gov.br",
-          "Consultando documentos do Nível III na Receita Federal",
-          "Baixando certidões negativas atualizadas",
-          "Anexando ao seu cadastro SICAF",
-          "Validando atualização junto ao sistema",
-        ]}
-      />
-      <AssistenteRodandoDialog
-        open={flow.modalAberto === 5}
-        onOpenChange={(v) => !v && flow.setModalAberto(null)}
-        onConcluido={flow.concluirEtapa}
-        onIniciar={() => {
-          void flow.openSICAF();
-        }}
-        titulo="Atualizar Nível IV — Qualificação técnica"
-        subtitulo="O assistente vai consolidar e enviar seus documentos de qualificação técnica."
-        etapas={[
-          "Conferindo CNAEs cadastrados na Receita Federal",
-          "Validando atestados e documentos técnicos",
-          "Preenchendo formulário de qualificação no Compras.gov.br",
-          "Confirmando envio do Nível IV",
-        ]}
-      />
-      <AssistenteRodandoDialog
-        open={flow.modalAberto === 6}
-        onOpenChange={(v) => !v && flow.setModalAberto(null)}
-        onConcluido={flow.concluirEtapa}
-        onIniciar={() => {
-          void flow.openSICAF();
-        }}
-        titulo="Validar e enviar"
-        subtitulo="Última etapa! Confirmação final e ativação do seu SICAF."
-        etapas={[
-          "Revisando todos os níveis cadastrados",
-          "Gerando comprovante de inscrição",
-          "Confirmando ativação no SICAF",
-        ]}
-      />
-
       <CertificadoUploadWizard
         open={flow.certificadoModal}
         onOpenChange={flow.setCertificadoModal}

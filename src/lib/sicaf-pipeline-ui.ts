@@ -1,9 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  CheckCircle2,
   CreditCard,
-  ShieldCheck,
-  Upload,
+  Bot,
 } from "lucide-react";
 import type { EmpresaGerenciarPainel } from "@/lib/empresas-api";
 import { pagamentoSicafConfirmado } from "@/lib/sicaf-page-api";
@@ -12,14 +10,7 @@ import { SICAF_PASSOS } from "@/lib/sicaf-flow-constants";
 
 export type EtapaStatus = "concluido" | "andamento" | "pendente" | "atencao";
 
-export type PipelineModalKey =
-  | "pagamento"
-  | "certificado"
-  | "documentos"
-  | "assistente"
-  | "nivel3"
-  | "nivel4"
-  | "validar";
+export type PipelineModalKey = "pagamento" | "assistente";
 
 export interface PipelineEtapa {
   id: string;
@@ -58,18 +49,9 @@ export function buildPipelineEtapas(
 ): PipelineEtapa[] {
   const pagamentoOk = pagamentoSicafConfirmado(painel);
   const taxaPendente = !pagamentoOk;
-  const docsOk = etapaAtual > 2;
-
-  const uploaded = painel?.documentos?.filter((d) => d.status === "ok" || d.arquivoUrl) ?? [];
-  const docsStatusDetalhe =
-    uploaded.length > 0 ? `${uploaded.length} documento(s) enviado(s)` : undefined;
 
   const p1 = passoPorNumero(1);
   const p2 = passoPorNumero(2);
-  const p3 = passoPorNumero(3);
-  const p4 = passoPorNumero(4);
-  const p5 = passoPorNumero(5);
-  const p6 = passoPorNumero(6);
 
   return [
     {
@@ -84,55 +66,15 @@ export function buildPipelineEtapas(
       etapaNum: 1,
     },
     {
-      id: "documentos",
+      id: "assistente",
       titulo: p2.titulo,
       descricao: p2.descricao,
       tempoMin: p2.tempoMin,
-      subtitulo: docsOk ? "Documentação enviada" : docsStatusDetalhe,
+      subtitulo: pagamentoOk ? "Documentos e certidões são validados no Assistente" : "Liberado após o pagamento",
       status: statusFromEtapa(2, etapaAtual),
-      icon: Upload,
-      modalKey: "documentos",
-      etapaNum: 2,
-    },
-    {
-      id: "assistente",
-      titulo: p3.titulo,
-      descricao: p3.descricao,
-      tempoMin: p3.tempoMin,
-      status: statusFromEtapa(3, etapaAtual),
-      icon: ShieldCheck,
+      icon: Bot,
       modalKey: "assistente",
-      etapaNum: 3,
-    },
-    {
-      id: "nivel3",
-      titulo: p4.titulo,
-      descricao: p4.descricao,
-      tempoMin: p4.tempoMin,
-      status: statusFromEtapa(4, etapaAtual),
-      icon: ShieldCheck,
-      modalKey: "nivel3",
-      etapaNum: 4,
-    },
-    {
-      id: "nivel4",
-      titulo: p5.titulo,
-      descricao: p5.descricao,
-      tempoMin: p5.tempoMin,
-      status: statusFromEtapa(5, etapaAtual),
-      icon: ShieldCheck,
-      modalKey: "nivel4",
-      etapaNum: 5,
-    },
-    {
-      id: "validar",
-      titulo: p6.titulo,
-      descricao: p6.descricao,
-      tempoMin: p6.tempoMin,
-      status: statusFromEtapa(6, etapaAtual),
-      icon: CheckCircle2,
-      modalKey: "validar",
-      etapaNum: 6,
+      etapaNum: 2,
     },
   ];
 }
