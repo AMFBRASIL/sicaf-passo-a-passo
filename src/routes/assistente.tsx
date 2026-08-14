@@ -44,9 +44,12 @@ import { GitCompareArrows } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { AssistenteSicafLaunchDialog } from "@/components/assistente-sicaf-launch-dialog";
-import { AssistenteOnboardingModal,
-  hasSeenAssistenteOnboarding,
-} from "@/components/assistente-onboarding-modal";
+import { AssistenteOnboardingModal } from "@/components/assistente-onboarding-modal";
+import {
+  AssistenteAcessarSicafTour,
+  hasIgnoredAssistenteTour,
+  markAssistenteTourIgnored,
+} from "@/components/assistente-acessar-sicaf-tour";
 import { SelecionarEmpresaModal } from "@/components/selecionar-empresa-modal";
 import { resolveEmpresaPorCnpj } from "@/lib/documentos-api";
 import {
@@ -265,6 +268,10 @@ function AssistentePage() {
   const [comparadorAberto, setComparadorAberto] = useState(false);
   const [launchOpen, setLaunchOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourStep, setTourStep] = useState<"install" | "acessar">("acessar");
+  const acessarSicafBtnRef = useRef<HTMLButtonElement>(null);
+  const instalarExtensaoBtnRef = useRef<HTMLButtonElement>(null);
   const [selecionarEmpresaOpen, setSelecionarEmpresaOpen] = useState(false);
   const [totalEmpresas, setTotalEmpresas] = useState(0);
   const [clienteId, setClienteId] = useState<number | null>(null);
@@ -329,11 +336,28 @@ function AssistentePage() {
     }
   }, [cnpj, navigate]);
 
+  const tourAutoStartedRef = useRef(false);
   useEffect(() => {
-    if (!hasSeenAssistenteOnboarding()) {
-      setOnboardingOpen(true);
-    }
-  }, []);
+    if (hasIgnoredAssistenteTour() || extensionChecking || tourAutoStartedRef.current) return;
+    const t = window.setTimeout(() => {
+      if (hasIgnoredAssistenteTour() || tourAutoStartedRef.current) return;
+      tourAutoStartedRef.current = true;
+      if (!extensionInstalled) {
+        setTourStep("install");
+        instalarExtensaoBtnRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else {
+        setTourStep("acessar");
+      }
+      setTourOpen(true);
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [extensionChecking, extensionInstalled]);
+
+  useEffect(() => {
+    if (!tourOpen || !extensionInstalled || tourStep !== "install") return;
+    setTourStep("acessar");
+    acessarSicafBtnRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [extensionInstalled, tourOpen, tourStep]);
 
   useEffect(() => {
     void fetchEmpresas().then((res) => {
@@ -524,9 +548,16 @@ function AssistentePage() {
               </Link>
             </Button>
             <Button
+              ref={acessarSicafBtnRef}
               size="sm"
-              className={SICAF_BUTTON_CLASS}
-              onClick={() => setLaunchOpen(true)}
+              className={cn(
+                SICAF_BUTTON_CLASS,
+                tourOpen && tourStep === "acessar" && "relative z-[90] ring-4 ring-white shadow-xl",
+              )}
+              onClick={() => {
+                setTourOpen(false);
+                setLaunchOpen(true);
+              }}
             >
               <Bot className="h-3.5 w-3.5" />
               Acessar SICAF
@@ -574,7 +605,11 @@ function AssistentePage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  className="gap-2"
+                  ref={instalarExtensaoBtnRef}
+                  className={cn(
+                    "gap-2",
+                    tourOpen && tourStep === "install" && "relative z-[90] ring-4 ring-white shadow-xl",
+                  )}
                   onClick={() => window.open(CADBRASIL_EXTENSION_STORE_URL, "_blank", "noopener,noreferrer")}
                 >
                   <ExternalLink className="h-4 w-4" />
@@ -1217,6 +1252,41 @@ function AssistentePage() {
         open={onboardingOpen}
         onOpenChange={setOnboardingOpen}
         onComecar={() => inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+      />
+
+      <AssistenteAcessarSicafTour
+        open={tourOpen}
+        targetRef={tourStep === "install" ? instalarExtensaoBtnRef : acessarSicafBtnRef}
+        title={
+          tourStep === "install"
+            ? "Instale o Assistente CadBrasil"
+            : "Clique em Acessar SICAF"
+        }
+        description={
+          tourStep === "install" ? (
+            <p>
+              Para validar o SICAF com o Assistente, instale a extensão{" "}
+              <span className="font-semibold text-emerald-700">CadBrasil — Assistente SICAF</span> no
+              Google Chrome. Clique em{" "}
+              <span className="font-semibold text-emerald-700">Instalar Assistente CadBrasil</span> e
+              depois volte aqui.
+            </p>
+          ) : undefined
+        }
+        onDismiss={() => {
+          if (tourStep === "install" && !extensionInstalled) {
+            setTourStep("acessar");
+            window.setTimeout(() => {
+              acessarSicafBtnRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }, 80);
+            return;
+          }
+          setTourOpen(false);
+        }}
+        onIgnore={() => {
+          markAssistenteTourIgnored();
+          setTourOpen(false);
+        }}
       />
 
       <SelecionarEmpresaModal

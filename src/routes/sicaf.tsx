@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import {
   Bot,
@@ -65,6 +65,12 @@ import {
 import { SICAF_PASSOS } from "@/lib/sicaf-flow-constants";
 import type { EmpresaData } from "@/lib/empresas-shared";
 import { toast } from "sonner";
+import {
+  AssistenteAcessarSicafTour,
+  hasIgnoredSicafTour,
+  markSicafTourIgnored,
+} from "@/components/assistente-acessar-sicaf-tour";
+import { cn } from "@/lib/utils";
 
 const searchSchema = z.object({
   cnpj: z.string().optional(),
@@ -710,6 +716,8 @@ function SicafPage() {
   const [verificandoPagamento, setVerificandoPagamento] = useState(false);
   const [trocarEmpresaOpen, setTrocarEmpresaOpen] = useState(false);
   const [manutencaoModal, setManutencaoModal] = useState<"ativar" | "gerenciar" | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
+  const abrirAssistenteBtnRef = useRef<HTMLAnchorElement>(null);
 
   const aplicarDados = useCallback(
     (
@@ -795,6 +803,19 @@ function SicafPage() {
   const pagamentoConfirmado = pagamentoSicafConfirmado(painel);
   const sicafJaAtivo =
     painel?.sicaf?.status === "Ativo" || painel?.sicaf?.status === "Vencendo";
+  const validarSicafPendente = pagamentoConfirmado && !tudoConcluido && etapaAtual === 2;
+
+  useEffect(() => {
+    if (!validarSicafPendente || hasIgnoredSicafTour()) {
+      setTourOpen(false);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      abrirAssistenteBtnRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTourOpen(true);
+    }, 500);
+    return () => window.clearTimeout(t);
+  }, [validarSicafPendente]);
 
   const manutencaoAtiva = painel?.manutencao.ativa ?? false;
   const diaVencimentoManut = painel?.manutencao.diaVencimento ?? undefined;
@@ -1225,7 +1246,12 @@ function SicafPage() {
                         </Button>
                       ) : pagamentoConfirmado ? (
                         <Button asChild size="sm">
-                          <Link to="/assistente" search={{ cnpj: cliente.cnpj }}>
+                          <Link
+                            ref={abrirAssistenteBtnRef}
+                            to="/assistente"
+                            search={{ cnpj: cliente.cnpj }}
+                            className={cn(tourOpen && "relative z-[90] ring-4 ring-white shadow-xl")}
+                          >
                             <Bot className="mr-1.5 h-4 w-4" />
                             Abrir Assistente
                             <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -1377,6 +1403,23 @@ function SicafPage() {
           onPaymentGenerated={() => void recarregar()}
         />
       )}
+      <AssistenteAcessarSicafTour
+        open={tourOpen}
+        targetRef={abrirAssistenteBtnRef}
+        title="Clique em Abrir Assistente"
+        description={
+          <p>
+            O pagamento já está confirmado. Para terminar o SICAF, clique em{" "}
+            <span className="font-semibold text-emerald-700">Abrir Assistente</span>. Lá você acessa o
+            Compras.gov.br e valida os documentos junto com o Assistente CADBRASIL.
+          </p>
+        }
+        onDismiss={() => setTourOpen(false)}
+        onIgnore={() => {
+          markSicafTourIgnored();
+          setTourOpen(false);
+        }}
+      />
     </div>
   );
 }
