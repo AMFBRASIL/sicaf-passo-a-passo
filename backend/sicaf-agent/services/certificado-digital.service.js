@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const tls = require('tls');
+const { spawnSync } = require('child_process');
 const multer = require('multer');
 const forge = require('node-forge');
 const { getDb } = require('../database/connection');
@@ -132,58 +133,165 @@ function extractDocumentoFromCert(cert) {
   return null;
 }
 
-function parseCertificateInfo(pfxBuffer, password) {
-  const binary = pfxBuffer.toString('binary');
-  const asn1 = forge.asn1.fromDer(binary);
-  let p12;
-  try {
-    p12 = forge.pkcs12.pkcs12FromAsn1(asn1, false, password || '');
-  } catch (e) {
-    const msg = String(e.message || e).toLowerCase();
-    if (msg.includes('password') || msg.includes('shroud') || msg.includes('mac')) {
-      return { ok: false, error: 'Senha incorreta para este certificado.' };
-    }
-    return { ok: false, error: 'Arquivo PFX/P12 inválido ou corrompido.' };
-  }
+function certStatusFromDates(validoDe, validoAte) {
+  const now = new Date();
+  if (validoAte && validoAte <= now) return 'expirado';
+  if (validoAte && validoAte.getTime() - now.getTime() <= 30 * 24 * 60 * 60 * 1000) return 'vencendo';
+  return 'valido';
+}
 
-  const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-  const certList = certBags[forge.pki.oids.certBag] || [];
-  if (!certList.length || !certList[0].cert) {
-    return { ok: false, error: 'Nenhum certificado encontrado no arquivo.' };
-  }
+function digitsFromText(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 11 || digits.length === 14) return digits;
+  return null;
+}
 
-  const cert = certList[0].cert;
-  const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
-  const keyList = [
-    ...(keyBags[forge.pki.oids.pkcs8ShroudedKeyBag] || []),
-    ...(p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag] || []),
-  ];
-  if (!keyList.length || !keyList[0].key) {
-    return { ok: false, error: 'Certificado sem chave privada. Envie um certificado A1 completo (.pfx/.p12).' };
-  }
+function isLegacyAlgoError(msg) {
+  const m = String(msg || '').toLowerCase();
+  return m.includes('unsupported') || m.includes('digital envelope') || m.includes('legacy provider');
+}
 
+function isWrongPasswordError(msg) {
+  const m = String(msg || '').toLowerCase();
+  if (isLegacyAlgoError(m)) return false;
+  return (
+    m.includes('mac verify failure') ||
+    m.includes('mac verification failed') ||
+    m.includes('invalid password') ||
+    m.includes('bad decrypt') ||
+    m.includes('senha incorreta')
+  );
+}
+
+function mapForgeCert(cert) {
   const titularNome = extractAttribute(cert, 'CN') || extractAttribute(cert, 'O') || null;
   const emissor = cert.issuer.getField('CN')?.value || cert.issuer.getField('O')?.value || null;
   const validoDe = cert.validity.notBefore;
   const validoAte = cert.validity.notAfter;
-  const serialNumber = cert.serialNumber || null;
-  const titularDocumento = extractDocumentoFromCert(cert);
-
-  const now = new Date();
-  let status = 'valido';
-  if (validoAte <= now) status = 'expirado';
-  else if (validoAte.getTime() - now.getTime() <= 30 * 24 * 60 * 60 * 1000) status = 'vencendo';
-
   return {
     ok: true,
     certInfo: {
       titularNome,
-      titularDocumento,
+      titularDocumento: extractDocumentoFromCert(cert),
       emissor: emissor ? String(emissor) : null,
       validoDe,
       validoAte,
-      serialNumber,
-      status,
+      serialNumber: cert.serialNumber || null,
+      status: certStatusFromDates(validoDe, validoAte),
+    },
+  };
+}
+
+function parseCertificateInfo(pfxBuffer, password) {
+  try {
+    const binary = forge.util.createBuffer(pfxBuffer.toString('binary'));
+    const asn1 = forge.asn1.fromDer(binary);
+    let p12;
+    try {
+      p12 = forge.pkcs12.pkcs12FromAsn1(asn1, false, password || '');
+    } catch (e) {
+      const msg = String(e.message || e).toLowerCase();
+      if (msg.includes('password') || msg.includes('shroud') || msg.includes('mac')) {
+        return { ok: false, error: 'Senha incorreta para este certificado.' };
+      }
+      return { ok: false, error: 'Arquivo PFX/P12 inválido ou corrompido.' };
+    }
+
+    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
+    const certList = certBags[forge.pki.oids.certBag] || [];
+    if (!certList.length || !certList[0].cert) {
+      return { ok: false, error: 'Nenhum certificado encontrado no arquivo.' };
+    }
+
+    const cert = certList[0].cert;
+    const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
+    const keyList = [
+      ...(keyBags[forge.pki.oids.pkcs8ShroudedKeyBag] || []),
+      ...(p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag] || []),
+    ];
+    if (!keyList.length || !keyList[0].key) {
+      return { ok: false, error: 'Certificado sem chave privada. Envie um certificado A1 completo (.pfx/.p12).' };
+    }
+
+    return mapForgeCert(cert);
+  } catch (e) {
+    const msg = String(e.message || e);
+    if (isWrongPasswordError(msg)) {
+      return { ok: false, error: 'Senha incorreta para este certificado.' };
+    }
+    return { ok: false, error: 'Arquivo PFX/P12 inválido ou corrompido.' };
+  }
+}
+
+function tryOpenSslPfx(pfxBuffer, password) {
+  try {
+    tls.createSecureContext({
+      pfx: pfxBuffer,
+      passphrase: password || '',
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
+function mapX509Certificate(x509) {
+  const subject = String(x509.subject || '');
+  const issuer = String(x509.issuer || '');
+  const cnMatch = /(?:^|,)\s*CN\s*=\s*([^,]+)/i.exec(subject);
+  const issuerCn = /(?:^|,)\s*CN\s*=\s*([^,]+)/i.exec(issuer);
+  const titularNome = cnMatch ? cnMatch[1].trim() : subject || null;
+  const validoDe = x509.validFrom ? new Date(x509.validFrom) : null;
+  const validoAte = x509.validTo ? new Date(x509.validTo) : null;
+  return {
+    ok: true,
+    certInfo: {
+      titularNome,
+      titularDocumento: digitsFromText(titularNome) || digitsFromText(subject),
+      emissor: issuerCn ? issuerCn[1].trim() : issuer || null,
+      validoDe: validoDe && !Number.isNaN(validoDe.getTime()) ? validoDe : null,
+      validoAte: validoAte && !Number.isNaN(validoAte.getTime()) ? validoAte : null,
+      serialNumber: x509.serialNumber || null,
+      status: certStatusFromDates(validoDe, validoAte),
+    },
+  };
+}
+
+function extractWithOpensslCli(pfxBuffer, password, { legacy = false } = {}) {
+  const args = ['pkcs12', '-nokeys', '-clcerts', '-passin', 'env:CADBRASIL_PFX_PASS'];
+  if (legacy) args.splice(1, 0, '-legacy');
+  const result = spawnSync('openssl', args, {
+    input: pfxBuffer,
+    encoding: 'utf8',
+    env: { ...process.env, CADBRASIL_PFX_PASS: String(password ?? '') },
+    windowsHide: true,
+    timeout: 8000,
+    maxBuffer: 2 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    const err = String(result.stderr || result.error?.message || '');
+    return { ok: false, error: err || 'openssl falhou ao ler o PFX' };
+  }
+  const pem = String(result.stdout || '').match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/);
+  if (!pem) return { ok: false, error: 'openssl não retornou o certificado' };
+  try {
+    return mapX509Certificate(new crypto.X509Certificate(pem[0]));
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
+}
+
+function acceptedWithoutDetails() {
+  return {
+    ok: true,
+    certInfo: {
+      titularNome: null,
+      titularDocumento: null,
+      emissor: null,
+      validoDe: null,
+      validoAte: null,
+      serialNumber: null,
+      status: 'valido',
     },
   };
 }
@@ -193,20 +301,37 @@ function validatePfxBuffer(pfxBuffer, password) {
     return { ok: false, error: 'Arquivo inválido. Selecione um certificado .pfx ou .p12.' };
   }
 
-  try {
-    tls.createSecureContext({
-      pfx: pfxBuffer,
-      passphrase: password || '',
-    });
-  } catch (e) {
-    const msg = String(e.message || e).toLowerCase();
-    if (msg.includes('mac verify failure') || msg.includes('bad decrypt') || msg.includes('pkcs12')) {
-      return { ok: false, error: 'Senha incorreta para este certificado.' };
-    }
-    return { ok: false, error: 'Não foi possível ler o certificado. Verifique o arquivo .pfx/.p12.' };
+  const ssl = tryOpenSslPfx(pfxBuffer, password);
+  const forgeResult = parseCertificateInfo(pfxBuffer, password);
+  if (forgeResult.ok) return forgeResult;
+
+  if (ssl.ok) {
+    const extracted = extractWithOpensslCli(pfxBuffer, password);
+    if (extracted.ok) return extracted;
+    const legacy = extractWithOpensslCli(pfxBuffer, password, { legacy: true });
+    if (legacy.ok) return legacy;
+    return acceptedWithoutDetails();
   }
 
-  return parseCertificateInfo(pfxBuffer, password);
+  if (isLegacyAlgoError(ssl.error)) {
+    const legacy = extractWithOpensslCli(pfxBuffer, password, { legacy: true });
+    if (legacy.ok) return legacy;
+    return {
+      ok: false,
+      error:
+        'Este certificado usa um formato antigo. Exporte novamente o e-CNPJ A1 em .pfx (com a chave privada) e tente de novo.',
+    };
+  }
+
+  if (isWrongPasswordError(ssl.error)) {
+    return { ok: false, error: 'Senha incorreta para este certificado.' };
+  }
+
+  return {
+    ok: false,
+    error:
+      'Não foi possível ler o certificado. Use um e-CNPJ A1 exportado em .pfx/.p12, com a senha de exportação do arquivo.',
+  };
 }
 
 function mapRowToResponse(row) {
