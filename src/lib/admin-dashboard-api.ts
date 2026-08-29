@@ -7,7 +7,20 @@ export type AdminDashboardAlert = {
   tom: "emerald" | "blue" | "amber" | "rose" | "violet" | "sky";
 };
 
+export type AdminDashboardPeriodo = {
+  id: string;
+  label: string;
+  start: string;
+  end: string;
+  prevStart: string;
+  prevEnd: string;
+  days: number;
+  changeLabel: string;
+  rangeLabel: string;
+};
+
 export type AdminDashboardExecutive = {
+  periodo?: AdminDashboardPeriodo;
   faturamento: {
     hoje: number;
     ontem: number;
@@ -66,11 +79,23 @@ export type AdminDashboardResponse = {
   ok: boolean;
   error?: string;
   todayLabel?: string;
+  periodo?: AdminDashboardPeriodo;
   executive?: AdminDashboardExecutive;
 };
 
-export async function fetchAdminDashboard(): Promise<AdminDashboardResponse> {
-  const res = await apiFetch("/api/admin/dashboard");
+export type AdminDashboardFilters = {
+  periodo?: string;
+  dataIni?: string;
+  dataFim?: string;
+};
+
+export async function fetchAdminDashboard(filters: AdminDashboardFilters = {}): Promise<AdminDashboardResponse> {
+  const params = new URLSearchParams();
+  if (filters.periodo) params.set("periodo", filters.periodo);
+  if (filters.dataIni) params.set("dataIni", filters.dataIni);
+  if (filters.dataFim) params.set("dataFim", filters.dataFim);
+  const qs = params.toString();
+  const res = await apiFetch(`/api/admin/dashboard${qs ? `?${qs}` : ""}`);
   const data = (await res.json()) as AdminDashboardResponse;
   if (!res.ok || !data.ok) {
     throw new Error(data.error || "Erro ao carregar dashboard");

@@ -82,16 +82,370 @@ function diaLabel(offsetFromToday) {
   return DIAS_SEMANA[d.getDay()];
 }
 
-async function getAdminDashboard() {
+function parseYmd(value) {
+  const raw = String(value || '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return new Date(NaN);
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function formatYmd(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${mo}-${day}`;
+}
+
+function resolveDashboardPeriod(periodo, dataIni, dataFim) {
+  const id = String(periodo || 'hoje').trim() || 'hoje';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let start = new Date(today);
+  let end = new Date(today);
+
+  if (id === 'ontem') {
+    start.setDate(start.getDate() - 1);
+    end = new Date(start);
+  } else if (id === '7d') {
+    start.setDate(start.getDate() - 6);
+  } else if (id === '15d') {
+    start.setDate(start.getDate() - 14);
+  } else if (id === '30d') {
+    start.setDate(start.getDate() - 29);
+  } else if (id === 'custom') {
+    const ini = dataIni ? parseYmd(dataIni) : new Date(start);
+    const fim = dataFim ? parseYmd(dataFim) : new Date(end);
+    if (!Number.isNaN(ini.getTime())) start = ini;
+    if (!Number.isNaN(fim.getTime())) end = fim;
+    if (start > end) {
+      const tmp = start;
+      start = end;
+      end = tmp;
+    }
+  }
+
+  const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+  const prevEnd = new Date(start);
+  prevEnd.setDate(prevEnd.getDate() - 1);
+  const prevStart = new Date(prevEnd);
+  prevStart.setDate(prevStart.getDate() - (days - 1));
+
+  const presetLabels = {
+    hoje: 'Hoje',
+    ontem: 'Ontem',
+    '7d': 'Últimos 7 dias',
+    '15d': 'Últimos 15 dias',
+    '30d': 'Últimos 30 dias',
+    custom: 'Período personalizado',
+  };
+
+  const startYmd = formatYmd(start);
+  const endYmd = formatYmd(end);
+  const sameDay = startYmd === endYmd;
+
+  return {
+    id,
+    label: presetLabels[id] || presetLabels.hoje,
+    start: startYmd,
+    end: endYmd,
+    prevStart: formatYmd(prevStart),
+    prevEnd: formatYmd(prevEnd),
+    days,
+    changeLabel: days === 1 ? 'vs dia anterior' : `vs ${days} dias anteriores`,
+    rangeLabel: sameDay ? formatDateBR(start) : `${formatDateBR(start)} — ${formatDateBR(end)}`,
+  };
+}
+
+function chartDayLabel(ymd, bucketCount) {
+  const todayYmd = formatYmd(new Date());
+  if (ymd === todayYmd) return 'Hoje';
+  const d = parseYmd(ymd);
+  if (Number.isNaN(d.getTime())) return ymd;
+  if (bucketCount <= 7) return DIAS_SEMANA[d.getDay()];
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+async function sumFaturamentoBetween(db, start, end, flags) {
+  let total = 0;
+  if (flags.hasManutBoletos) {
+    const row = await safeDashboardQuery(null, () =>
+      db('manutencao_boletos')
+        .whereRaw(RECEITA_MANUT_PAGO_WHERE)
+        .whereRaw(`${RECEITA_MANUT_REF_DIA} >= ?`, [start])
+        .whereRaw(`${RECEITA_MANUT_REF_DIA} <= ?`, [end])
+        .sum({ total: 'valor' })
+        .first(),
+    );
+    total += aggregateNumber(row);
+  }
+  if (flags.hasTaxas) {
+    const row = await safeDashboardQuery(null, () =>
+      db('taxas_sicaf')
+        .whereRaw(RECEITA_SICAF_PAGO_WHERE)
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} >= ?`, [start])
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} <= ?`, [end])
+        .sum({ total: 'valor' })
+        .first(),
+    );
+    total += aggregateNumber(row);
+  }
+  return Math.round(total * 100) / 100;
+}
+
+async function buildFaturamentoChartForRange(db, start, end, flags) {
+  const buckets = new Map();
+  for (let d = parseYmd(start); !Number.isNaN(d.getTime()) && d <= parseYmd(end); d.setDate(d.getDate() + 1)) {
+    buckets.set(formatYmd(d), 0);
+  }
+  if (!buckets.size) return [];
+
+  const mergeRows = (rows) => {
+    for (const row of rows) {
+      const raw = row.dia;
+      const key =
+        typeof raw === 'string'
+          ? raw.slice(0, 10)
+          : raw instanceof Date
+            ? formatYmd(raw)
+            : formatYmd(new Date(raw));
+      if (buckets.has(key)) buckets.set(key, (buckets.get(key) || 0) + toNumber(row.total));
+    }
+  };
+
+  if (flags.hasManutBoletos) {
+    const rows = await safeDashboardQuery([], () =>
+      db('manutencao_boletos')
+        .whereRaw(RECEITA_MANUT_PAGO_WHERE)
+        .whereRaw(`${RECEITA_MANUT_REF_DIA} >= ?`, [start])
+        .whereRaw(`${RECEITA_MANUT_REF_DIA} <= ?`, [end])
+        .select(db.raw(`${RECEITA_MANUT_REF_DIA} as dia`), db.raw('SUM(valor) as total'))
+        .groupByRaw(RECEITA_MANUT_REF_DIA),
+    );
+    mergeRows(rows);
+  }
+  if (flags.hasTaxas) {
+    const rows = await safeDashboardQuery([], () =>
+      db('taxas_sicaf')
+        .whereRaw(RECEITA_SICAF_PAGO_WHERE)
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} >= ?`, [start])
+        .whereRaw(`${RECEITA_SICAF_REF_DIA} <= ?`, [end])
+        .select(db.raw(`${RECEITA_SICAF_REF_DIA} as dia`), db.raw('SUM(valor) as total'))
+        .groupByRaw(RECEITA_SICAF_REF_DIA),
+    );
+    mergeRows(rows);
+  }
+
+  const count = buckets.size;
+  return [...buckets.entries()].map(([ymd, v]) => ({
+    d: chartDayLabel(ymd, count),
+    v: Math.round(v * 100) / 100,
+  }));
+}
+
+async function enrichExecutiveWithPeriod(db, executive, period, flags) {
+  const { start, end, prevStart, prevEnd, changeLabel } = period;
+
+  const [fatPeriodo, fatAnterior, chart, novosPeriodo, novosAnterior, novosPagos, sessions, converted, receitaGads] =
+    await Promise.all([
+      sumFaturamentoBetween(db, start, end, flags),
+      sumFaturamentoBetween(db, prevStart, prevEnd, flags),
+      buildFaturamentoChartForRange(db, start, end, flags),
+      flags.hasClientes
+        ? safeDashboardQuery(0, () =>
+            db('clientes')
+              .whereRaw('DATE(created_at) >= ? AND DATE(created_at) <= ?', [start, end])
+              .count({ total: '*' })
+              .first(),
+          ).then((row) => aggregateNumber(row))
+        : Promise.resolve(0),
+      flags.hasClientes
+        ? safeDashboardQuery(0, () =>
+            db('clientes')
+              .whereRaw('DATE(created_at) >= ? AND DATE(created_at) <= ?', [prevStart, prevEnd])
+              .count({ total: '*' })
+              .first(),
+          ).then((row) => aggregateNumber(row))
+        : Promise.resolve(0),
+      flags.hasClientes && flags.hasTaxas
+        ? safeDashboardQuery(0, () =>
+            db('clientes as c')
+              .innerJoin('taxas_sicaf as t', 't.cliente_id', 'c.id')
+              .whereRaw('DATE(c.created_at) >= ? AND DATE(c.created_at) <= ?', [start, end])
+              .whereRaw(flags.taxaPagaAliasWhere)
+              .countDistinct({ total: 'c.id' })
+              .first(),
+          ).then((row) => aggregateNumber(row))
+        : Promise.resolve(0),
+      flags.hasTracking
+        ? safeDashboardQuery(0, () =>
+            db('tracking_sessoes')
+              .whereNotNull('gclid')
+              .whereRaw('DATE(created_at) >= ? AND DATE(created_at) <= ?', [start, end])
+              .count({ total: '*' })
+              .first(),
+          ).then((row) => aggregateNumber(row))
+        : Promise.resolve(0),
+      flags.hasTracking
+        ? safeDashboardQuery(0, () =>
+            db('tracking_sessoes')
+              .whereNotNull('gclid')
+              .where('converted', 1)
+              .whereRaw('DATE(created_at) >= ? AND DATE(created_at) <= ?', [start, end])
+              .count({ total: '*' })
+              .first(),
+          ).then((row) => aggregateNumber(row))
+        : Promise.resolve(0),
+      flags.hasTracking
+        ? safeDashboardQuery(0, () =>
+            db('tracking_sessoes')
+              .whereNotNull('gclid')
+              .whereRaw('DATE(created_at) >= ? AND DATE(created_at) <= ?', [start, end])
+              .sum({ total: 'conversion_value' })
+              .first(),
+          ).then((row) => aggregateNumber(row))
+        : Promise.resolve(0),
+    ]);
+
+  const chartData = chart.length ? chart : [{ d: period.label, v: fatPeriodo }];
+  const chartTotal = chartData.reduce((acc, row) => acc + row.v, 0);
+
+  executive.faturamento = {
+    hoje: fatPeriodo,
+    ontem: fatAnterior,
+    mes: fatPeriodo,
+    mesAnterior: fatAnterior,
+    changeHoje: calcChangePercent(fatPeriodo, fatAnterior),
+    changeMes: calcChangePercent(fatPeriodo, fatAnterior),
+    chart7d: chartData,
+    total7d: Math.round(chartTotal * 100) / 100,
+  };
+
+  executive.novosClientes = {
+    hoje: novosPeriodo,
+    ontem: novosAnterior,
+    mes: novosPeriodo,
+    pagos: novosPagos,
+    pendentes: Math.max(0, novosPeriodo - novosPagos),
+    changeHoje: calcChangePercent(novosPeriodo, novosAnterior),
+  };
+
+  const conversao = sessions > 0 ? Math.round((converted / sessions) * 1000) / 10 : 0;
+  const roas = sessions > 0 && receitaGads > 0 ? Math.round((receitaGads / sessions) * 10) / 10 : null;
+  executive.googleAds = {
+    conversao,
+    roas,
+    sessions,
+    converted,
+  };
+
+  if (flags.hasTracking) {
+    const palavrasRows = await safeDashboardQuery([], () =>
+      db('tracking_sessoes')
+        .whereNotNull('utm_term')
+        .where('utm_term', '!=', '')
+        .where(function () {
+          this.whereNotNull('gclid').orWhere('utm_source', 'google');
+        })
+        .whereRaw('DATE(created_at) >= ? AND DATE(created_at) <= ?', [start, end])
+        .select(
+          db.raw('utm_term as palavra'),
+          db.raw('COUNT(*) as clicks'),
+          db.raw('SUM(CASE WHEN converted = 1 THEN 1 ELSE 0 END) as pagos'),
+          db.raw('SUM(COALESCE(conversion_value, 0)) as receita'),
+        )
+        .groupBy('utm_term')
+        .orderBy('receita', 'desc')
+        .limit(4),
+    );
+    executive.palavras = palavrasRows.map((row) => ({
+      palavra: row.palavra,
+      clicks: toNumber(row.clicks),
+      pagos: toNumber(row.pagos),
+      receita: toNumber(row.receita),
+    }));
+  }
+
+  if (flags.hasTickets && flags.hasUsuarios) {
+    const equipeRows = await safeDashboardQuery([], () =>
+      db('tickets as t')
+        .innerJoin('usuarios as u', 'u.id', 't.atribuido_a')
+        .whereIn('t.status', ['aberto', 'em_andamento', 'resolvido', 'fechado'])
+        .whereRaw('DATE(t.created_at) >= ? AND DATE(t.created_at) <= ?', [start, end])
+        .groupBy('u.id', 'u.nome')
+        .select(
+          'u.nome',
+          db.raw('COUNT(t.id) as tickets'),
+          db.raw(
+            "ROUND(100 * SUM(CASE WHEN t.status IN ('resolvido','fechado') AND (t.sla_minutos_restantes >= 0 OR t.sla_minutos_restantes IS NULL) THEN 1 ELSE 0 END) / NULLIF(COUNT(t.id), 0), 0) as sla_pct",
+          ),
+          db.raw('ROUND(AVG(TIMESTAMPDIFF(MINUTE, t.created_at, COALESCE(t.fechado_em, NOW()))), 0) as media_min'),
+        )
+        .orderBy('tickets', 'desc')
+        .limit(4),
+    );
+    executive.equipe = equipeRows.map((row) => ({
+      nome: row.nome || 'Equipe',
+      tickets: toNumber(row.tickets),
+      sla: `${toNumber(row.sla_pct)}%`,
+      mediaMin: toNumber(row.media_min),
+    }));
+  }
+
+  if (flags.hasTracking || flags.hasClientes) {
+    const [visitas, cadastros, pagaram] = await Promise.all([
+      flags.hasTracking
+        ? safeDashboardQuery(0, () =>
+            db('tracking_sessoes')
+              .whereRaw('DATE(created_at) >= ? AND DATE(created_at) <= ?', [start, end])
+              .count({ total: '*' })
+              .first(),
+          ).then((row) => aggregateNumber(row))
+        : Promise.resolve(0),
+      flags.hasClientes
+        ? safeDashboardQuery(0, () =>
+            db('clientes')
+              .whereRaw('DATE(created_at) >= ? AND DATE(created_at) <= ?', [start, end])
+              .count({ total: '*' })
+              .first(),
+          ).then((row) => aggregateNumber(row))
+        : Promise.resolve(0),
+      flags.hasTaxas
+        ? safeDashboardQuery(0, () =>
+            db('taxas_sicaf')
+              .whereRaw(RECEITA_SICAF_PAGO_WHERE)
+              .whereRaw(`${RECEITA_SICAF_REF_DIA} >= ? AND ${RECEITA_SICAF_REF_DIA} <= ?`, [start, end])
+              .countDistinct({ total: 'cliente_id' })
+              .first(),
+          ).then((row) => aggregateNumber(row))
+        : Promise.resolve(0),
+    ]);
+    executive.funil = [
+      { etapa: 'Visitou site', v: visitas },
+      { etapa: 'Cadastrou', v: cadastros },
+      { etapa: 'Pagou', v: pagaram },
+      ...(executive.funil || []).slice(3),
+    ];
+  }
+
+  executive.periodo = {
+    ...period,
+    changeLabel,
+  };
+}
+
+async function getAdminDashboard(options = {}) {
   try {
-    return await loadAdminDashboardData();
+    return await loadAdminDashboardData(options);
   } catch (e) {
     console.error('[AdminDashboard] Erro fatal:', e);
     return { ok: false, error: e.message || 'Erro ao carregar dashboard' };
   }
 }
 
-async function loadAdminDashboardData() {
+async function loadAdminDashboardData(options = {}) {
+  const period = resolveDashboardPeriod(options.periodo, options.dataIni, options.dataFim);
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
@@ -695,9 +1049,85 @@ async function loadAdminDashboardData() {
     sessionsGads > 0 ? Math.round((convertedGads / sessionsGads) * 1000) / 10 : 0;
   const roasGoogleAds = sessionsGads > 0 && receitaGads > 0 ? Math.round((receitaGads / sessionsGads) * 10) / 10 : null;
 
+  const executive = {
+    faturamento: {
+      hoje: faturamentoHoje,
+      ontem: faturamentoOntem,
+      mes: faturamentoMes,
+      mesAnterior: faturamentoMesAnterior,
+      changeHoje: calcChangePercent(faturamentoHoje, faturamentoOntem),
+      changeMes: calcChangePercent(faturamentoMes, faturamentoMesAnterior),
+      chart7d: faturamento7Dias,
+      total7d: faturamento7Total,
+    },
+    novosClientes: {
+      hoje: novosClientesHoje,
+      ontem: novosClientesOntem,
+      mes: novosClientesMes,
+      pagos: novosClientesPagos,
+      pendentes: Math.max(0, novosClientesMes - novosClientesPagos),
+      changeHoje: calcChangePercent(novosClientesHoje, novosClientesOntem),
+    },
+    sicaf: {
+      atualizados: sicafAtivos,
+      meta: 150,
+      pendentes: sicafPendentes,
+      vencendo7d: sicafVencendo7d,
+      amarelo: sicafNiveisAmarelo,
+      vermelho: sicafNiveisVermelho,
+    },
+    tickets: {
+      abertos: ticketsAbertos,
+      foraSla: ticketsForaSla,
+    },
+    chamadasPendentes: {
+      total: chamadasPendentes,
+      changeOntem: calcChangePercent(chamadasPendentes, chamadasPendentesOntem),
+    },
+    googleAds: {
+      conversao: conversaoGoogleAds,
+      roas: roasGoogleAds,
+      sessions: sessionsGads,
+      converted: convertedGads,
+    },
+    boletosVencidos: {
+      valor: inadimplenciaManut + inadimplenciaSicaf,
+      clientes: clientesInadimplentes,
+    },
+    certidoesVencidas: {
+      total: certidoesVencidas,
+      changeSemana: certidoesVencidasSemana,
+    },
+    funil: funilData,
+    alertas,
+    palavras: palavrasRows.map((row) => ({
+      palavra: row.palavra,
+      clicks: toNumber(row.clicks),
+      pagos: toNumber(row.pagos),
+      receita: toNumber(row.receita),
+    })),
+    equipe: equipeRows.map((row) => ({
+      nome: row.nome || 'Equipe',
+      tickets: toNumber(row.tickets),
+      sla: `${toNumber(row.sla_pct)}%`,
+      mediaMin: toNumber(row.media_min),
+    })),
+  };
+
+  await enrichExecutiveWithPeriod(db, executive, period, {
+    hasManutBoletos,
+    hasTaxas,
+    hasClientes,
+    hasTracking,
+    hasTickets,
+    hasUsuarios,
+    taxaPagaAliasWhere,
+  });
+
   return {
     ok: true,
-    todayLabel: new Date().toLocaleDateString('pt-BR'),
+    todayLabel: period.rangeLabel,
+    periodo: executive.periodo || period,
     kpis: [
       { label: 'Manutenções Ativas', value: String(manutAtivas), change: calcChangePercent(manutAtivasMes, manutAtivasMesAnterior), changeLabel: 'vs. mês anterior' },
       { label: 'Solicitações SICAF Hoje', value: String(sicafHoje), change: calcChangePercent(sicafHoje, sicafOntem), changeLabel: 'vs. ontem' },
@@ -782,70 +1212,7 @@ async function loadAdminDashboardData() {
       target: row.entidade || '',
       time: formatTimeBR(row.created_at),
     })),
-    executive: {
-      faturamento: {
-        hoje: faturamentoHoje,
-        ontem: faturamentoOntem,
-        mes: faturamentoMes,
-        mesAnterior: faturamentoMesAnterior,
-        changeHoje: calcChangePercent(faturamentoHoje, faturamentoOntem),
-        changeMes: calcChangePercent(faturamentoMes, faturamentoMesAnterior),
-        chart7d: faturamento7Dias,
-        total7d: faturamento7Total,
-      },
-      novosClientes: {
-        hoje: novosClientesHoje,
-        ontem: novosClientesOntem,
-        mes: novosClientesMes,
-        pagos: novosClientesPagos,
-        pendentes: Math.max(0, novosClientesMes - novosClientesPagos),
-        changeHoje: calcChangePercent(novosClientesHoje, novosClientesOntem),
-      },
-      sicaf: {
-        atualizados: sicafAtivos,
-        meta: 150,
-        pendentes: sicafPendentes,
-        vencendo7d: sicafVencendo7d,
-        amarelo: sicafNiveisAmarelo,
-        vermelho: sicafNiveisVermelho,
-      },
-      tickets: {
-        abertos: ticketsAbertos,
-        foraSla: ticketsForaSla,
-      },
-      chamadasPendentes: {
-        total: chamadasPendentes,
-        changeOntem: calcChangePercent(chamadasPendentes, chamadasPendentesOntem),
-      },
-      googleAds: {
-        conversao: conversaoGoogleAds,
-        roas: roasGoogleAds,
-        sessions: sessionsGads,
-        converted: convertedGads,
-      },
-      boletosVencidos: {
-        valor: inadimplenciaManut + inadimplenciaSicaf,
-        clientes: clientesInadimplentes,
-      },
-      certidoesVencidas: {
-        total: certidoesVencidas,
-        changeSemana: certidoesVencidasSemana,
-      },
-      funil: funilData,
-      alertas,
-      palavras: palavrasRows.map((row) => ({
-        palavra: row.palavra,
-        clicks: toNumber(row.clicks),
-        pagos: toNumber(row.pagos),
-        receita: toNumber(row.receita),
-      })),
-      equipe: equipeRows.map((row) => ({
-        nome: row.nome || 'Equipe',
-        tickets: toNumber(row.tickets),
-        sla: `${toNumber(row.sla_pct)}%`,
-        mediaMin: toNumber(row.media_min),
-      })),
-    },
+    executive,
   };
 }
 

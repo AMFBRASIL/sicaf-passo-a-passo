@@ -8,15 +8,24 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 type AdminDashboardService = {
-  getAdminDashboard: () => Promise<Record<string, unknown>>;
+  getAdminDashboard: (options?: {
+    periodo?: string;
+    dataIni?: string | null;
+    dataFim?: string | null;
+  }) => Promise<Record<string, unknown>>;
 };
 
 export async function GET(request: Request) {
   try {
     await requireStaffAccess(request);
 
+    const url = new URL(request.url);
+    const periodo = url.searchParams.get("periodo") || "hoje";
+    const dataIni = url.searchParams.get("dataIni");
+    const dataFim = url.searchParams.get("dataFim");
+
     const svc = await getSicafAgentModule<AdminDashboardService>("services/admin-dashboard.service");
-    const result = await svc.getAdminDashboard();
+    const result = await svc.getAdminDashboard({ periodo, dataIni, dataFim });
     const err = typeof result.error === "string" ? result.error : "";
     return NextResponse.json(result, {
       status: result.ok ? 200 : err.includes("Banco") ? 503 : 500,

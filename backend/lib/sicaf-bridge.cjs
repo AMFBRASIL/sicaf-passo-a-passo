@@ -149,6 +149,13 @@ function initSicafAgentModules() {
   } catch (e) {
     console.warn("[sicaf-bridge] Cron validação pagamentos Efí:", e.message);
   }
+  try {
+    if (!process.env.VERCEL) {
+      loadModule("services/licitacoes-boletim-cron.service").start();
+    }
+  } catch (e) {
+    console.warn("[sicaf-bridge] Cron boletim licitações:", e.message);
+  }
   initialized = true;
 }
 

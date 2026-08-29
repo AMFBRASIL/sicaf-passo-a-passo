@@ -1,8 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   DollarSign,
   TrendingUp,
@@ -19,6 +33,7 @@ import {
   Activity,
   Sparkles,
   Loader2,
+  CalendarRange,
 } from "lucide-react";
 import {
   AreaChart,
@@ -40,6 +55,7 @@ import {
   shortName,
   trendFromChange,
   type AdminDashboardExecutive,
+  type AdminDashboardPeriodo,
 } from "@/lib/admin-dashboard-api";
 import { toast } from "sonner";
 
@@ -135,30 +151,160 @@ function Kpi({ title, value, delta, trend = "flat", icon: Icon, tone, hint, spar
   );
 }
 
+const PERIODO_OPCOES = [
+  { value: "hoje", label: "Hoje" },
+  { value: "ontem", label: "Ontem" },
+  { value: "7d", label: "Últimos 7 dias" },
+  { value: "15d", label: "Últimos 15 dias" },
+  { value: "30d", label: "Últimos 30 dias" },
+  { value: "custom", label: "Personalizado" },
+] as const;
+
+type PeriodoValue = (typeof PERIODO_OPCOES)[number]["value"];
+
+function DashboardPeriodFilter({
+  periodo,
+  dataIni,
+  dataFim,
+  loading,
+  onApply,
+}: {
+  periodo: PeriodoValue;
+  dataIni: string;
+  dataFim: string;
+  loading: boolean;
+  onApply: (next: { periodo: PeriodoValue; dataIni: string; dataFim: string }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftPeriodo, setDraftPeriodo] = useState<PeriodoValue>(periodo);
+  const [draftIni, setDraftIni] = useState(dataIni);
+  const [draftFim, setDraftFim] = useState(dataFim);
+
+  useEffect(() => {
+    if (!open) return;
+    setDraftPeriodo(periodo);
+    setDraftIni(dataIni);
+    setDraftFim(dataFim);
+  }, [open, periodo, dataIni, dataFim]);
+
+  const labelAtual =
+    PERIODO_OPCOES.find((p) => p.value === periodo)?.label ||
+    (periodo === "custom" && dataIni && dataFim ? `${dataIni} — ${dataFim}` : "Hoje");
+
+  const aplicar = () => {
+    if (draftPeriodo === "custom" && (!draftIni || !draftFim)) {
+      toast.error("Informe a data inicial e final");
+      return;
+    }
+    onApply({ periodo: draftPeriodo, dataIni: draftIni, dataFim: draftFim });
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5" disabled={loading}>
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarRange className="h-3.5 w-3.5" />}
+          {labelAtual}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-4" align="end">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-xs">Período</Label>
+            <Select value={draftPeriodo} onValueChange={(v) => setDraftPeriodo(v as PeriodoValue)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PERIODO_OPCOES.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {draftPeriodo === "custom" && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">De</Label>
+                <Input type="date" value={draftIni} onChange={(e) => setDraftIni(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Até</Label>
+                <Input type="date" value={draftFim} onChange={(e) => setDraftFim(e.target.value)} />
+              </div>
+            </div>
+          )}
+          <Button type="button" size="sm" className="w-full" onClick={aplicar}>
+            Aplicar filtro
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function DashboardExecutivo() {
   const [loading, setLoading] = useState(true);
   const [exec, setExec] = useState<AdminDashboardExecutive | null>(null);
+  const [periodoInfo, setPeriodoInfo] = useState<AdminDashboardPeriodo | null>(null);
   const [todayLabel, setTodayLabel] = useState("");
+  const [periodo, setPeriodo] = useState<PeriodoValue>("hoje");
+  const [dataIni, setDataIni] = useState("");
+  const [dataFim, setDataFim] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const carregar = useCallback(
+    async (filters?: { periodo: PeriodoValue; dataIni: string; dataFim: string }) => {
+      const p = filters?.periodo ?? periodo;
+      const ini = filters?.dataIni ?? dataIni;
+      const fim = filters?.dataFim ?? dataFim;
+      setLoading(true);
       try {
-        const data = await fetchAdminDashboard();
-        if (!cancelled && data.executive) {
+        const data = await fetchAdminDashboard({
+          periodo: p,
+          dataIni: p === "custom" ? ini : undefined,
+          dataFim: p === "custom" ? fim : undefined,
+        });
+        if (data.executive) {
           setExec(data.executive);
+          setPeriodoInfo(data.periodo || data.executive.periodo || null);
           setTodayLabel(data.todayLabel || "");
         }
       } catch (e) {
-        if (!cancelled) toast.error(e instanceof Error ? e.message : "Erro ao carregar dashboard");
+        toast.error(e instanceof Error ? e.message : "Erro ao carregar dashboard");
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    },
+    [periodo, dataIni, dataFim],
+  );
+
+  useEffect(() => {
+    void carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- carga inicial apenas
   }, []);
+
+  const handlePeriodApply = (next: { periodo: PeriodoValue; dataIni: string; dataFim: string }) => {
+    setPeriodo(next.periodo);
+    setDataIni(next.dataIni);
+    setDataFim(next.dataFim);
+    void carregar(next);
+  };
+
+  const isSingleDay = (periodoInfo?.days ?? 1) === 1;
+  const changeLabel = periodoInfo?.changeLabel || (isSingleDay ? "vs ontem" : "vs período anterior");
+
+  const labels = useMemo(
+    () => ({
+      faturamento: isSingleDay && periodo === "hoje" ? "Faturamento Hoje" : "Faturamento no período",
+      faturamentoMes: isSingleDay ? "Faturamento (dia)" : "Total no período",
+      cadastros: isSingleDay && periodo === "hoje" ? "Cadastros Hoje" : "Cadastros no período",
+      chartTitle: isSingleDay ? "Faturamento — dia selecionado" : `Faturamento — ${periodoInfo?.label || "período"}`,
+    }),
+    [isSingleDay, periodo, periodoInfo?.label],
+  );
 
   const fat = exec?.faturamento;
   const novos = exec?.novosClientes;
@@ -194,7 +340,14 @@ function DashboardExecutivo() {
             {todayLabel ? ` · ${todayLabel}` : ""}.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardPeriodFilter
+            periodo={periodo}
+            dataIni={dataIni}
+            dataFim={dataFim}
+            loading={loading}
+            onApply={handlePeriodApply}
+          />
           <Button variant="outline" size="sm" className="gap-1.5">
             <Sparkles className="h-3.5 w-3.5" /> Perguntar à IA
           </Button>
@@ -209,9 +362,9 @@ function DashboardExecutivo() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <Kpi
           loading={loading}
-          title="Faturamento Hoje"
+          title={labels.faturamento}
           value={formatBRL(fat?.hoje ?? 0)}
-          delta={fat ? formatDeltaPct(fat.changeHoje, "vs ontem") : undefined}
+          delta={fat ? formatDeltaPct(fat.changeHoje, changeLabel) : undefined}
           trend={fat ? trendFromChange(fat.changeHoje) : "flat"}
           icon={DollarSign}
           tone="emerald"
@@ -219,22 +372,22 @@ function DashboardExecutivo() {
         />
         <Kpi
           loading={loading}
-          title="Faturamento Mês"
+          title={labels.faturamentoMes}
           value={formatBRL(fat?.mes ?? 0)}
-          delta={fat ? formatDeltaPct(fat.changeMes, "vs mês ant.") : undefined}
+          delta={fat ? formatDeltaPct(fat.changeMes, changeLabel) : undefined}
           trend={fat ? trendFromChange(fat.changeMes) : "flat"}
           icon={TrendingUp}
           tone="emerald"
         />
         <Kpi
           loading={loading}
-          title="Cadastros Hoje"
+          title={labels.cadastros}
           value={String(novos?.hoje ?? 0)}
-          delta={novos ? formatDeltaPct(novos.changeHoje, "vs ontem") : undefined}
+          delta={novos ? formatDeltaPct(novos.changeHoje, changeLabel) : undefined}
           trend={novos ? trendFromChange(novos.changeHoje) : "flat"}
           icon={Users}
           tone="blue"
-          hint={novos ? `${novos.mes} no mês · ${novos.pagos} pagaram · ${novos.pendentes} pendentes` : undefined}
+          hint={novos ? `${novos.pagos} pagaram · ${novos.pendentes} pendentes` : undefined}
           spark={novosSpark}
         />
         <Kpi
@@ -312,7 +465,7 @@ function DashboardExecutivo() {
         <Card className="p-5 lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold">Faturamento — últimos 7 dias</h3>
+              <h3 className="text-sm font-semibold">{labels.chartTitle}</h3>
               <p className="text-xs text-muted-foreground">Manutenção + taxas SICAF pagas</p>
             </div>
             <Badge variant="secondary" className="rounded-sm">

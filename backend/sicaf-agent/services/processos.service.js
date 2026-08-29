@@ -5,6 +5,7 @@ const { getDb } = require('../database/connection');
 
 const PROCESSO_GOOGLE_ADS = 'google-ads-conversoes';
 const PROCESSO_EFI_PAGAMENTOS = 'efi-pagamentos';
+const PROCESSO_LICITACOES_BOLETIM = 'licitacoes-boletim';
 
 const DEFAULT_SCHEDULES = [
   { id: 'manha', label: 'Manhã', hour: 8, minute: 0 },
@@ -126,6 +127,21 @@ function getProcessDefinitions() {
   const efiEnabled = (process.env.CRON_EFI_PAGAMENTOS_ENABLED || 'true').toLowerCase() !== 'false';
   const efiSchedules = parseEfiScheduleEnv();
 
+  const boletimEnabled = (process.env.CRON_LICITACOES_BOLETIM_ENABLED || 'true').toLowerCase() !== 'false';
+  const boletimRaw = process.env.CRON_LICITACOES_BOLETIM_SCHEDULE || '06:00';
+  const boletimParts = boletimRaw.split(',').map((s) => s.trim()).filter(Boolean);
+  const boletimSchedules = boletimParts.map((part, i) => {
+    const [h, m] = part.split(':').map((n) => parseInt(n, 10));
+    const slotIds = ['manha', 'tarde', 'noite', 'extra'];
+    const slotLabels = ['Manhã', 'Tarde', 'Noite', 'Extra'];
+    return {
+      id: slotIds[i] || `slot-${i}`,
+      label: slotLabels[i] || `Horário ${i + 1}`,
+      hour: Number.isFinite(h) ? h : 6,
+      minute: Number.isFinite(m) ? m : 0,
+    };
+  });
+
   return [
     {
       id: PROCESSO_GOOGLE_ADS,
@@ -144,6 +160,14 @@ function getProcessDefinitions() {
       enabled: efiEnabled,
       schedules: efiSchedules.length ? efiSchedules : DEFAULT_SCHEDULES,
     },
+    {
+      id: PROCESSO_LICITACOES_BOLETIM,
+      name: 'Boletim de licitações por cliente',
+      description:
+        'Envia e-mails diários com licitações segmentadas por ramo de atividade. Apenas clientes com plano de manutenção ativo ou cadastro novo (10 dias de teste).',
+      enabled: boletimEnabled,
+      schedules: boletimSchedules.length ? boletimSchedules : [{ id: 'manha', label: 'Manhã', hour: 6, minute: 0 }],
+    },
   ];
 }
 
@@ -154,6 +178,7 @@ async function listProcessos() {
   const definitions = getProcessDefinitions();
   const googleAdsCron = require('./google-ads-conversoes-cron.service');
   const efiCron = require('./efi-pagamentos-cron.service');
+  const boletimCron = require('./licitacoes-boletim-cron.service');
 
   const processos = [];
   for (const def of definitions) {
@@ -163,7 +188,9 @@ async function listProcessos() {
         ? googleAdsCron.getStatus()
         : def.id === PROCESSO_EFI_PAGAMENTOS
           ? efiCron.getStatus()
-          : null;
+          : def.id === PROCESSO_LICITACOES_BOLETIM
+            ? boletimCron.getStatus()
+            : null;
     processos.push({
       ...def,
       cron: cronStatus,
@@ -178,6 +205,7 @@ async function listProcessos() {
 module.exports = {
   PROCESSO_GOOGLE_ADS,
   PROCESSO_EFI_PAGAMENTOS,
+  PROCESSO_LICITACOES_BOLETIM,
   getProcessDefinitions,
   parseScheduleEnv,
   ensureExecucoesTable,
