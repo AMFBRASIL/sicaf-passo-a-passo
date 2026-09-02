@@ -27,6 +27,7 @@ export type ApiLicitacao = {
   data_publicacao: string | null;
   data_abertura: string | null;
   data_encerramento: string | null;
+  created_at?: string | null;
   valor_estimado: number | string | null;
   valor_homologado: number | string | null;
   status: string | null;
@@ -75,6 +76,7 @@ export type LicitacoesListParams = {
   prazo_max_days?: number;
   order_by?: string;
   order_dir?: "asc" | "desc";
+  created_from?: string;
 };
 
 export type LicitacoesListResponse = {
@@ -118,6 +120,9 @@ export type LicitacaoDisplay = {
   numero_controle_pncp?: string | null;
   link_edital?: string | null;
   link_portal?: string | null;
+  dataPublicacao?: string | null;
+  ingestaoEm?: string | null;
+  origem?: string | null;
 };
 
 function formatCurrency(raw: number | string | null | undefined): string {
@@ -272,6 +277,9 @@ export function mapApiToDisplay(item: ApiLicitacao): LicitacaoDisplay {
     numero_controle_pncp: item.numero_controle_pncp,
     link_edital: item.link_edital,
     link_portal: item.link_portal,
+    dataPublicacao: formatDate(item.data_publicacao),
+    ingestaoEm: formatDate(item.created_at),
+    origem: item.origem,
   };
 }
 
@@ -288,6 +296,7 @@ function buildQuery(params: LicitacoesListParams): string {
   if (params.prazo_max_days != null) sp.set("prazo_max_days", String(params.prazo_max_days));
   if (params.order_by) sp.set("order_by", params.order_by);
   if (params.order_dir) sp.set("order_dir", params.order_dir);
+  if (params.created_from) sp.set("created_from", params.created_from);
   const qs = sp.toString();
   return qs ? `?${qs}` : "";
 }

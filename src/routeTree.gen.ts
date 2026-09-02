@@ -52,6 +52,7 @@ import { Route as AdminSicafRouteImport } from './routes/admin.sicaf'
 import { Route as AdminRelatoriosRouteImport } from './routes/admin.relatorios'
 import { Route as AdminProcessosRouteImport } from './routes/admin.processos'
 import { Route as AdminPerfisRouteImport } from './routes/admin.perfis'
+import { Route as AdminLicitacoesRouteImport } from './routes/admin.licitacoes'
 import { Route as AdminIaRouteImport } from './routes/admin.ia'
 import { Route as AdminGoogleAdsRouteImport } from './routes/admin.google-ads'
 import { Route as AdminFunilRouteImport } from './routes/admin.funil'
@@ -63,6 +64,7 @@ import { Route as AdminCrmClientesRouteImport } from './routes/admin.crm-cliente
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
 import { Route as AdminCobrancaRouteImport } from './routes/admin.cobranca'
 import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
+import { Route as AdminChatgptAdsRouteImport } from './routes/admin.chatgpt-ads'
 import { Route as AdminBingAdsRouteImport } from './routes/admin.bing-ads'
 import { Route as AdminAutomacoesRouteImport } from './routes/admin.automacoes'
 import { Route as AdminAuditoriaRouteImport } from './routes/admin.auditoria'
@@ -286,6 +288,11 @@ const AdminPerfisRoute = AdminPerfisRouteImport.update({
   path: '/perfis',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminLicitacoesRoute = AdminLicitacoesRouteImport.update({
+  id: '/licitacoes',
+  path: '/licitacoes',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminIaRoute = AdminIaRouteImport.update({
   id: '/ia',
   path: '/ia',
@@ -339,6 +346,11 @@ const AdminCobrancaRoute = AdminCobrancaRouteImport.update({
 const AdminClientesRoute = AdminClientesRouteImport.update({
   id: '/clientes',
   path: '/clientes',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminChatgptAdsRoute = AdminChatgptAdsRouteImport.update({
+  id: '/chatgpt-ads',
+  path: '/chatgpt-ads',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminBingAdsRoute = AdminBingAdsRouteImport.update({
@@ -416,6 +428,7 @@ export interface FileRoutesByFullPath {
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
   '/admin/bing-ads': typeof AdminBingAdsRoute
+  '/admin/chatgpt-ads': typeof AdminChatgptAdsRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
@@ -427,6 +440,7 @@ export interface FileRoutesByFullPath {
   '/admin/funil': typeof AdminFunilRoute
   '/admin/google-ads': typeof AdminGoogleAdsRoute
   '/admin/ia': typeof AdminIaRoute
+  '/admin/licitacoes': typeof AdminLicitacoesRoute
   '/admin/perfis': typeof AdminPerfisRoute
   '/admin/processos': typeof AdminProcessosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
@@ -477,6 +491,7 @@ export interface FileRoutesByTo {
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
   '/admin/bing-ads': typeof AdminBingAdsRoute
+  '/admin/chatgpt-ads': typeof AdminChatgptAdsRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
@@ -488,6 +503,7 @@ export interface FileRoutesByTo {
   '/admin/funil': typeof AdminFunilRoute
   '/admin/google-ads': typeof AdminGoogleAdsRoute
   '/admin/ia': typeof AdminIaRoute
+  '/admin/licitacoes': typeof AdminLicitacoesRoute
   '/admin/perfis': typeof AdminPerfisRoute
   '/admin/processos': typeof AdminProcessosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
@@ -540,6 +556,7 @@ export interface FileRoutesById {
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
   '/admin/bing-ads': typeof AdminBingAdsRoute
+  '/admin/chatgpt-ads': typeof AdminChatgptAdsRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
@@ -551,6 +568,7 @@ export interface FileRoutesById {
   '/admin/funil': typeof AdminFunilRoute
   '/admin/google-ads': typeof AdminGoogleAdsRoute
   '/admin/ia': typeof AdminIaRoute
+  '/admin/licitacoes': typeof AdminLicitacoesRoute
   '/admin/perfis': typeof AdminPerfisRoute
   '/admin/processos': typeof AdminProcessosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
@@ -605,6 +623,7 @@ export interface FileRouteTypes {
     | '/admin/auditoria'
     | '/admin/automacoes'
     | '/admin/bing-ads'
+    | '/admin/chatgpt-ads'
     | '/admin/clientes'
     | '/admin/cobranca'
     | '/admin/configuracoes'
@@ -616,6 +635,7 @@ export interface FileRouteTypes {
     | '/admin/funil'
     | '/admin/google-ads'
     | '/admin/ia'
+    | '/admin/licitacoes'
     | '/admin/perfis'
     | '/admin/processos'
     | '/admin/relatorios'
@@ -666,6 +686,7 @@ export interface FileRouteTypes {
     | '/admin/auditoria'
     | '/admin/automacoes'
     | '/admin/bing-ads'
+    | '/admin/chatgpt-ads'
     | '/admin/clientes'
     | '/admin/cobranca'
     | '/admin/configuracoes'
@@ -677,6 +698,7 @@ export interface FileRouteTypes {
     | '/admin/funil'
     | '/admin/google-ads'
     | '/admin/ia'
+    | '/admin/licitacoes'
     | '/admin/perfis'
     | '/admin/processos'
     | '/admin/relatorios'
@@ -728,6 +750,7 @@ export interface FileRouteTypes {
     | '/admin/auditoria'
     | '/admin/automacoes'
     | '/admin/bing-ads'
+    | '/admin/chatgpt-ads'
     | '/admin/clientes'
     | '/admin/cobranca'
     | '/admin/configuracoes'
@@ -739,6 +762,7 @@ export interface FileRouteTypes {
     | '/admin/funil'
     | '/admin/google-ads'
     | '/admin/ia'
+    | '/admin/licitacoes'
     | '/admin/perfis'
     | '/admin/processos'
     | '/admin/relatorios'
@@ -1093,6 +1117,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPerfisRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/licitacoes': {
+      id: '/admin/licitacoes'
+      path: '/licitacoes'
+      fullPath: '/admin/licitacoes'
+      preLoaderRoute: typeof AdminLicitacoesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/ia': {
       id: '/admin/ia'
       path: '/ia'
@@ -1170,6 +1201,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminClientesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/chatgpt-ads': {
+      id: '/admin/chatgpt-ads'
+      path: '/chatgpt-ads'
+      fullPath: '/admin/chatgpt-ads'
+      preLoaderRoute: typeof AdminChatgptAdsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/bing-ads': {
       id: '/admin/bing-ads'
       path: '/bing-ads'
@@ -1242,6 +1280,7 @@ interface AdminRouteChildren {
   AdminAuditoriaRoute: typeof AdminAuditoriaRoute
   AdminAutomacoesRoute: typeof AdminAutomacoesRoute
   AdminBingAdsRoute: typeof AdminBingAdsRoute
+  AdminChatgptAdsRoute: typeof AdminChatgptAdsRoute
   AdminClientesRoute: typeof AdminClientesRoute
   AdminCobrancaRoute: typeof AdminCobrancaRoute
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
@@ -1253,6 +1292,7 @@ interface AdminRouteChildren {
   AdminFunilRoute: typeof AdminFunilRoute
   AdminGoogleAdsRoute: typeof AdminGoogleAdsRoute
   AdminIaRoute: typeof AdminIaRoute
+  AdminLicitacoesRoute: typeof AdminLicitacoesRoute
   AdminPerfisRoute: typeof AdminPerfisRoute
   AdminProcessosRoute: typeof AdminProcessosRoute
   AdminRelatoriosRoute: typeof AdminRelatoriosRoute
@@ -1268,6 +1308,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminAuditoriaRoute: AdminAuditoriaRoute,
   AdminAutomacoesRoute: AdminAutomacoesRoute,
   AdminBingAdsRoute: AdminBingAdsRoute,
+  AdminChatgptAdsRoute: AdminChatgptAdsRoute,
   AdminClientesRoute: AdminClientesRoute,
   AdminCobrancaRoute: AdminCobrancaRoute,
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
@@ -1279,6 +1320,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminFunilRoute: AdminFunilRoute,
   AdminGoogleAdsRoute: AdminGoogleAdsRoute,
   AdminIaRoute: AdminIaRoute,
+  AdminLicitacoesRoute: AdminLicitacoesRoute,
   AdminPerfisRoute: AdminPerfisRoute,
   AdminProcessosRoute: AdminProcessosRoute,
   AdminRelatoriosRoute: AdminRelatoriosRoute,

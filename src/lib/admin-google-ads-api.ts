@@ -103,7 +103,7 @@ export type GoogleAdsPeriodoSemana = {
 export type AdminGoogleAdsPainel = {
   periodo: { days: number; since: string };
   palavra?: string;
-  canal?: "google" | "bing";
+  canal?: "google" | "bing" | "chatgpt";
   canalLabel?: string;
   kpis: {
     investimento: number;
@@ -123,7 +123,7 @@ export type AdminGoogleAdsPainel = {
   notas?: string[];
 };
 
-export type AdsCanal = "google" | "bing";
+export type AdsCanal = "google" | "bing" | "chatgpt";
 
 export async function fetchAdminGoogleAds(opts: {
   days?: number;
@@ -131,7 +131,7 @@ export async function fetchAdminGoogleAds(opts: {
   pagos?: boolean;
   canal?: AdsCanal;
 } = {}): Promise<{ ok: boolean; error?: string } & Partial<AdminGoogleAdsPainel>> {
-  const canal = opts.canal === "bing" ? "bing" : "google";
+  const canal = opts.canal === "bing" ? "bing" : opts.canal === "chatgpt" ? "chatgpt" : "google";
   const params = new URLSearchParams();
   if (opts.days != null && Number.isFinite(opts.days)) params.set("days", String(opts.days));
   if (opts.palavra?.trim()) params.set("palavra", opts.palavra.trim());
@@ -140,7 +140,9 @@ export async function fetchAdminGoogleAds(opts: {
   const path =
     canal === "bing"
       ? `/api/admin/bing-ads${qs ? `?${qs}` : ""}`
-      : `/api/admin/google-ads${qs ? `?${qs}` : ""}`;
+      : canal === "chatgpt"
+        ? `/api/admin/chatgpt-ads${qs ? `?${qs}` : ""}`
+        : `/api/admin/google-ads${qs ? `?${qs}` : ""}`;
   const res = await apiFetch(path);
   return res.json();
 }

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Gavel,
@@ -115,7 +115,7 @@ const filtrosDefault: Filtros = {
   prazo: "todos",
 };
 
-function LicitacoesPage() {
+export function LicitacoesPage({ adminMode = false }: { adminMode?: boolean }) {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [filtros, setFiltros] = useState<Filtros>(filtrosDefault);
@@ -133,6 +133,14 @@ function LicitacoesPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [miraCount, setMiraCount] = useState(0);
   const [radarOpen, setRadarOpen] = useState(false);
+  const [somenteNovas24h, setSomenteNovas24h] = useState(adminMode);
+
+  const createdFrom24h = useMemo(() => {
+    if (!somenteNovas24h) return undefined;
+    const d = new Date();
+    d.setHours(d.getHours() - 24);
+    return d.toISOString();
+  }, [somenteNovas24h]);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(q.trim()), 350);
@@ -141,7 +149,7 @@ function LicitacoesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQ, filtros, abaLista]);
+  }, [debouncedQ, filtros, abaLista, somenteNovas24h]);
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true);
@@ -176,10 +184,11 @@ function LicitacoesPage() {
       valor_min: faixa ? faixa.min : undefined,
       valor_max: faixa && faixa.max !== Infinity ? faixa.max : undefined,
       prazo_max_days: prazo && prazo.max < 999 ? prazo.max : undefined,
-      order_by: "data_abertura",
+      order_by: adminMode ? "created_at" : "data_abertura",
       order_dir: "desc" as const,
+      created_from: createdFrom24h,
     };
-  }, [page, debouncedQ, filtros, abaLista]);
+  }, [page, debouncedQ, filtros, abaLista, adminMode, createdFrom24h]);
 
   const loadList = useCallback(async () => {
     setListLoading(true);
@@ -272,16 +281,57 @@ function LicitacoesPage() {
 
   return (
     <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 sm:py-10">
+      {adminMode && (
+        <Card className="mb-6 border-violet-200/60 bg-gradient-to-r from-violet-500/5 to-primary/5">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-violet-600 hover:bg-violet-600">Modo Admin</Badge>
+                <span className="text-sm font-medium">Visão operacional da base PNCP</span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Valide ingestão, filtros e dados usados no boletim diário por segmento. Ordenação por data de
+                entrada na base.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/admin/processos">Boletim / Processos</Link>
+              </Button>
+              <Button variant="secondary" size="sm" asChild>
+                <Link to="/licitacoes" target="_blank">
+                  Ver portal do cliente
+                  <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Gavel className="h-6 w-6 text-primary" />
             Licitações
+            {adminMode && (
+              <Badge variant="outline" className="text-[10px] font-normal">
+                Admin
+              </Badge>
+            )}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Portal PNCP/ComprasNet — marque oportunidades com{" "}
-            <Heart className="inline h-3.5 w-3.5 fill-rose-500 text-rose-500" /> e acompanhe na sua
-            mira
+            {adminMode ? (
+              <>
+                Base completa do PNCP/ComprasNet — {stats?.total_licitacoes?.toLocaleString("pt-BR") ?? "—"}{" "}
+                registros na base
+              </>
+            ) : (
+              <>
+                Portal PNCP/ComprasNet — marque oportunidades com{" "}
+                <Heart className="inline h-3.5 w-3.5 fill-rose-500 text-rose-500" /> e acompanhe na sua mira
+              </>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -308,7 +358,8 @@ function LicitacoesPage() {
         <LicitacoesIndicators stats={stats} loading={statsLoading} />
       </div>
 
-      {/* Match pessoal — complementa os KPIs do PNCP */}
+      {/* KPIs pessoais (cliente) ou operacionais (admin) */}
+      {!adminMode ? (
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card>
           <CardContent className="p-4">
@@ -341,7 +392,72 @@ function LicitacoesPage() {
           </CardContent>
         </Card>
       </div>
+      ) : (
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <FileSearch className="h-3.5 w-3.5" /> Total na base
+              </div>
+              <p className="mt-1 text-2xl font-bold">
+                {stats?.total_licitacoes?.toLocaleString("pt-BR") ?? "—"}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Building2 className="h-3.5 w-3.5" /> Órgãos
+              </div>
+              <p className="mt-1 text-2xl font-bold">
+                {stats?.total_orgaos?.toLocaleString("pt-BR") ?? "—"}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <DollarSign className="h-3.5 w-3.5" /> Valor estimado
+              </div>
+              <p className="mt-1 text-lg font-bold">
+                {stats?.valor_estimado_total != null
+                  ? stats.valor_estimado_total.toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                      maximumFractionDigits: 0,
+                    })
+                  : "—"}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" /> Nesta listagem
+              </div>
+              <p className="mt-1 text-2xl font-bold">{total.toLocaleString("pt-BR")}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
+      {adminMode && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button
+            variant={somenteNovas24h ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSomenteNovas24h((v) => !v)}
+          >
+            <Clock className="mr-2 h-4 w-4" />
+            Ingeridas nas últimas 24h
+          </Button>
+          <Badge variant="secondary" className="text-[10px]">
+            Ordenação: mais recentes na base
+          </Badge>
+        </div>
+      )}
+
+      {!adminMode && (
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <Button
           variant={abaLista === "todas" ? "default" : "outline"}
@@ -368,6 +484,7 @@ function LicitacoesPage() {
           )}
         </Button>
       </div>
+      )}
 
       {/* Busca + Filtros */}
       <Card className="mt-4">
@@ -466,6 +583,16 @@ function LicitacoesPage() {
                     >
                       <Sparkles className="h-3 w-3" /> {l.match}% match
                     </span>
+                    {adminMode && l.status && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        {l.status}
+                      </Badge>
+                    )}
+                    {adminMode && (
+                      <Badge variant="outline" className="font-mono text-[10px]">
+                        #{l.idNum}
+                      </Badge>
+                    )}
                     {l.na_mira && (
                       <span className="text-[11px] font-medium text-rose-600">
                         ❤️ Na sua mira
@@ -489,6 +616,21 @@ function LicitacoesPage() {
                     <span className="inline-flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" /> Abertura {l.abertura}
                     </span>
+                    {adminMode && (
+                      <>
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5" /> Ingestão {l.ingestaoEm || "—"}
+                        </span>
+                        {l.dataPublicacao && l.dataPublicacao !== "—" && (
+                          <span className="inline-flex items-center gap-1">
+                            Pub. {l.dataPublicacao}
+                          </span>
+                        )}
+                        {l.origem && (
+                          <span className="inline-flex items-center gap-1">Origem {l.origem}</span>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-row items-center justify-between gap-3 sm:flex-col sm:items-end">

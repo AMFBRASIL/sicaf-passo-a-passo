@@ -61,6 +61,7 @@ function mapListItem(row: LicitacaoRow, miraMeta: ReturnType<typeof mapMiraMeta>
     srp: row.srp,
     link_edital: row.link_edital,
     link_portal: row.link_portal,
+    created_at: row.created_at,
     na_mira: !!miraMeta,
     mira_meta: miraMeta,
     prazo: deadlineInfo(row),

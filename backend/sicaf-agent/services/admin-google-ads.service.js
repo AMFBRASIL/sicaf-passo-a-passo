@@ -66,10 +66,51 @@ function sinceDate(days) {
   return { days: d, sinceStr: formatDateOnlyLocal(since) };
 }
 
-/** Normaliza canal da inteligência de ads: google | bing. */
+/** Normaliza canal da inteligência de ads: google | bing | chatgpt. */
 function normalizeCanal(canal) {
   const c = String(canal || 'google').trim().toLowerCase();
-  return c === 'bing' || c === 'microsoft' || c === 'msn' ? 'bing' : 'google';
+  if (c === 'bing' || c === 'microsoft' || c === 'msn') return 'bing';
+  if (c === 'chatgpt' || c === 'chat-gpt' || c === 'openai') return 'chatgpt';
+  return 'google';
+}
+
+/** Agrupa sessões ChatGPT por termo/campanha/landing quando não há utm_term. */
+function palavraGroupExpr(canal) {
+  if (normalizeCanal(canal) === 'chatgpt') {
+    return `LOWER(TRIM(COALESCE(
+      NULLIF(TRIM(ts.utm_term), ''),
+      NULLIF(TRIM(ts.utm_campaign), ''),
+      NULLIF(TRIM(ts.utm_content), ''),
+      NULLIF(TRIM(ts.landing_page), ''),
+      'chatgpt'
+    )))`;
+  }
+  return 'LOWER(TRIM(ts.utm_term))';
+}
+
+function palavraSqlFragments(canal) {
+  if (normalizeCanal(canal) === 'chatgpt') {
+    return {
+      selectExpr: `${palavraGroupExpr(canal)} AS palavra`,
+      filterClause: '',
+    };
+  }
+  return {
+    selectExpr: 'LOWER(TRIM(ts.utm_term)) AS palavra',
+    filterClause: "AND ts.utm_term IS NOT NULL AND TRIM(ts.utm_term) <> ''",
+  };
+}
+
+function applyPalavraFilter(qb, term, canal) {
+  const t = String(term || '').trim().toLowerCase();
+  if (!t) return;
+  if (normalizeCanal(canal) === 'chatgpt') {
+    qb.whereRaw(`${palavraGroupExpr(canal)} = ?`, [t]);
+    return;
+  }
+  qb.where(function () {
+    this.whereRaw('LOWER(TRIM(ts.utm_term)) = ?', [t]).orWhereRaw('LOWER(ts.utm_term) LIKE ?', [`%"${t}"%`]);
+  });
 }
 
 /**
@@ -88,6 +129,10 @@ function canalAdsFilter(qb, canal) {
         .orWhereRaw("LOWER(COALESCE(ts.utm_source,'')) LIKE '%bing%'")
         .orWhereRaw("LOWER(COALESCE(ts.utm_source,'')) LIKE '%microsoft%'");
     });
+    return;
+  }
+  if (c === 'chatgpt') {
+    qb.whereRaw(canalAdsSql('chatgpt'));
     return;
   }
   qb.where(function () {
@@ -111,6 +156,15 @@ function canalAdsSql(canal) {
       OR LOWER(TRIM(COALESCE(ts.utm_source,''))) IN ('bing','microsoft','msn')
       OR LOWER(COALESCE(ts.utm_source,'')) LIKE '%bing%'
       OR LOWER(COALESCE(ts.utm_source,'')) LIKE '%microsoft%'
+    )`;
+  }
+  if (c === 'chatgpt') {
+    return `(
+      LOWER(TRIM(COALESCE(ts.utm_source,''))) IN ('chatgpt','chatgpt.com','chat.openai')
+      OR LOWER(COALESCE(ts.utm_source,'')) LIKE '%chatgpt%'
+      OR LOWER(COALESCE(ts.referrer,'')) LIKE '%chatgpt.com%'
+      OR LOWER(COALESCE(ts.referrer,'')) LIKE '%chat.openai.com%'
+      OR LOWER(COALESCE(ts.referrer,'')) LIKE '%openai.com/chat%'
     )`;
   }
   return `(
@@ -162,16 +216,17 @@ async function fetchInvestimento(db, sinceStr) {
 }
 
 async function fetchPalavrasValidadas(db, sinceStr, canal = 'google') {
+  const groupExpr = palavraGroupExpr(canal);
   const keywordRows = await safeQuery([], () => {
-    const q = db('tracking_sessoes as ts')
-      .where('ts.created_at', '>=', sinceStr)
-      .whereNotNull('ts.utm_term')
-      .where('ts.utm_term', '!=', '');
+    const q = db('tracking_sessoes as ts').where('ts.created_at', '>=', sinceStr);
     canalAdsFilter(q, canal);
+    if (normalizeCanal(canal) !== 'chatgpt') {
+      q.whereNotNull('ts.utm_term').where('ts.utm_term', '!=', '');
+    }
     return q
-      .groupByRaw('LOWER(TRIM(ts.utm_term))')
+      .groupByRaw(groupExpr)
       .select(
-        db.raw('LOWER(TRIM(ts.utm_term)) as palavra'),
+        db.raw(`${groupExpr} as palavra`),
         db.raw('COUNT(*) as clicks'),
         db.raw('COUNT(DISTINCT ts.cliente_id) as cadastros'),
         db.raw('COUNT(DISTINCT ts.usuario_id) as usuarios'),
@@ -182,6 +237,7 @@ async function fetchPalavrasValidadas(db, sinceStr, canal = 'google') {
   });
 
   const canalSql = canalAdsSql(canal);
+  const { selectExpr: palavraSelect, filterClause: palavraFilter } = palavraSqlFragments(canal);
 
   const pagosRows = await safeQuery([], async () => {
     const hasPg = await hasTable(db, 'pagamentos_gerencianet');
@@ -194,7 +250,7 @@ async function fetchPalavrasValidadas(db, sinceStr, canal = 'google') {
     if (hasPg) {
       unions.push(`
         SELECT DISTINCT
-          LOWER(TRIM(ts.utm_term)) AS palavra,
+          ${palavraSelect},
           ts.cliente_id,
           CONCAT('pg:', p.id) AS pagamento_key,
           COALESCE(p.valor, 0) AS valor_pago
@@ -203,8 +259,8 @@ async function fetchPalavrasValidadas(db, sinceStr, canal = 'google') {
           AND COALESCE(p.data_pagamento, p.updated_at, p.created_at) >= ?
           AND ${PG_PAGO_WHERE}
         WHERE ts.created_at >= ?
-          AND ts.utm_term IS NOT NULL AND TRIM(ts.utm_term) <> ''
           AND ts.cliente_id IS NOT NULL
+          ${palavraFilter}
           AND ${canalSql}
       `);
       bindings.push(sinceStr, sinceStr);
@@ -213,7 +269,7 @@ async function fetchPalavrasValidadas(db, sinceStr, canal = 'google') {
     if (hasTaxa) {
       unions.push(`
         SELECT DISTINCT
-          LOWER(TRIM(ts.utm_term)) AS palavra,
+          ${palavraSelect},
           ts.cliente_id,
           CONCAT('tx:', t.id) AS pagamento_key,
           COALESCE(t.valor, 0) AS valor_pago
@@ -222,8 +278,8 @@ async function fetchPalavrasValidadas(db, sinceStr, canal = 'google') {
           AND COALESCE(t.data_pagamento, t.created_at) >= ?
           AND ${TAXA_SICAF_PAGA_WHERE}
         WHERE ts.created_at >= ?
-          AND ts.utm_term IS NOT NULL AND TRIM(ts.utm_term) <> ''
           AND ts.cliente_id IS NOT NULL
+          ${palavraFilter}
           AND ${canalSql}
       `);
       bindings.push(sinceStr, sinceStr);
@@ -305,12 +361,7 @@ async function fetchClientesPorPalavra(db, sinceStr, palavra, canal = 'google') 
     db('tracking_sessoes as ts')
       .innerJoin('clientes as c', 'ts.cliente_id', 'c.id')
       .where('ts.created_at', '>=', sinceStr)
-      .where(function () {
-        this.whereRaw('LOWER(TRIM(ts.utm_term)) = ?', [term]).orWhereRaw(
-          'LOWER(ts.utm_term) LIKE ?',
-          [`%"${term}"%`],
-        );
-      })
+      .modify((qb) => applyPalavraFilter(qb, term, canal))
       .modify((qb) => canalAdsFilter(qb, canal))
       .groupBy('ts.cliente_id', 'c.razao_social', 'c.nome_fantasia', 'c.documento')
       .select(
@@ -374,12 +425,7 @@ async function fetchPagosDetalhePorPalavra(db, sinceStr, palavra, canal = 'googl
   const sessoes = await safeQuery([], () =>
     db('tracking_sessoes as ts')
       .where('ts.created_at', '>=', sinceStr)
-      .where(function () {
-        this.whereRaw('LOWER(TRIM(ts.utm_term)) = ?', [term]).orWhereRaw(
-          'LOWER(ts.utm_term) LIKE ?',
-          [`%"${term}"%`],
-        );
-      })
+      .modify((qb) => applyPalavraFilter(qb, term, canal))
       .modify((qb) => canalAdsFilter(qb, canal))
       .whereNotNull('ts.cliente_id')
       .groupBy('ts.cliente_id')
@@ -762,7 +808,9 @@ async function fetchClicksPorPeriodoSemana(db, sinceStr, canal = 'google') {
   const taxaSemana = taxa(semanaPagos, semanaClicks);
   const taxaFim = taxa(fimPagos, fimClicks);
 
-  const canalNome = normalizeCanal(canal) === 'bing' ? 'Bing Ads' : 'Google Ads';
+  const canalNorm = normalizeCanal(canal);
+  const canalNome =
+    canalNorm === 'bing' ? 'Bing Ads' : canalNorm === 'chatgpt' ? 'ChatGPT' : 'Google Ads';
   let insight = `Sem cliques ${canalNome} no período para analisar dia da semana.`;
   if (totalClicks > 0) {
     if (pctFim >= 35) {
@@ -857,7 +905,8 @@ async function getAdminGoogleAds(opts = {}) {
 
   const canal = normalizeCanal(opts.canal);
   const isBing = canal === 'bing';
-  const canalLabel = isBing ? 'Bing Ads' : 'Google Ads';
+  const isChatgpt = canal === 'chatgpt';
+  const canalLabel = isBing ? 'Bing Ads' : isChatgpt ? 'ChatGPT' : 'Google Ads';
 
   const hasTracking = await hasTable(db, 'tracking_sessoes');
   if (!hasTracking) {
@@ -899,7 +948,7 @@ async function getAdminGoogleAds(opts = {}) {
         )
         .first();
     }),
-    isBing ? Promise.resolve(0) : fetchInvestimento(db, sinceStr),
+    isBing || isChatgpt ? Promise.resolve(0) : fetchInvestimento(db, sinceStr),
     fetchPalavrasValidadas(db, sinceStr, canal),
     palavraDetalhe ? fetchClientesPorPalavra(db, sinceStr, palavraDetalhe, canal) : Promise.resolve([]),
     fetchClicksPorPeriodoSemana(db, sinceStr, canal),
@@ -913,15 +962,24 @@ async function getAdminGoogleAds(opts = {}) {
   const roasMedio =
     investimento > 0 && receitaTotal > 0 ? Math.round((receitaTotal / investimento) * 10) / 10 : null;
 
-  const notas = isBing
+  const notas = isChatgpt
     ? [
+        'Filtro ChatGPT: utm_source chatgpt/openai ou referrer chatgpt.com / chat.openai.com.',
+        'Origem agrupada por utm_term, campanha, conteúdo ou landing page quando não há palavra-chave.',
+        'Pagos = clientes com taxa SICAF ou pagamento Gerencianet quitado no período, atribuídos à sessão ChatGPT.',
+        'Receita = soma dos pagamentos reais desses clientes (não usa apenas o flag converted do tracking).',
+        'Semana vs fim de semana usa o horário da visita (tracking_sessoes.created_at) em horário de Brasília.',
+        'ChatGPT não possui investimento sincronizado — ROAS/CPA ficam sem custo de mídia nesta tela.',
+      ]
+    : isBing
+      ? [
         'Filtro Bing: sessões com msclkid ou utm_source bing/microsoft.',
         'Pagos = clientes com taxa SICAF ou pagamento Gerencianet quitado no período, atribuídos à palavra-chave da sessão Bing Ads.',
         'Receita = soma dos pagamentos reais desses clientes (não usa apenas o flag converted do tracking).',
         'Semana vs fim de semana usa o horário do clique (tracking_sessoes.created_at) em horário de Brasília.',
         'Investimento Bing ainda não sincronizado nesta tela — ROAS/CPA ficam sem custo até haver importação de gasto.',
       ]
-    : [
+      : [
         'Pagos = clientes com taxa SICAF ou pagamento Gerencianet quitado no período, atribuídos à palavra-chave da sessão Google Ads.',
         'Receita = soma dos pagamentos reais desses clientes (não usa apenas o flag converted do tracking).',
         'Semana vs fim de semana usa o horário do clique (tracking_sessoes.created_at) em horário de Brasília — útil para Ad schedule no Google Ads.',

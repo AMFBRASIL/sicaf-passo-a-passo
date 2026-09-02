@@ -14,6 +14,7 @@ const ADMIN_PANEL_MANIFEST = [
   { paginaId: 'cobranca', paginaNome: 'Cobrança', categoria: 'Operação', rota: '/admin/cobranca' },
   { paginaId: 'sicaf', paginaNome: 'Gestão SICAF', categoria: 'Operação', rota: '/admin/sicaf' },
   { paginaId: 'documents', paginaNome: 'Documentos', categoria: 'Operação', rota: '/admin/documentos' },
+  { paginaId: 'licitacoes-admin', paginaNome: 'Licitações', categoria: 'Operação', rota: '/admin/licitacoes' },
   { paginaId: 'tickets-admin', paginaNome: 'Suporte (Kanban)', categoria: 'Atendimento', rota: '/admin/suporte' },
   { paginaId: 'atendimento', paginaNome: 'Central de Atendimento', categoria: 'Atendimento', rota: '/admin/atendimento' },
   { paginaId: 'suporte-remoto', paginaNome: 'Suporte Remoto', categoria: 'Atendimento', rota: '/admin/suporte-remoto' },

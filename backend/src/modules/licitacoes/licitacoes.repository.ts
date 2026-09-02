@@ -38,6 +38,7 @@ export type LicitacaoRow = RowDataPacket & {
   srp: number | null;
   link_edital: string | null;
   link_portal: string | null;
+  created_at?: Date | string | null;
 };
 
 export type MiraMetaRow = RowDataPacket & {
@@ -66,6 +67,7 @@ export type ListFilters = {
   valorMax?: number | null;
   dataFrom?: string | null;
   dataTo?: string | null;
+  createdFrom?: string | null;
   mira?: "" | "0" | "1";
   prazoMaxDays?: number | null;
   orderBy: string;
@@ -163,6 +165,10 @@ export class LicitacoesRepository {
     if (filters.dataTo) {
       parts.push("l.data_abertura <= :dataTo");
       params.dataTo = `${filters.dataTo} 23:59:59`;
+    }
+    if (filters.createdFrom) {
+      parts.push("l.created_at >= :createdFrom");
+      params.createdFrom = filters.createdFrom;
     }
     if (filters.prazoMaxDays != null && filters.prazoMaxDays < 999) {
       parts.push(
@@ -376,7 +382,8 @@ export class LicitacoesRepository {
           l.data_homologacao,
           l.valor_estimado, l.valor_homologado,
           l.status, l.situacao, l.srp,
-          l.link_edital, l.link_portal
+          l.link_edital, l.link_portal,
+          l.created_at
          FROM licitacoes l
         WHERE ${whereSql}
         ORDER BY l.${orderBy} ${orderDir}
@@ -502,6 +509,13 @@ export class LicitacoesRepository {
       valorMax: safeDecimal(sp.get("valor_max")),
       dataFrom: safeDate(sp.get("data_from")),
       dataTo: safeDate(sp.get("data_to")),
+      createdFrom: (() => {
+        const raw = sp.get("created_from");
+        if (!raw) return null;
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) return safeDate(raw);
+        return d.toISOString().slice(0, 19).replace("T", " ");
+      })(),
       mira: (sp.get("mira") === "1" ? "1" : sp.get("mira") === "0" ? "0" : "") as "" | "0" | "1",
       prazoMaxDays: prazoMaxDays != null && Number.isFinite(prazoMaxDays) ? prazoMaxDays : null,
       orderBy,

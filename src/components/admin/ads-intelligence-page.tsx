@@ -30,6 +30,7 @@ import {
   CalendarDays,
   CalendarRange,
   ArrowLeft,
+  Bot,
 } from "lucide-react";
 import {
   BarChart,
@@ -68,8 +69,14 @@ const PERIODOS_ADS = [
 
 export function AdsIntelligencePage({ canal }: { canal: AdsCanal }) {
   const isBing = canal === "bing";
-  const titulo = isBing ? "Bing Ads Intelligence" : "Google Ads Intelligence";
-  const canalNome = isBing ? "Bing Ads" : "Google Ads";
+  const isChatgpt = canal === "chatgpt";
+  const titulo = isChatgpt
+    ? "ChatGPT Intelligence"
+    : isBing
+      ? "Bing Ads Intelligence"
+      : "Google Ads Intelligence";
+  const canalNome = isChatgpt ? "ChatGPT" : isBing ? "Bing Ads" : "Google Ads";
+  const termoColuna = isChatgpt ? "Origem / termo" : "Palavra-chave";
   const periodos = PERIODOS_ADS;
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(isBing ? "7" : "30");
@@ -150,7 +157,7 @@ export function AdsIntelligencePage({ canal }: { canal: AdsCanal }) {
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          {isBing ? (
+          {isBing || isChatgpt ? (
             <Button variant="ghost" size="sm" className="mb-2 -ml-2 h-8 gap-1.5 text-muted-foreground" asChild>
               <Link to="/admin/google-ads">
                 <ArrowLeft className="h-3.5 w-3.5" />
@@ -160,15 +167,32 @@ export function AdsIntelligencePage({ canal }: { canal: AdsCanal }) {
           ) : null}
           <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">{titulo}</h1>
           <p className="text-sm text-muted-foreground">
-            Palavras que <strong>geram dinheiro</strong> — pagos validados no banco (taxas SICAF e Gerencianet)
-            {isBing ? ", filtradas por msclkid / Bing." : "."}
+            {isChatgpt ? (
+              <>
+                Relatório de <strong>tracking ChatGPT</strong> no banco — sessões com utm_source chatgpt ou referrer
+                chatgpt.com / chat.openai.com, com pagos validados (taxas SICAF e Gerencianet).
+              </>
+            ) : (
+              <>
+                Palavras que <strong>geram dinheiro</strong> — pagos validados no banco (taxas SICAF e Gerencianet)
+                {isBing ? ", filtradas por msclkid / Bing." : "."}
+              </>
+            )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {!isBing ? (
-            <Button variant="secondary" size="sm" asChild>
-              <Link to="/admin/bing-ads">Analisar Bing Ads</Link>
-            </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isBing && !isChatgpt ? (
+            <>
+              <Button variant="secondary" size="sm" asChild>
+                <Link to="/admin/bing-ads">Analisar Bing Ads</Link>
+              </Button>
+              <Button variant="secondary" size="sm" className="gap-1.5" asChild>
+                <Link to="/admin/chatgpt-ads">
+                  <Bot className="h-3.5 w-3.5" />
+                  Analisar ChatGPT
+                </Link>
+              </Button>
+            </>
           ) : null}
           <Select value={days} onValueChange={setDays}>
             <SelectTrigger className="h-9 w-52 text-sm">
@@ -227,10 +251,13 @@ export function AdsIntelligencePage({ canal }: { canal: AdsCanal }) {
             <Card className="mt-5 p-5">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-semibold">Onde rodar a campanha: semana × fim de semana</h3>
+                  <h3 className="text-sm font-semibold">
+                    {isChatgpt ? "Quando o tráfego ChatGPT converte melhor" : "Onde rodar a campanha: semana × fim de semana"}
+                  </h3>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Cliques, cadastros e clientes pagantes por dia do clique — use no agendamento de anúncios do{" "}
-                    {canalNome}.
+                    {isChatgpt
+                      ? "Visitas, cadastros e clientes pagantes por dia da sessão — útil para priorizar atendimento e conteúdo."
+                      : `Cliques, cadastros e clientes pagantes por dia do clique — use no agendamento de anúncios do ${canalNome}.`}
                   </p>
                 </div>
                 <Badge variant="secondary" className="text-[10px]">
@@ -371,7 +398,9 @@ export function AdsIntelligencePage({ canal }: { canal: AdsCanal }) {
           {chartData.length > 0 && (
             <Card className="mt-5 p-5">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Top palavras por receita validada</h3>
+                <h3 className="text-sm font-semibold">
+                  {isChatgpt ? "Top origens por receita validada" : "Top palavras por receita validada"}
+                </h3>
                 <Badge variant="secondary" className="text-[10px]">
                   Pagos confirmados no BD
                 </Badge>
@@ -426,14 +455,14 @@ export function AdsIntelligencePage({ canal }: { canal: AdsCanal }) {
             <h3 className="mb-3 text-sm font-semibold">Tabela completa</h3>
             {palavras.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                Nenhuma palavra-chave {canalNome} no período selecionado.
+                Nenhum {isChatgpt ? "registro de origem ChatGPT" : `palavra-chave ${canalNome}`} no período selecionado.
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
-                      <th className="px-3 py-2 font-medium">Palavra-chave</th>
+                      <th className="px-3 py-2 font-medium">{termoColuna}</th>
                       <th className="px-3 py-2 font-medium text-right">Cliques</th>
                       <th className="px-3 py-2 font-medium text-right">Cadastros</th>
                       <th className="px-3 py-2 font-medium text-right">Pagos ✓</th>
@@ -539,9 +568,11 @@ export function AdsIntelligencePage({ canal }: { canal: AdsCanal }) {
       <Sheet open={detalheOpen} onOpenChange={setDetalheOpen}>
         <SheetContent className="w-full sm:max-w-lg">
           <SheetHeader>
-            <SheetTitle>Clientes — {palavraSel?.palavra}</SheetTitle>
+            <SheetTitle>
+              Clientes — {palavraSel?.palavra}
+            </SheetTitle>
             <SheetDescription>
-              Sessões com esta palavra-chave e status de pagamento real no período.
+              Sessões com esta {isChatgpt ? "origem" : "palavra-chave"} e status de pagamento real no período.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-2">
@@ -552,7 +583,7 @@ export function AdsIntelligencePage({ canal }: { canal: AdsCanal }) {
               </div>
             ) : clientes.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                Nenhum cliente vinculado a esta palavra no período.
+                Nenhum cliente vinculado a esta {isChatgpt ? "origem" : "palavra"} no período.
               </p>
             ) : (
               clientes.map((c) => (
