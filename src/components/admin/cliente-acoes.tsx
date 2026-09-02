@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +37,7 @@ import {
   StickyNote,
   Gift,
   Target,
+  Gavel,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { readAuthToken } from "@/lib/auth-cookie";
@@ -56,7 +59,10 @@ import {
   criarAdminClienteNota,
   fetchAdminAtualizacoesGratuitas,
   ajustarAdminAtualizacoesGratuitas,
+  fetchAdminBoletimLicitacoes,
+  atualizarAdminBoletimLicitacoes,
   type AtualizacoesGratuitasUi,
+  type BoletimLicitacoesUi,
 } from "@/lib/admin-clientes-api";
 
 type AcaoKey =
@@ -65,6 +71,7 @@ type AcaoKey =
   | "contratos"
   | "sicaf-manual"
   | "cota-gratuita"
+  | "boletim-licitacoes"
   | "google-tracking"
   | "relatorio"
   | "historico"
@@ -117,6 +124,14 @@ const ACOES: {
     icon: Gift,
     tone: "bg-sky-50 dark:bg-sky-950/20 ring-sky-200/60 dark:ring-sky-900/40",
     iconBg: "bg-sky-500 text-white",
+  },
+  {
+    key: "boletim-licitacoes",
+    titulo: "Boletim de licitações",
+    desc: "Ativar ou pausar o envio diário de oportunidades compatíveis com o segmento",
+    icon: Gavel,
+    tone: "bg-teal-50 dark:bg-teal-950/20 ring-teal-200/60 dark:ring-teal-900/40",
+    iconBg: "bg-teal-600 text-white",
   },
   {
     key: "google-tracking",
@@ -201,6 +216,12 @@ export function AcoesTab({ cliente, clienteId }: { cliente: ClienteDetalhe; clie
       <SicafManualModal open={aberta === "sicaf-manual"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} clienteId={clienteId} />
       <CotaGratuitaModal
         open={aberta === "cota-gratuita"}
+        onOpenChange={(v) => !v && setAberta(null)}
+        cliente={cliente}
+        clienteId={clienteId}
+      />
+      <BoletimLicitacoesModal
+        open={aberta === "boletim-licitacoes"}
         onOpenChange={(v) => !v && setAberta(null)}
         cliente={cliente}
         clienteId={clienteId}
@@ -688,6 +709,216 @@ function CotaGratuitaModal({
               )}
             </Button>
           )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------- BOLETIM LICITAÇÕES ---------- */
+function BoletimLicitacoesModal({
+  open,
+  onOpenChange,
+  cliente,
+  clienteId,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  cliente: ClienteDetalhe;
+  clienteId?: number;
+}) {
+  const [status, setStatus] = useState<BoletimLicitacoesUi | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [motivo, setMotivo] = useState("");
+
+  const carregar = useCallback(async () => {
+    if (!clienteId) return;
+    setCarregando(true);
+    try {
+      const res = await fetchAdminBoletimLicitacoes(clienteId);
+      if (!res.ok) {
+        toast.error(res.error || "Não foi possível carregar o boletim");
+        setStatus(null);
+        return;
+      }
+      setStatus({
+        ativo: !!res.ativo,
+        podeReceber: res.podeReceber,
+        email: res.email,
+        ramoAtividade: res.ramoAtividade,
+        segmento: res.segmento,
+        elegibilidade: res.elegibilidade,
+        totalLicitacoesEnviadas: res.totalLicitacoesEnviadas,
+        ultimoEnvio: res.ultimoEnvio,
+      });
+    } catch {
+      toast.error("Erro ao carregar boletim de licitações");
+      setStatus(null);
+    } finally {
+      setCarregando(false);
+    }
+  }, [clienteId]);
+
+  useEffect(() => {
+    if (open) void carregar();
+  }, [open, carregar]);
+
+  const alternar = async (ativo: boolean) => {
+    if (!clienteId) return;
+    setSalvando(true);
+    try {
+      const res = await atualizarAdminBoletimLicitacoes(clienteId, {
+        ativo,
+        motivo: motivo.trim() || undefined,
+      });
+      if (!res.ok) {
+        toast.error(res.error || "Não foi possível atualizar o boletim");
+        return;
+      }
+      toast.success(res.message || (ativo ? "Boletim ativado" : "Boletim pausado"));
+      setStatus({
+        ativo: !!res.ativo,
+        podeReceber: res.podeReceber,
+        email: res.email,
+        ramoAtividade: res.ramoAtividade,
+        segmento: res.segmento,
+        elegibilidade: res.elegibilidade,
+        totalLicitacoesEnviadas: res.totalLicitacoesEnviadas,
+        ultimoEnvio: res.ultimoEnvio,
+      });
+      setMotivo("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao atualizar boletim");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const formatarData = (value?: string | null) => {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleString("pt-BR");
+  };
+
+  const elegLabel = (motivo?: string) => {
+    if (motivo === "manutencao_ativa") return "Manutenção ativa";
+    if (motivo === "periodo_teste") return "Período de teste";
+    if (motivo === "sem_plano") return "Sem plano / fora do trial";
+    if (motivo === "boletim_desativado") return "Boletim pausado manualmente";
+    return motivo || "—";
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Gavel className="h-5 w-5 text-teal-600" /> Boletim de licitações
+          </DialogTitle>
+          <DialogDescription>
+            Controle o envio automático do processo em{" "}
+            <span className="font-medium text-foreground">/admin/processos</span> para{" "}
+            <span className="font-medium text-foreground">{cliente.razao}</span>.
+          </DialogDescription>
+        </DialogHeader>
+
+        {carregando ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" /> Carregando...
+          </div>
+        ) : status ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+              <div className="space-y-1">
+                <Label htmlFor="boletim-ativo" className="text-sm font-semibold">
+                  Envio do boletim
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {status.ativo
+                    ? "Cliente recebe e-mails quando houver licitações compatíveis."
+                    : "Envios pausados — o cliente não receberá o boletim diário."}
+                </p>
+              </div>
+              <Switch
+                id="boletim-ativo"
+                checked={status.ativo}
+                disabled={salvando || !clienteId}
+                onCheckedChange={(checked) => void alternar(checked)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Card className="p-3">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Elegibilidade</p>
+                <p className="mt-1 text-sm font-semibold">
+                  {status.elegibilidade?.elegivel ? "Elegível" : "Não elegível"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {elegLabel(status.elegibilidade?.motivo)}
+                  {status.elegibilidade?.motivo === "periodo_teste" &&
+                  status.elegibilidade.diasTrialRestantes != null
+                    ? ` · ${status.elegibilidade.diasTrialRestantes}d restantes`
+                    : ""}
+                </p>
+              </Card>
+              <Card className="p-3">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Receberá envios</p>
+                <p
+                  className={`mt-1 text-sm font-semibold ${status.podeReceber ? "text-emerald-600" : "text-rose-600"}`}
+                >
+                  {status.podeReceber ? "Sim" : "Não"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {status.podeReceber ? "Toggle ativo + elegível" : status.elegibilidade?.error || "Verifique requisitos"}
+                </p>
+              </Card>
+            </div>
+
+            <Card className="p-3 space-y-2 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">E-mail</span>
+                <span className="font-medium text-right">{status.email || "—"}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">Segmento</span>
+                <span className="font-medium text-right">{status.ramoAtividade || status.segmento || "—"}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">Licitações já enviadas</span>
+                <span className="font-medium">{status.totalLicitacoesEnviadas ?? 0}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">Último envio</span>
+                <span className="font-medium text-right">{formatarData(status.ultimoEnvio)}</span>
+              </div>
+            </Card>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">
+                Motivo da alteração (opcional, fica no histórico)
+              </label>
+              <Textarea
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                rows={2}
+                placeholder="Ex.: cliente pediu para pausar temporariamente"
+                disabled={salvando}
+                className="resize-none"
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Não foi possível carregar as configurações do boletim.
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={salvando}>
+            Fechar
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

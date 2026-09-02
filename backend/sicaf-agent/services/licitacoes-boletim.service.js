@@ -35,6 +35,26 @@ function clienteElegivelBoletimWhereRaw(diasTrial) {
   )`;
 }
 
+function isBoletimEnvioAtivo(cliente) {
+  if (!cliente) return true;
+  const raw = cliente.licitacoes_boletim_ativo;
+  if (raw === undefined || raw === null) return true;
+  return Number(raw) === 1 || raw === true;
+}
+
+async function ensureBoletimAtivoColumn(db) {
+  try {
+    const [cols] = await db.raw(
+      "SHOW COLUMNS FROM clientes LIKE 'licitacoes_boletim_ativo'",
+    );
+    if (!cols || cols.length === 0) {
+      await db.raw(
+        'ALTER TABLE clientes ADD COLUMN licitacoes_boletim_ativo TINYINT(1) NOT NULL DEFAULT 1',
+      );
+    }
+  } catch (_) {}
+}
+
 async function resolveElegibilidadeBoletim(db, cliente) {
   const diasTrial = diasTrialBoletim();
   const clienteId = Number(cliente.id);
@@ -42,12 +62,21 @@ async function resolveElegibilidadeBoletim(db, cliente) {
     return { elegivel: false, motivo: 'invalido', error: 'Cliente inválido.' };
   }
 
+  if (!isBoletimEnvioAtivo(cliente)) {
+    return {
+      elegivel: false,
+      motivo: 'boletim_desativado',
+      error: 'Envio do boletim de licitações está desativado para este cliente.',
+      boletimAtivo: false,
+    };
+  }
+
   const manutRow = await db('manutencoes as m')
     .where('m.cliente_id', clienteId)
     .whereRaw(MANUTENCAO_ATIVA_SQL)
     .first();
   if (manutRow) {
-    return { elegivel: true, motivo: 'manutencao_ativa', diasTrialRestantes: null };
+    return { elegivel: true, motivo: 'manutencao_ativa', diasTrialRestantes: null, boletimAtivo: true };
   }
 
   const sicafRow = await db('sicaf_cadastros')
@@ -55,7 +84,7 @@ async function resolveElegibilidadeBoletim(db, cliente) {
     .whereRaw('COALESCE(manutencao_ativa, 0) = 1')
     .first();
   if (sicafRow) {
-    return { elegivel: true, motivo: 'manutencao_ativa', diasTrialRestantes: null };
+    return { elegivel: true, motivo: 'manutencao_ativa', diasTrialRestantes: null, boletimAtivo: true };
   }
 
   const createdAt = cliente.created_at ? new Date(cliente.created_at) : null;
@@ -66,6 +95,7 @@ async function resolveElegibilidadeBoletim(db, cliente) {
         elegivel: true,
         motivo: 'periodo_teste',
         diasTrialRestantes: Math.max(0, Math.ceil(diasTrial - diffDays)),
+        boletimAtivo: true,
       };
     }
   }
@@ -75,6 +105,7 @@ async function resolveElegibilidadeBoletim(db, cliente) {
     motivo: 'sem_plano',
     error: `Cliente sem plano de manutenção ativo e fora do período de teste (${diasTrial} dias após o cadastro).`,
     diasTrial,
+    boletimAtivo: true,
   };
 }
 
@@ -327,12 +358,14 @@ const CLIENTE_SELECT_FIELDS = [
   'cidade',
   'status',
   'created_at',
+  'licitacoes_boletim_ativo',
 ];
 
 async function loadClientesElegiveis(db) {
   const hasTable = await db.schema.hasTable('clientes');
   if (!hasTable) return [];
 
+  await ensureBoletimAtivoColumn(db);
   const diasTrial = diasTrialBoletim();
 
   return db('clientes')
@@ -342,6 +375,7 @@ async function loadClientesElegiveis(db) {
       "COALESCE(NULLIF(TRIM(responsavel_email), ''), NULLIF(TRIM(email), '')) IS NOT NULL",
     )
     .whereRaw("TRIM(COALESCE(ramo_atividade, '')) <> ''")
+    .whereRaw('COALESCE(licitacoes_boletim_ativo, 1) = 1')
     .whereRaw(clienteElegivelBoletimWhereRaw(diasTrial))
     .orderBy('id', 'asc');
 }
@@ -351,6 +385,8 @@ async function findClienteByIdentificador(db, identificador) {
   if (!raw) {
     return { ok: false, error: 'Informe o e-mail ou CNPJ do cliente.' };
   }
+
+  await ensureBoletimAtivoColumn(db);
 
   let row = null;
 
@@ -858,9 +894,140 @@ async function runBoletimLicitacoesTeste(options = {}) {
   };
 }
 
+async function registrarHistoricoBoletim(db, clienteId, usuarioId, descricao) {
+  try {
+    if (await db.schema.hasTable('auditoria_log')) {
+      await db('auditoria_log').insert({
+        usuario_id: usuarioId || null,
+        cliente_id: clienteId,
+        acao: 'CUSTOM:boletim_licitacoes',
+        descricao: String(descricao).substring(0, 500),
+        entidade: 'clientes',
+        entidade_id: clienteId,
+        created_at: db.fn.now(),
+      });
+      return;
+    }
+  } catch (_) {}
+
+  try {
+    if (await db.schema.hasTable('historico_acoes')) {
+      await db('historico_acoes').insert({
+        cliente_id: clienteId,
+        usuario_id: usuarioId || null,
+        acao: String(descricao).substring(0, 500),
+        entidade: 'clientes',
+        entidade_id: clienteId,
+        created_at: db.fn.now(),
+      });
+    }
+  } catch (_) {}
+}
+
+async function loadBoletimEnvioStats(db, clienteId) {
+  await ensureEnviosTable(db);
+  try {
+    const row = await db('licitacoes_email_envios')
+      .where('cliente_id', clienteId)
+      .select(
+        db.raw('COUNT(*) AS total_licitacoes'),
+        db.raw('MAX(enviado_em) AS ultimo_envio'),
+      )
+      .first();
+    return {
+      totalLicitacoesEnviadas: Number(row?.total_licitacoes ?? 0),
+      ultimoEnvio: row?.ultimo_envio || null,
+    };
+  } catch (_) {
+    return { totalLicitacoesEnviadas: 0, ultimoEnvio: null };
+  }
+}
+
+async function getAdminBoletimLicitacoes(clienteId) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco indisponível' };
+
+  await ensureBoletimAtivoColumn(db);
+
+  const cliente = await db('clientes')
+    .select(...CLIENTE_SELECT_FIELDS)
+    .where('id', clienteId)
+    .first();
+  if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
+
+  const ativo = isBoletimEnvioAtivo(cliente);
+  const elegibilidade = await resolveElegibilidadeBoletim(db, cliente);
+  const { segmentKey } = keywordsForCliente(cliente);
+  const stats = await loadBoletimEnvioStats(db, clienteId);
+
+  return {
+    ok: true,
+    clienteId,
+    razaoSocial: cliente.razao_social || cliente.nome_fantasia || '',
+    email: resolveEmail(cliente) || null,
+    ramoAtividade: cliente.ramo_atividade || null,
+    segmento: segmentKey,
+    ativo,
+    elegibilidade: {
+      elegivel: elegibilidade.elegivel,
+      motivo: elegibilidade.motivo,
+      diasTrialRestantes: elegibilidade.diasTrialRestantes ?? null,
+      diasTrial: elegibilidade.diasTrial ?? diasTrialBoletim(),
+      error: elegibilidade.error || null,
+    },
+    podeReceber: ativo && elegibilidade.elegivel,
+    ...stats,
+  };
+}
+
+async function setAdminBoletimLicitacoes(clienteId, usuarioId, ativo, motivo) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco indisponível' };
+
+  await ensureBoletimAtivoColumn(db);
+
+  const cliente = await db('clientes').where('id', clienteId).first();
+  if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
+
+  const antes = isBoletimEnvioAtivo(cliente);
+  const depois = !!ativo;
+
+  if (antes === depois) {
+    const status = await getAdminBoletimLicitacoes(clienteId);
+    return {
+      ok: true,
+      message: depois
+        ? 'Boletim de licitações já está ativo para este cliente.'
+        : 'Boletim de licitações já está pausado para este cliente.',
+      ativo: depois,
+      ...status,
+    };
+  }
+
+  await db('clientes').where('id', clienteId).update({
+    licitacoes_boletim_ativo: depois ? 1 : 0,
+    updated_at: db.fn.now(),
+  });
+
+  const msg = depois
+    ? `Boletim de licitações reativado${motivo ? `: ${motivo}` : ''}`
+    : `Boletim de licitações pausado${motivo ? `: ${motivo}` : ''}`;
+  await registrarHistoricoBoletim(db, clienteId, usuarioId, msg);
+
+  const status = await getAdminBoletimLicitacoes(clienteId);
+  return {
+    ok: true,
+    message: msg,
+    ativo: depois,
+    ...status,
+  };
+}
+
 module.exports = {
   runBoletimLicitacoes,
   runBoletimLicitacoesTeste,
+  getAdminBoletimLicitacoes,
+  setAdminBoletimLicitacoes,
   keywordsForCliente,
   matchLicitacao,
   SEGMENT_KEYWORDS,

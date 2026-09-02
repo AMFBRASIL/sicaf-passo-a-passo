@@ -782,6 +782,45 @@ export async function ajustarAdminAtualizacoesGratuitas(
   }>;
 }
 
+export type BoletimLicitacoesUi = {
+  clienteId?: number;
+  razaoSocial?: string;
+  email?: string | null;
+  ramoAtividade?: string | null;
+  segmento?: string;
+  ativo: boolean;
+  podeReceber?: boolean;
+  elegibilidade?: {
+    elegivel: boolean;
+    motivo?: string;
+    diasTrialRestantes?: number | null;
+    diasTrial?: number;
+    error?: string | null;
+  };
+  totalLicitacoesEnviadas?: number;
+  ultimoEnvio?: string | null;
+};
+
+export async function fetchAdminBoletimLicitacoes(clienteId: number): Promise<{
+  ok: boolean;
+  error?: string;
+  message?: string;
+} & Partial<BoletimLicitacoesUi>> {
+  const res = await apiFetch(`/api/admin/clients/${clienteId}/licitacoes-boletim`);
+  return res.json() as Promise<{ ok: boolean; error?: string; message?: string } & Partial<BoletimLicitacoesUi>>;
+}
+
+export async function atualizarAdminBoletimLicitacoes(
+  clienteId: number,
+  payload: { ativo: boolean; motivo?: string },
+): Promise<{ ok: boolean; message?: string; error?: string } & Partial<BoletimLicitacoesUi>> {
+  const res = await apiFetch(`/api/admin/clients/${clienteId}/licitacoes-boletim`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.json() as Promise<{ ok: boolean; message?: string; error?: string } & Partial<BoletimLicitacoesUi>>;
+}
+
 export type UpdateSicafStatusManualResult = {
   ok: boolean;
   message?: string;
