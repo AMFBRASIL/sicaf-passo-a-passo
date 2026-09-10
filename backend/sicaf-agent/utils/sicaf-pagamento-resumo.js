@@ -25,7 +25,7 @@ function diasAteValidadeSicaf(sicafValidade) {
 function isCredencialVigente(sicafValidade, sicafStatus, hasSicaf = true) {
   if (!hasSicaf) return false;
   const display = resolveSicafDisplayStatus(sicafStatus, sicafValidade, hasSicaf);
-  if (display === 'Vencido') return false;
+  if (display === 'Vencido' || display === 'Cancelado' || display === 'Inativo') return false;
   const dias = diasAteValidadeSicaf(sicafValidade);
   return dias !== null && dias > 0;
 }
@@ -64,6 +64,17 @@ function derivePagamentoSicafResumo({
   const vigente = isCredencialVigente(sicafValidade, sicafStatus, hasSicaf);
   const dias = diasAteValidadeSicaf(sicafValidade);
   const validadeFmt = formatDateBr(sicafValidade);
+
+  if (displayStatus === 'Cancelado' || displayStatus === 'Inativo') {
+    return {
+      pagou: false,
+      pagamentoSicafStatus: displayStatus,
+      pagamentoSicafDetalhe:
+        displayStatus === 'Cancelado'
+          ? 'SICAF cancelado — fora da linha de cobrança'
+          : 'SICAF inativo — fora da linha de cobrança',
+    };
+  }
 
   if (vigente && validadeFmt) {
     const vencendoEmBreve = dias !== null && dias <= 30;
@@ -126,22 +137,55 @@ function derivePagamentoSicafResumo({
 
 /**
  * Elegível para /admin/cobranca: só quem NÃO pagou ou está vencido.
- * Exclui vigente/em dia (mesmo com renovação em aberto).
+ * Exclui vigente/em dia (mesmo com renovação em aberto) e SICAF cancelado.
  */
 function isClienteElegivelCobrancaSicaf(resumo) {
   if (!resumo) return false;
+  const status = String(resumo.pagamentoSicafStatus || '').trim().toLowerCase();
+  if (['cancelado', 'inativo'].includes(status)) return false;
   if (resumo.pagamentoSicafStatus === 'Vencido') return true;
   if (resumo.pagou === false) return true;
   return false;
 }
 
-/** Conta cancelada/inativa ou SICAF cancelado — não recebe cobrança (disparo em massa, régua, e-mail). */
+/** Status de conta que permanecem na linha de cobrança (/admin/cobranca). */
+const CLIENTE_STATUS_COBRANCA_OK = new Set(['ativo', 'pendente']);
+
+/** Conta/SICAF encerrados — fora da linha de cobrança e dos disparos. */
+const STATUS_BLOQUEADOS_COBRANCA = new Set([
+  'inativo',
+  'cancelado',
+  'cancelada',
+  'suspenso',
+  'suspensa',
+  'encerrado',
+  'encerrada',
+  'desativado',
+  'desativada',
+  'removido',
+  'removida',
+  'bloqueado',
+  'bloqueada',
+]);
+
+/**
+ * Conta cancelada/inativa ou SICAF cancelado — não recebe cobrança
+ * (listagem /admin/cobranca, disparo em massa, régua, e-mail).
+ */
 function isClienteBloqueadoCobranca({ clienteStatus, sicafStatus } = {}) {
   const cs = String(clienteStatus || '').trim().toLowerCase();
-  if (['inativo', 'cancelado', 'cancelada'].includes(cs)) return true;
+  if (!cs) return true;
+  if (STATUS_BLOQUEADOS_COBRANCA.has(cs)) return true;
+  if (!CLIENTE_STATUS_COBRANCA_OK.has(cs)) return true;
+
   const ss = String(sicafStatus || '').trim().toLowerCase();
-  if (['cancelado', 'cancelada'].includes(ss)) return true;
+  if (STATUS_BLOQUEADOS_COBRANCA.has(ss)) return true;
   return false;
+}
+
+function isClienteStatusAtivoCobranca(clienteStatus) {
+  const cs = String(clienteStatus || '').trim().toLowerCase();
+  return CLIENTE_STATUS_COBRANCA_OK.has(cs);
 }
 
 const TAXA_SICAF_PAGA_WHERE =
@@ -155,5 +199,8 @@ module.exports = {
   derivePagamentoSicafResumo,
   isClienteElegivelCobrancaSicaf,
   isClienteBloqueadoCobranca,
+  isClienteStatusAtivoCobranca,
+  CLIENTE_STATUS_COBRANCA_OK,
+  STATUS_BLOQUEADOS_COBRANCA,
   TAXA_SICAF_PAGA_WHERE,
 };

@@ -2655,11 +2655,15 @@ async function cancelClientCnpj(clienteId, { usuarioId, motivo } = {}) {
   try {
     const TAXA_CANCELAVEL = [
       'Pendente', 'pendente', 'Aguardando', 'aguardando', 'Gerado', 'gerado',
-      'Vencido', 'vencido', 'Atrasado', 'atrasado',
+      'Vencido', 'vencido', 'Atrasado', 'atrasado', 'Aberto', 'aberto',
     ];
     resumo.taxasCanceladas = await db('taxas_sicaf')
       .where('cliente_id', id)
-      .whereIn('status', TAXA_CANCELAVEL)
+      .where(function taxaAberta() {
+        this.whereIn('status', TAXA_CANCELAVEL).orWhereRaw(
+          "LOWER(TRIM(CAST(status AS CHAR))) IN ('pendente','aguardando','gerado','vencido','atrasado','aberto')",
+        );
+      })
       .update({ status: 'Cancelado', updated_at: db.fn.now() });
   } catch (_) {}
 

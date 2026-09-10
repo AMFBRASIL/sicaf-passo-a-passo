@@ -9,6 +9,7 @@ const {
   ensureCobrancaHistoricoColumns,
   getReguaCobranca,
 } = require('./cobranca-regua.service');
+const { isClienteBloqueadoCobranca } = require('../utils/sicaf-pagamento-resumo');
 
 const MODELOS_MENSAGEM = {
   lembrete_amigavel:
@@ -62,10 +63,19 @@ async function getResumoPublicoAlvo() {
 
 function filtrarPublicoAlvo(all, publicoAlvo) {
   const p = String(publicoAlvo || 'todos').toLowerCase();
-  if (p === 'critica') return all.filter((c) => c.severidade === 'critica');
-  if (p === 'media') return all.filter((c) => c.severidade === 'media');
-  if (p === 'leve') return all.filter((c) => c.severidade === 'leve');
-  return all;
+  // Defesa extra: nunca dispara para conta/SICAF cancelado ou inativo.
+  const ativos = all.filter((c) => {
+    const clienteStatus = c.clienteStatus || c.statusCliente || null;
+    const sicafStatus = c.sicafStatus || null;
+    if (clienteStatus || sicafStatus) {
+      return !isClienteBloqueadoCobranca({ clienteStatus, sicafStatus });
+    }
+    return true;
+  });
+  if (p === 'critica') return ativos.filter((c) => c.severidade === 'critica');
+  if (p === 'media') return ativos.filter((c) => c.severidade === 'media');
+  if (p === 'leve') return ativos.filter((c) => c.severidade === 'leve');
+  return ativos;
 }
 
 function proximoDiaUtilAs9h() {

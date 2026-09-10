@@ -7,17 +7,9 @@ const { getPublicPayBaseUrl } = require('../utils/pay-link.util');
 const {
   derivePagamentoSicafResumo,
   isClienteElegivelCobrancaSicaf,
+  isClienteBloqueadoCobranca,
   TAXA_SICAF_PAGA_WHERE,
 } = require('../utils/sicaf-pagamento-resumo');
-
-/** Conta cancelada/inativa ou SICAF cancelado — não recebe cobrança. */
-function isClienteBloqueadoCobranca({ clienteStatus, sicafStatus } = {}) {
-  const cs = String(clienteStatus || '').trim().toLowerCase();
-  if (['inativo', 'cancelado', 'cancelada'].includes(cs)) return true;
-  const ss = String(sicafStatus || '').trim().toLowerCase();
-  if (['cancelado', 'cancelada'].includes(ss)) return true;
-  return false;
-}
 
 const TAXA_ABERTA_STATUSES = [
   'Pendente', 'pendente', 'Aguardando', 'aguardando', 'Gerado', 'gerado',
@@ -31,13 +23,24 @@ const PAGAMENTO_PENDENTE_STATUSES = [
 
 const PAY_CODE_RE = /^(t|p|c)-(\d+)$/i;
 
-/** Clientes com conta cancelada/inativa não entram em cobrança. */
+/**
+ * Somente clientes Ativo/Pendente entram na linha de cobrança.
+ * Inativo, Cancelado e demais status encerrados ficam de fora.
+ */
 const CLIENTE_ATIVO_COBRANCA_SQL =
-  "(c.status IS NULL OR LOWER(TRIM(CAST(c.status AS CHAR))) NOT IN ('inativo','cancelado','cancelada'))";
+  "LOWER(TRIM(COALESCE(CAST(c.status AS CHAR), ''))) IN ('ativo','pendente')";
 
-/** SICAF cancelado não recebe cobrança (mesmo com boleto legado em aberto). */
-const SICAF_NAO_CANCELADO_SQL =
-  "(s.id IS NULL OR LOWER(TRIM(CAST(s.status AS CHAR))) NOT IN ('cancelado','cancelada'))";
+/**
+ * Exclui cliente se houver SICAF cancelado/inativo (mesmo com boleto legado em aberto).
+ * Usa NOT EXISTS para não falhar quando há mais de um registro em sicaf_cadastros.
+ */
+const SICAF_NAO_CANCELADO_SQL = `NOT EXISTS (
+  SELECT 1 FROM sicaf_cadastros sx
+  WHERE sx.cliente_id = c.id
+  AND LOWER(TRIM(CAST(sx.status AS CHAR))) IN (
+    'cancelado','cancelada','inativo','suspenso','suspensa','encerrado','encerrada','removido','removida'
+  )
+)`;
 
 function parsePayCode(code) {
   const raw = String(code || '').trim().toLowerCase();
@@ -692,9 +695,19 @@ async function loadClienteCobrancaElegibilidadeMap(db, clienteIds) {
   try {
     const rows = await db('sicaf_cadastros')
       .whereIn('cliente_id', clienteIds)
-      .select('cliente_id', 'status', 'data_validade');
+      .select('cliente_id', 'status', 'data_validade')
+      .orderBy('id', 'desc');
     for (const r of rows) {
-      sicafByCliente.set(r.cliente_id, r);
+      const prev = sicafByCliente.get(r.cliente_id);
+      if (!prev) {
+        sicafByCliente.set(r.cliente_id, r);
+        continue;
+      }
+      const status = String(r.status || '').trim().toLowerCase();
+      // Se existir qualquer SICAF cancelado/inativo, usa ele para bloquear cobrança.
+      if (['cancelado', 'cancelada', 'inativo'].includes(status)) {
+        sicafByCliente.set(r.cliente_id, r);
+      }
     }
   } catch (_) {}
 
@@ -764,8 +777,7 @@ async function loadTaxasPendentesRows(db) {
   if (!hasTaxas) return [];
 
   const rows = await db('taxas_sicaf as t')
-    .leftJoin('clientes as c', 'c.id', 't.cliente_id')
-    .leftJoin('sicaf_cadastros as s', 's.cliente_id', 't.cliente_id')
+    .innerJoin('clientes as c', 'c.id', 't.cliente_id')
     .whereIn('t.status', TAXA_ABERTA_STATUSES)
     .whereNotNull('t.cliente_id')
     .whereRaw(CLIENTE_ATIVO_COBRANCA_SQL)
@@ -787,6 +799,7 @@ async function loadTaxasPendentesRows(db) {
       'c.responsavel_nome as responsavelNome',
       'c.cidade',
       'c.estado',
+      'c.status as clienteStatus',
     )
     .orderBy('t.created_at', 'asc');
 
@@ -836,8 +849,7 @@ async function loadPagamentosPendentesRows(db) {
   if (!hasPagamentos) return [];
 
   const rows = await db('pagamentos as p')
-    .leftJoin('clientes as c', 'c.id', 'p.cliente_id')
-    .leftJoin('sicaf_cadastros as s', 's.cliente_id', 'p.cliente_id')
+    .innerJoin('clientes as c', 'c.id', 'p.cliente_id')
     .whereNull('p.deleted_at')
     .whereIn('p.status', ['aguardando', 'gerado', 'pendente', 'Pendente', 'Aguardando', 'Gerado'])
     .where(function () {
@@ -866,6 +878,7 @@ async function loadPagamentosPendentesRows(db) {
       'c.responsavel_nome as responsavelNome',
       'c.cidade',
       'c.estado',
+      'c.status as clienteStatus',
     )
     .orderBy('p.created_at', 'asc');
 
@@ -925,6 +938,7 @@ function mergePendencias(taxaRows, pagamentoRows) {
       payCode,
       payLink: buildPayLink({ taxaId: row.taxaId, pagamentoId: row.pagamentoId, clienteId: row.clienteId }),
       origem: 'taxa_sicaf',
+      clienteStatus: row.clienteStatus || null,
     });
   }
 
@@ -955,6 +969,7 @@ function mergePendencias(taxaRows, pagamentoRows) {
       payCode,
       payLink: buildPayLink({ pagamentoId: row.pagamentoId, clienteId: row.clienteId }),
       origem: 'pagamento',
+      clienteStatus: row.clienteStatus || null,
     });
   }
 

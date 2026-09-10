@@ -22,8 +22,15 @@ function calcDaysRemaining(dataValidade) {
 function resolveSicafDisplayStatus(dbStatus, dataValidade, hasSicaf = true) {
   if (!hasSicaf) return 'Sem SICAF';
 
-  const daysRemaining = calcDaysRemaining(dataValidade);
   const db = String(dbStatus || '').trim();
+  const dbLower = db.toLowerCase();
+
+  // Cancelado/inativo prevalece sobre validade residual no cadastro.
+  if (['cancelado', 'cancelada', 'inativo'].includes(dbLower)) {
+    return dbLower.startsWith('cancel') ? 'Cancelado' : 'Inativo';
+  }
+
+  const daysRemaining = calcDaysRemaining(dataValidade);
 
   if (daysRemaining !== null) {
     if (daysRemaining <= 0) return 'Vencido';
@@ -31,7 +38,7 @@ function resolveSicafDisplayStatus(dbStatus, dataValidade, hasSicaf = true) {
     return 'Ativo';
   }
 
-  if (['Ativo', 'Vencendo', 'Vencido', 'Pendente', 'Inativo'].includes(db)) return db;
+  if (['Ativo', 'Vencendo', 'Vencido', 'Pendente', 'Inativo', 'Cancelado'].includes(db)) return db;
   return db || 'Pendente';
 }
 
