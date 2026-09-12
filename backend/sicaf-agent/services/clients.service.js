@@ -2753,10 +2753,52 @@ async function cancelClientCnpj(clienteId, { usuarioId, motivo } = {}) {
     });
   } catch (_) {}
 
+  let emailNotificacao = { enviado: false, motivo: 'nao_tentado' };
+  try {
+    const { sendCancelamentoCnpjEmail } = require('./cliente-cancelamento-email.service');
+    emailNotificacao = await sendCancelamentoCnpjEmail({
+      db,
+      cliente,
+      motivo: motivoTxt,
+      usuarioId,
+    });
+  } catch (e) {
+    emailNotificacao = {
+      enviado: false,
+      motivo: 'erro_envio',
+      erro: e.message || 'Falha ao enviar e-mail de despedida',
+    };
+  }
+
+  try {
+    const emailResumo = emailNotificacao.enviado
+      ? `E-mail de despedida enviado para ${emailNotificacao.para || 'o cliente'}`
+      : emailNotificacao.simulado
+        ? `E-mail de despedida simulado (${emailNotificacao.para || 'sem destino'})`
+        : `E-mail de despedida não enviado (${emailNotificacao.motivo || emailNotificacao.erro || 'sem e-mail'})`;
+    await db('historico_acoes').insert({
+      cliente_id: id,
+      usuario_id: usuarioId || null,
+      acao: emailResumo,
+      entidade: 'clientes',
+      entidade_id: id,
+      created_at: db.fn.now(),
+    });
+  } catch (_) {}
+
+  const emailMsg = emailNotificacao.enviado
+    ? ` E-mail de despedida enviado para ${emailNotificacao.para}.`
+    : emailNotificacao.simulado
+      ? ' E-mail de despedida simulado (SMTP não configurado).'
+      : emailNotificacao.motivo === 'sem_email_destino'
+        ? ' Nenhum e-mail cadastrado para envio da despedida.'
+        : '';
+
   return {
     ok: true,
-    message: 'CNPJ cancelado com sucesso. O cliente não aparecerá mais como ativo no portal.',
+    message: `CNPJ cancelado com sucesso. O cliente não aparecerá mais como ativo no portal.${emailMsg}`,
     resumo,
+    emailNotificacao,
   };
 }
 

@@ -562,6 +562,13 @@ export function ClienteDetalheModal({
               return;
             }
             toast.success(res.message || "CNPJ cancelado com sucesso");
+            if (res.emailNotificacao && !res.emailNotificacao.enviado && !res.emailNotificacao.simulado) {
+              const motivoEmail =
+                res.emailNotificacao.motivo === "sem_email_destino"
+                  ? "Cliente sem e-mail cadastrado — despedida não enviada."
+                  : res.emailNotificacao.erro || "Não foi possível enviar o e-mail de despedida.";
+              toast.warning(motivoEmail);
+            }
             setCancelarCnpjOpen(false);
             setDetalhe((d) => (d ? { ...d, statusConta: "Inativo", manutencao: false } : d));
             atualizarPainel();

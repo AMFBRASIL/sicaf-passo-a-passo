@@ -1143,7 +1143,19 @@ export async function cancelarAdminClienteCnpj(clienteId: number, motivo: string
     method: "POST",
     body: JSON.stringify({ motivo }),
   });
-  return res.json() as Promise<{ ok: boolean; error?: string; message?: string }>;
+  return res.json() as Promise<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    emailNotificacao?: {
+      enviado?: boolean;
+      simulado?: boolean;
+      para?: string;
+      motivo?: string;
+      erro?: string;
+      assunto?: string;
+    };
+  }>;
 }
 
 export async function atualizarAdminCliente(clienteId: number, data: EditarClientePayload | Record<string, unknown>) {

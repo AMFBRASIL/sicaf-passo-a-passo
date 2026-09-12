@@ -53,7 +53,8 @@ export function CancelarCnpjModal({
           </div>
           <DialogDescription>
             O cliente não deseja mais usar este CNPJ no portal. O cadastro será inativado, o SICAF
-            cancelado e cobranças em aberto serão encerradas.
+            cancelado e cobranças em aberto serão encerradas. Um e-mail de despedida será enviado ao
+            responsável cadastrado.
           </DialogDescription>
         </DialogHeader>
 
