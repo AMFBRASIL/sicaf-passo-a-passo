@@ -44,6 +44,7 @@ import {
   HandCoins,
   Ban,
   Link2,
+  RotateCcw,
 } from "lucide-react";
 import { AcoesTab } from "./cliente-acoes";
 import { SituacaoTab } from "./cliente-situacao-tab";
@@ -51,6 +52,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   atualizarAdminCliente,
   cancelarAdminClienteCnpj,
+  reativarAdminClienteCnpj,
   fetchAdminClienteDetalhe,
   fetchAdminClienteFinanceiro,
   fetchAdminTicketsCliente,
@@ -86,6 +88,7 @@ import { RenovarSicafModal } from "@/components/admin/renovar-sicaf-modal";
 import { EditarClienteModal } from "@/components/admin/editar-cliente-modal";
 import { ManutencaoModal } from "@/components/manutencao-modal";
 import { CancelarCnpjModal } from "@/components/admin/cancelar-cnpj-modal";
+import { ReativarCadastroModal } from "@/components/admin/reativar-cadastro-modal";
 import type { EmpresaData } from "@/routes/empresas";
 import { CobrancaClienteModal } from "@/components/admin/cobranca-cliente-modal";
 import {
@@ -170,6 +173,8 @@ export function ClienteDetalheModal({
   const [manutOpen, setManutOpen] = useState(false);
   const [cancelarCnpjOpen, setCancelarCnpjOpen] = useState(false);
   const [cancelandoCnpj, setCancelandoCnpj] = useState(false);
+  const [reativarOpen, setReativarOpen] = useState(false);
+  const [reativando, setReativando] = useState(false);
   const [detalhe, setDetalhe] = useState<ClienteDetalhe | null>(null);
   const [faturas, setFaturas] = useState<FaturaUi[]>([]);
   const [documentosPainel, setDocumentosPainel] = useState<DocumentosPainelUi | null>(null);
@@ -228,7 +233,9 @@ export function ClienteDetalheModal({
   const exibicao = detalhe || cliente;
   if (!cliente || !exibicao) return null;
 
-  const cnpjInativo = exibicao.statusConta === "Inativo";
+  const cnpjInativo = ["Inativo", "Cancelado", "Cancelada"].includes(
+    String(exibicao.statusConta || "").trim(),
+  );
 
   const iniciais = exibicao.razao
     .split(" ")
@@ -402,12 +409,14 @@ export function ClienteDetalheModal({
                   )}
                   {cnpjInativo && (
                     <Badge variant="destructive" className="text-[10px]">
-                      Inativo
+                      Cancelado
                     </Badge>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Etapa {stepIndex + 1} de {STEPS.length} · {STEPS[stepIndex].desc}
+                  {cnpjInativo
+                    ? "Cadastro cancelado — reative para continuar o atendimento"
+                    : `Etapa ${stepIndex + 1} de ${STEPS.length} · ${STEPS[stepIndex].desc}`}
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -427,7 +436,13 @@ export function ClienteDetalheModal({
             <ScrollArea className="flex-1 min-h-0 max-h-[min(600px,calc(90vh-220px))]">
               <div className="min-w-0 p-5">
                 {step === "resumo" && (
-                  <ResumoTab cliente={exibicao} completude={completude} faturas={faturas} />
+                  <ResumoTab
+                    cliente={exibicao}
+                    completude={completude}
+                    faturas={faturas}
+                    cancelado={cnpjInativo}
+                    onReativar={() => setReativarOpen(true)}
+                  />
                 )}
                 {step === "sicaf" && (
                   <SicafTab cliente={exibicao} onRenovar={() => setRenovarOpen(true)} />
@@ -496,6 +511,15 @@ export function ClienteDetalheModal({
                       <Ban className="h-3.5 w-3.5" /> Cancelar CNPJ
                     </Button>
                   </>
+                )}
+                {cnpjInativo && (
+                  <Button
+                    size="sm"
+                    className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => setReativarOpen(true)}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Reativar Cadastro
+                  </Button>
                 )}
               </div>
             </footer>
@@ -574,6 +598,39 @@ export function ClienteDetalheModal({
             atualizarPainel();
           } finally {
             setCancelandoCnpj(false);
+          }
+        }}
+      />
+      <ReativarCadastroModal
+        open={reativarOpen}
+        onOpenChange={setReativarOpen}
+        razao={exibicao.razao}
+        cnpj={exibicao.cnpj}
+        loading={reativando}
+        onConfirmar={async (motivo) => {
+          const clienteId = parseInt(exibicao.id, 10);
+          if (!Number.isFinite(clienteId)) return;
+          setReativando(true);
+          try {
+            const res = await reativarAdminClienteCnpj(clienteId, motivo);
+            if (!res.ok) {
+              toast.error(res.error || "Erro ao reativar cadastro");
+              return;
+            }
+            toast.success(res.message || "Cadastro reativado com sucesso");
+            setReativarOpen(false);
+            setDetalhe((d) =>
+              d
+                ? {
+                    ...d,
+                    statusConta: "Ativo",
+                    sicaf: res.resumo?.sicafReativado ? "pendente" : d.sicaf,
+                  }
+                : d,
+            );
+            atualizarPainel();
+          } finally {
+            setReativando(false);
           }
         }}
       />
@@ -884,10 +941,14 @@ function ResumoTab({
   cliente,
   completude,
   faturas = [],
+  cancelado = false,
+  onReativar,
 }: {
   cliente: ClienteDetalhe;
   completude: number;
   faturas?: FaturaUi[];
+  cancelado?: boolean;
+  onReativar?: () => void;
 }) {
   const sicafNiveis = deriveSicafNiveisCard(cliente, completude);
   const pagamentoSicaf = derivePagamentoSicafCard(cliente, faturas);
@@ -898,17 +959,52 @@ function ResumoTab({
   );
 
   const alerts: { tone: "danger" | "warn" | "ok"; text: string; icon: typeof AlertTriangle }[] = [];
+  if (cancelado) {
+    alerts.push({
+      tone: "danger",
+      text: "Cadastro cancelado — este CNPJ está inativo no portal",
+      icon: Ban,
+    });
+  }
   if (cliente.sicaf === "vencido")
     alerts.push({ tone: "danger", text: "SICAF vencido — renovar imediatamente", icon: AlertTriangle });
-  if (!pagamentoEmDia)
+  if (!pagamentoEmDia && !cancelado)
     alerts.push({ tone: "danger", text: "Taxa SICAF pendente ou credenciamento irregular", icon: AlertTriangle });
-  if (cliente.sicaf === "pendente")
+  if (cliente.sicaf === "pendente" && !cancelado)
     alerts.push({ tone: "warn", text: "Há níveis SICAF pendentes de validação", icon: AlertTriangle });
   if (!alerts.length)
     alerts.push({ tone: "ok", text: "Tudo em dia — cliente saudável", icon: CheckCircle2 });
 
   return (
     <div className="space-y-4">
+      {cancelado && (
+        <div className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50/80 p-4 dark:border-rose-900/50 dark:bg-rose-950/30 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-500/15 text-rose-600">
+              <Ban className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-rose-800 dark:text-rose-200">
+                Cadastro cancelado
+              </p>
+              <p className="mt-0.5 text-xs text-rose-700/90 dark:text-rose-300/90">
+                Este CNPJ foi encerrado. Reative para continuar o atendimento, renovação SICAF ou
+                manutenção.
+              </p>
+            </div>
+          </div>
+          {onReativar && (
+            <Button
+              size="sm"
+              className="gap-1.5 shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={onReativar}
+            >
+              <RotateCcw className="h-3.5 w-3.5" /> Reativar Cadastro
+            </Button>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <ResumoStatusCard
           icon={ShieldCheck}
@@ -989,13 +1085,28 @@ function ResumoTab({
             label="Validade SICAF"
             value={cliente.validadeSicaf ?? "—"}
           />
+          <InfoLine
+            icon={Ban}
+            label="Status da conta"
+            value={cancelado ? "Cancelado" : cliente.statusConta || "Ativo"}
+          />
         </div>
         <Separator className="my-4" />
         <h3 className="text-sm font-semibold">Próximas ações</h3>
         <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
-          <li>• Validar Certidão Trabalhista (CNDT)</li>
-          <li>• Confirmar recebimento do boleto #4821</li>
-          <li>• Agendar revisão trimestral</li>
+          {cancelado ? (
+            <>
+              <li>• Reativar o cadastro para continuar</li>
+              <li>• Revisar pendências SICAF após reativação</li>
+              <li>• Gerar nova taxa se necessário</li>
+            </>
+          ) : (
+            <>
+              <li>• Validar Certidão Trabalhista (CNDT)</li>
+              <li>• Confirmar recebimento do boleto #4821</li>
+              <li>• Agendar revisão trimestral</li>
+            </>
+          )}
         </ul>
       </Card>
     </div>

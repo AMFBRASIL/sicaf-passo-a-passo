@@ -82,6 +82,11 @@ function formatCadastroDateTime(raw?: string | null) {
   });
 }
 
+function statusClienteLabel(status?: string) {
+  if (status === "Inativo") return "Cancelado";
+  return status || "—";
+}
+
 function statusClienteCls(status?: string) {
   switch (status) {
     case "Ativo":
@@ -89,6 +94,7 @@ function statusClienteCls(status?: string) {
     case "Pendente":
       return "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/20";
     case "Inativo":
+    case "Cancelado":
       return "bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/20";
     default:
       return "bg-muted text-muted-foreground";
@@ -114,7 +120,7 @@ function ClienteBadges({
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${compact ? "" : "justify-center"}`}>
       <Badge variant="outline" className={`rounded-full text-[10px] ${statusClienteCls(c.status)}`}>
-        {c.status || "—"}
+        {statusClienteLabel(c.status)}
       </Badge>
       <Badge
         variant="outline"
@@ -577,7 +583,7 @@ function ClientesPage() {
                           variant="outline"
                           className={`rounded-full px-1.5 py-0 text-[9px] ${statusClienteCls(c.status)}`}
                         >
-                          {(c.status || "—").slice(0, 4)}
+                          {statusClienteLabel(c.status).slice(0, 4)}
                         </Badge>
                       </td>
                       <td className="px-1 py-2.5 text-center">

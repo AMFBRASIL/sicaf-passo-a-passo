@@ -1158,6 +1158,25 @@ export async function cancelarAdminClienteCnpj(clienteId: number, motivo: string
   }>;
 }
 
+export async function reativarAdminClienteCnpj(clienteId: number, motivo?: string) {
+  const res = await apiFetch(`/api/admin/clients/${clienteId}/reativar`, {
+    method: "POST",
+    body: JSON.stringify({ motivo: motivo || undefined }),
+  });
+  return res.json() as Promise<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    resumo?: {
+      statusAnterior?: string;
+      statusNovo?: string;
+      sicafReativado?: boolean;
+      sicafStatusAnterior?: string | null;
+      sicafStatusNovo?: string | null;
+    };
+  }>;
+}
+
 export async function atualizarAdminCliente(clienteId: number, data: EditarClientePayload | Record<string, unknown>) {
   const body =
     "razao" in data && "cnpj" in data && "login" in data

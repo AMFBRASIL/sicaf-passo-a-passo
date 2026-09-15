@@ -418,4 +418,5 @@ module.exports = {
   createClient: clientsService.createClient,
   updateClient: clientsService.updateClient,
   cancelClientCnpj: clientsService.cancelClientCnpj,
+  reactivateClientCnpj: clientsService.reactivateClientCnpj,
 };

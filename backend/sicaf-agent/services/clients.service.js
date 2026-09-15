@@ -2802,6 +2802,93 @@ async function cancelClientCnpj(clienteId, { usuarioId, motivo } = {}) {
   };
 }
 
+/**
+ * Reativa CNPJ/empresa cancelado (Inativo) para continuar o processo no portal.
+ * Restaura o status da conta e, se o SICAF estiver Cancelado/Inativo, volta para Pendente.
+ */
+async function reactivateClientCnpj(clienteId, { usuarioId, motivo } = {}) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const id = parseInt(clienteId, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false, error: 'Cliente inválido' };
+  }
+
+  const cliente = await db('clientes').where('id', id).first();
+  if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
+
+  const statusAtual = String(cliente.status || '').trim().toLowerCase();
+  if (!['inativo', 'cancelado', 'cancelada'].includes(statusAtual)) {
+    return {
+      ok: false,
+      error: 'Este cadastro não está cancelado. Apenas contas inativas/canceladas podem ser reativadas.',
+    };
+  }
+
+  const motivoTxt = String(motivo || '').trim() || 'Reativação solicitada pela equipe';
+  const resumo = {
+    statusAnterior: cliente.status || 'Inativo',
+    statusNovo: 'Ativo',
+    sicafReativado: false,
+    sicafStatusAnterior: null,
+    sicafStatusNovo: null,
+  };
+
+  const dataReativacao = new Date().toISOString().slice(0, 10);
+  const obsExtra = `[${dataReativacao}] Cadastro reativado pela equipe: ${motivoTxt}`;
+  const observacoes = cliente.observacoes
+    ? `${cliente.observacoes}\n\n${obsExtra}`
+    : obsExtra;
+
+  await db('clientes').where('id', id).update({
+    status: 'Ativo',
+    observacoes,
+    updated_at: db.fn.now(),
+  });
+
+  try {
+    const sicaf = await db('sicaf_cadastros').where('cliente_id', id).first();
+    if (sicaf) {
+      const sicafStatus = String(sicaf.status || '').trim().toLowerCase();
+      if (['cancelado', 'cancelada', 'inativo'].includes(sicafStatus)) {
+        resumo.sicafStatusAnterior = sicaf.status;
+        resumo.sicafStatusNovo = 'Pendente';
+        await db('sicaf_cadastros').where('id', sicaf.id).update({
+          status: 'Pendente',
+          updated_at: db.fn.now(),
+        });
+        resumo.sicafReativado = true;
+      }
+    }
+  } catch (e) {
+    console.warn('[Clients] reativar SICAF:', e.message);
+  }
+
+  try {
+    await db('historico_acoes').insert({
+      cliente_id: id,
+      usuario_id: usuarioId || null,
+      acao: `Cadastro reativado — ${cliente.razao_social || cliente.documento || id} (${cliente.documento || '—'}). ${motivoTxt}${
+        resumo.sicafReativado
+          ? ` · SICAF ${resumo.sicafStatusAnterior} → ${resumo.sicafStatusNovo}`
+          : ''
+      }`,
+      entidade: 'clientes',
+      entidade_id: id,
+      created_at: db.fn.now(),
+    });
+  } catch (_) {}
+
+  return {
+    ok: true,
+    message: resumo.sicafReativado
+      ? 'Cadastro reativado. Conta ativa e SICAF em Pendente para continuar o processo.'
+      : 'Cadastro reativado com sucesso. A conta voltou ao status Ativo.',
+    resumo,
+  };
+}
+
 function normPayStatus(raw) {
   return String(raw || '').toLowerCase().trim();
 }
@@ -3318,6 +3405,7 @@ module.exports = {
   createClient,
   updateClient,
   cancelClientCnpj,
+  reactivateClientCnpj,
   consultClientByCnpj,
   consultPendingBoletosByCnpj,
   gerarOuObterBoletoSicafByCnpj,
