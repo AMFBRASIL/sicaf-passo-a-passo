@@ -4,6 +4,7 @@ import {
   Users,
   DollarSign,
   HandCoins,
+  Ban,
   FileCheck2,
   FolderOpen,
   Ticket,
@@ -41,6 +42,7 @@ export const ADMIN_MENU_MANIFEST: AdminMenuItem[] = [
   { paginaId: "clients", title: "Gestão de Clientes", url: "/admin/clientes", category: "Operação", icon: Users },
   { paginaId: "financeiro", title: "Financeiro", url: "/admin/financeiro", category: "Operação", icon: DollarSign },
   { paginaId: "cobranca", title: "Cobrança", url: "/admin/cobranca", category: "Operação", icon: HandCoins },
+  { paginaId: "cobranca", title: "Cancelamentos", url: "/admin/cancelamentos", category: "Operação", icon: Ban },
   { paginaId: "sicaf", title: "Gestão SICAF", url: "/admin/sicaf", category: "Operação", icon: FileCheck2 },
   { paginaId: "documents", title: "Documentos", url: "/admin/documentos", category: "Operação", icon: FolderOpen },
   { paginaId: "licitacoes-admin", title: "Licitações", url: "/admin/licitacoes", category: "Operação", icon: Gavel },
@@ -75,6 +77,8 @@ export function paginaIdForAdminPath(pathname: string): string | null {
 
   // Bing Ads e ChatGPT são telas irmãs do Google Ads — mesma permissão.
   if (path === "/admin/bing-ads" || path === "/admin/chatgpt-ads") return "google-ads-tracking";
+  // Cancelamentos: mesma permissão de Cobrança até o perfil receber o item dedicado.
+  if (path === "/admin/cancelamentos") return "cobranca";
 
   const exact = ADMIN_MENU_MANIFEST.find((m) => m.url === path);
   if (exact) return exact.paginaId;

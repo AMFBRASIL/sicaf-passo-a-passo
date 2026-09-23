@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import {
   ChevronRight,
   Bell,
   Banknote,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -107,6 +108,12 @@ function CobrancaPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" asChild>
+            <Link to="/admin/cancelamentos">
+              <Ban className="h-3.5 w-3.5" />
+              Cancelamentos
+            </Link>
+          </Button>
           <Button
             variant="outline"
             size="sm"

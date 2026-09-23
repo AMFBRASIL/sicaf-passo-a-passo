@@ -65,6 +65,7 @@ import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configura
 import { Route as AdminCobrancaRouteImport } from './routes/admin.cobranca'
 import { Route as AdminClientesRouteImport } from './routes/admin.clientes'
 import { Route as AdminChatgptAdsRouteImport } from './routes/admin.chatgpt-ads'
+import { Route as AdminCancelamentosRouteImport } from './routes/admin.cancelamentos'
 import { Route as AdminBingAdsRouteImport } from './routes/admin.bing-ads'
 import { Route as AdminAutomacoesRouteImport } from './routes/admin.automacoes'
 import { Route as AdminAuditoriaRouteImport } from './routes/admin.auditoria'
@@ -353,6 +354,11 @@ const AdminChatgptAdsRoute = AdminChatgptAdsRouteImport.update({
   path: '/chatgpt-ads',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminCancelamentosRoute = AdminCancelamentosRouteImport.update({
+  id: '/cancelamentos',
+  path: '/cancelamentos',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminBingAdsRoute = AdminBingAdsRouteImport.update({
   id: '/bing-ads',
   path: '/bing-ads',
@@ -428,6 +434,7 @@ export interface FileRoutesByFullPath {
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
   '/admin/bing-ads': typeof AdminBingAdsRoute
+  '/admin/cancelamentos': typeof AdminCancelamentosRoute
   '/admin/chatgpt-ads': typeof AdminChatgptAdsRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
@@ -491,6 +498,7 @@ export interface FileRoutesByTo {
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
   '/admin/bing-ads': typeof AdminBingAdsRoute
+  '/admin/cancelamentos': typeof AdminCancelamentosRoute
   '/admin/chatgpt-ads': typeof AdminChatgptAdsRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
@@ -556,6 +564,7 @@ export interface FileRoutesById {
   '/admin/auditoria': typeof AdminAuditoriaRoute
   '/admin/automacoes': typeof AdminAutomacoesRoute
   '/admin/bing-ads': typeof AdminBingAdsRoute
+  '/admin/cancelamentos': typeof AdminCancelamentosRoute
   '/admin/chatgpt-ads': typeof AdminChatgptAdsRoute
   '/admin/clientes': typeof AdminClientesRoute
   '/admin/cobranca': typeof AdminCobrancaRoute
@@ -623,6 +632,7 @@ export interface FileRouteTypes {
     | '/admin/auditoria'
     | '/admin/automacoes'
     | '/admin/bing-ads'
+    | '/admin/cancelamentos'
     | '/admin/chatgpt-ads'
     | '/admin/clientes'
     | '/admin/cobranca'
@@ -686,6 +696,7 @@ export interface FileRouteTypes {
     | '/admin/auditoria'
     | '/admin/automacoes'
     | '/admin/bing-ads'
+    | '/admin/cancelamentos'
     | '/admin/chatgpt-ads'
     | '/admin/clientes'
     | '/admin/cobranca'
@@ -750,6 +761,7 @@ export interface FileRouteTypes {
     | '/admin/auditoria'
     | '/admin/automacoes'
     | '/admin/bing-ads'
+    | '/admin/cancelamentos'
     | '/admin/chatgpt-ads'
     | '/admin/clientes'
     | '/admin/cobranca'
@@ -1208,6 +1220,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminChatgptAdsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/cancelamentos': {
+      id: '/admin/cancelamentos'
+      path: '/cancelamentos'
+      fullPath: '/admin/cancelamentos'
+      preLoaderRoute: typeof AdminCancelamentosRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/bing-ads': {
       id: '/admin/bing-ads'
       path: '/bing-ads'
@@ -1280,6 +1299,7 @@ interface AdminRouteChildren {
   AdminAuditoriaRoute: typeof AdminAuditoriaRoute
   AdminAutomacoesRoute: typeof AdminAutomacoesRoute
   AdminBingAdsRoute: typeof AdminBingAdsRoute
+  AdminCancelamentosRoute: typeof AdminCancelamentosRoute
   AdminChatgptAdsRoute: typeof AdminChatgptAdsRoute
   AdminClientesRoute: typeof AdminClientesRoute
   AdminCobrancaRoute: typeof AdminCobrancaRoute
@@ -1308,6 +1328,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminAuditoriaRoute: AdminAuditoriaRoute,
   AdminAutomacoesRoute: AdminAutomacoesRoute,
   AdminBingAdsRoute: AdminBingAdsRoute,
+  AdminCancelamentosRoute: AdminCancelamentosRoute,
   AdminChatgptAdsRoute: AdminChatgptAdsRoute,
   AdminClientesRoute: AdminClientesRoute,
   AdminCobrancaRoute: AdminCobrancaRoute,
