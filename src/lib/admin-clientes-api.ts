@@ -328,7 +328,58 @@ type FaturaApi = {
   anoReferencia?: number | null;
   created_at?: string | null;
   createdAt?: string | null;
+  desconto?: DescontoTaxaInfo | null;
 };
+
+export type DescontoTipo = "percentual" | "valor" | "valor_final";
+
+export type DescontoTaxaInfo = {
+  tipo: DescontoTipo;
+  input: number;
+  valorDesconto: number | null;
+  valorCheio: number | null;
+  motivo: string | null;
+  aplicadoPor: number | null;
+  aplicadoEm: string | null;
+};
+
+export async function fetchDescontoTaxa(taxaId: number, clienteId: number) {
+  const res = await apiFetch(`/api/admin/financeiro/desconto-taxa?taxaId=${taxaId}&clienteId=${clienteId}`);
+  return res.json() as Promise<{
+    ok: boolean;
+    error?: string;
+    taxaId?: number;
+    aberta?: boolean;
+    descricao?: string;
+    valorCheio?: number;
+    valorAtual?: number;
+    valorMinimo?: number;
+    desconto?: DescontoTaxaInfo | null;
+    cobrancasAbertas?: { id: number; tipo: string; valor: number; vencimento: string | null }[];
+  }>;
+}
+
+export async function aplicarDescontoTaxa(payload: {
+  taxaId: number;
+  clienteId: number;
+  tipo: DescontoTipo | "remover";
+  valor?: number;
+  motivo?: string;
+}) {
+  const res = await apiFetch("/api/admin/financeiro/desconto-taxa", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return res.json() as Promise<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    valorFinal?: number;
+    desconto?: number;
+    percentual?: number;
+    boleto?: { pagamentoId: number; link?: string; pdf?: string; vencimento?: string; valor?: number };
+  }>;
+}
 
 function isFaturaManutencao(f: FaturaApi): boolean {
   const tipo = String(f.tipo || "").toLowerCase();
@@ -352,6 +403,7 @@ export type FaturaUi = {
   status: "pago" | "aberto" | "cancelado";
   pagamentoId?: number;
   anoReferencia?: number;
+  desconto?: DescontoTaxaInfo | null;
 };
 
 export function parseTaxaIdFromFaturaId(faturaId: string): number | null {
@@ -420,6 +472,7 @@ export function mapFinanceiroToFaturas(fin: NonNullable<Awaited<ReturnType<typeo
             : "aberto") as FaturaUi["status"],
         pagamentoId: f.pagamentoId ?? undefined,
         anoReferencia: f.anoReferencia != null ? Number(f.anoReferencia) : undefined,
+        desconto: f.desconto ?? null,
       };
     })
     .sort((a, b) => {

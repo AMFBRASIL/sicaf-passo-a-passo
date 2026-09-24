@@ -3122,6 +3122,7 @@ function mergePagamentoAssets(base, candidatos) {
 }
 
 function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
+  const { descontoInfo } = require('./sicaf-desconto.service');
   const taxasById = Object.fromEntries(taxasSicaf.map((t) => [t.id, t]));
   const rows = [];
 
@@ -3143,7 +3144,7 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
       p,
       sicafPagamentos.filter((x) => x.origem_id === p.origem_id),
     );
-    rows.push(mapFinanceRow({
+    rows.push({ ...mapFinanceRow({
       id: t?.id || p.origem_id,
       valor: p.valor != null ? p.valor : t?.valor,
       status: effectiveStatus,
@@ -3162,13 +3163,13 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
       provider_txid: assets.provider_txid,
       provider_charge_id: assets.provider_charge_id,
       protocolo: p.protocolo,
-    }, 'sicaf', clienteId));
+    }, 'sicaf', clienteId), desconto: descontoInfo(t) });
   }
 
   for (const t of taxasSicaf) {
     const hasPg = sicafPagamentos.some((p) => p.origem_id === t.id);
     if (hasPg) continue;
-    rows.push(mapFinanceRow({
+    rows.push({ ...mapFinanceRow({
       id: t.id,
       valor: t.valor,
       status: t.status,
@@ -3179,7 +3180,7 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
       ano_referencia: t.ano_referencia,
       created_at: t.created_at,
       pagamentoId: null,
-    }, 'sicaf', clienteId));
+    }, 'sicaf', clienteId), desconto: descontoInfo(t) });
   }
 
   return rows;

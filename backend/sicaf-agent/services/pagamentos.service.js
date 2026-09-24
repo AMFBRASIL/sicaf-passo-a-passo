@@ -304,10 +304,11 @@ async function gerarBoletoSicaf(opts) {
       const st = String(taxa.status || '').trim().toLowerCase();
       if (!['pago', 'cancelado', 'cancelada'].includes(st)) {
         const planosService = require('./planos.service');
+        const { valorComDesconto } = require('./sicaf-desconto.service');
         const planoCodigo = planosService.inferPlanoCodigoFromDescricao(taxa.descricao);
         const valorEsperado = await planosService.resolveValorTaxaSicaf(planoCodigo);
         const atual = Math.round(Number(taxa.valor) * 100) / 100;
-        const esperado = Math.round(Number(valorEsperado) * 100) / 100;
+        const esperado = valorComDesconto(taxa, valorEsperado);
         if (atual !== esperado) {
           await db('taxas_sicaf').where('id', taxa.id).update({ valor: esperado });
           taxa = { ...taxa, valor: esperado };
@@ -421,10 +422,11 @@ async function gerarPixSicaf(opts) {
       const st = String(taxa.status || '').trim().toLowerCase();
       if (!['pago', 'cancelado', 'cancelada'].includes(st)) {
         const planosService = require('./planos.service');
+        const { valorComDesconto } = require('./sicaf-desconto.service');
         const planoCodigo = planosService.inferPlanoCodigoFromDescricao(taxa.descricao);
         const valorEsperado = await planosService.resolveValorTaxaSicaf(planoCodigo);
         const atual = Math.round(Number(taxa.valor) * 100) / 100;
-        const esperado = Math.round(Number(valorEsperado) * 100) / 100;
+        const esperado = valorComDesconto(taxa, valorEsperado);
         if (atual !== esperado) {
           await db('taxas_sicaf').where('id', taxa.id).update({ valor: esperado });
           taxa = { ...taxa, valor: esperado };

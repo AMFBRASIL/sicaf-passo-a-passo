@@ -226,6 +226,13 @@ export type GerarTaxaPayload = {
   dataVencimento?: string;
   /** Somente equipe admin — o backend valida permissão antes de aceitar. */
   allowCustomDueDate?: boolean;
+  /** Somente equipe admin. `null` gera sem desconto (limpa desconto anterior da taxa). */
+  desconto?: {
+    tipo: "percentual" | "valor" | "valor_final";
+    valor: number;
+    motivo: string;
+    autorizadoPor: string;
+  } | null;
 };
 
 export type RegistrarEmpresaPayload = {
@@ -412,6 +419,7 @@ export async function gerarTaxaSicaf(payload: GerarTaxaPayload): Promise<{
       dataVencimento: payload.dataVencimento,
       planoCodigo: payload.planoCodigo,
       allowCustomDueDate: payload.allowCustomDueDate,
+      desconto: payload.desconto,
     }),
   });
   const result = await res.json();

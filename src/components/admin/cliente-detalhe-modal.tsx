@@ -45,6 +45,7 @@ import {
   Ban,
   Link2,
   RotateCcw,
+  Tag,
 } from "lucide-react";
 import { AcoesTab } from "./cliente-acoes";
 import { SituacaoTab } from "./cliente-situacao-tab";
@@ -83,6 +84,7 @@ import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-modal";
 import { CancelarFaturaModal } from "@/components/admin/cancelar-fatura-modal";
 import { LinkPagamentoFaturaModal, type LinkPagamentoFaturaDados } from "@/components/admin/link-pagamento-fatura-modal";
+import { DescontoFaturaModal, type DescontoFaturaDados } from "@/components/admin/desconto-fatura-modal";
 import { TicketRespostaModal, type TicketItem } from "@/components/admin/ticket-resposta-modal";
 import { RenovarSicafModal } from "@/components/admin/renovar-sicaf-modal";
 import { EditarClienteModal } from "@/components/admin/editar-cliente-modal";
@@ -540,6 +542,7 @@ export function ClienteDetalheModal({
         open={renovarPagOpen}
         onOpenChange={setRenovarPagOpen}
         permiteEscolherVencimentoBoleto
+        permiteDesconto
         empresa={{
           nome: exibicao.razao,
           cnpj: exibicao.cnpj,
@@ -1350,6 +1353,8 @@ function FinanceiroTab({
   const [loadingCobranca, setLoadingCobranca] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkDados, setLinkDados] = useState<LinkPagamentoFaturaDados | null>(null);
+  const [descontoOpen, setDescontoOpen] = useState(false);
+  const [descontoDados, setDescontoDados] = useState<DescontoFaturaDados | null>(null);
 
   const faturasSicaf = useMemo(
     () => faturasIniciais.filter((f) => !/^manuten[cç][aã]o\b/i.test(f.desc.trim())),
@@ -1399,6 +1404,22 @@ function FinanceiroTab({
       cliente: cliente.razao,
     });
     setLinkOpen(true);
+  };
+  const abrirDesconto = (f: FaturaItem) => {
+    const clienteId = parseInt(cliente.id, 10);
+    const taxaId = f.taxaId ?? parseTaxaIdFromFaturaId(f.id);
+    if (!Number.isFinite(clienteId) || !taxaId) {
+      toast.error("Não foi possível identificar a taxa desta fatura.");
+      return;
+    }
+    setDescontoDados({
+      taxaId,
+      clienteId,
+      faturaId: f.id,
+      descricao: f.desc,
+      cliente: cliente.razao,
+    });
+    setDescontoOpen(true);
   };
   const abrirCancelar = (id: string) => {
     setFaturaCancelId(id);
@@ -1596,7 +1617,7 @@ function FinanceiroTab({
               <col className="w-[68px]" />
               <col className="w-[64px]" />
               <col className="w-[72px]" />
-              <col className="w-[158px]" />
+              <col className="w-[190px]" />
             </colgroup>
             <thead>
               <tr className="border-b bg-muted/30 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -1647,7 +1668,21 @@ function FinanceiroTab({
                     {f.status === "pago" ? f.dataPago : "—"}
                   </td>
                   <td className="px-2 py-2 text-right font-medium whitespace-nowrap tabular-nums align-middle">
-                    {f.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                    {f.desconto?.valorCheio && f.desconto.valorCheio > f.valor ? (
+                      <div
+                        className="leading-tight"
+                        title={f.desconto.motivo ? `Desconto: ${f.desconto.motivo}` : "Desconto aplicado"}
+                      >
+                        <span className="block text-[10px] font-normal text-muted-foreground line-through">
+                          {f.desconto.valorCheio.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </span>
+                        <span className="text-amber-700 dark:text-amber-400">
+                          {f.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </span>
+                      </div>
+                    ) : (
+                      f.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
+                    )}
                   </td>
                   <td className="px-2 py-2 whitespace-nowrap align-middle">
                     <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusMeta[f.status].cls}`}>
@@ -1669,6 +1704,20 @@ function FinanceiroTab({
                           >
                             <Link2 className="h-3 w-3 shrink-0" />
                             Link
+                          </Button>
+                        ) : null}
+                        {f.taxaId ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            title={f.desconto ? "Alterar desconto" : "Dar desconto"}
+                            aria-label="Desconto"
+                            className="h-7 shrink-0 px-2 text-[10px] gap-1 border-amber-500/30 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+                            onClick={() => abrirDesconto(f)}
+                          >
+                            <Tag className="h-3 w-3 shrink-0" />
+                            Desc.
                           </Button>
                         ) : null}
                         <Button
@@ -1736,6 +1785,12 @@ function FinanceiroTab({
         open={linkOpen}
         onOpenChange={setLinkOpen}
         dados={linkDados}
+      />
+      <DescontoFaturaModal
+        open={descontoOpen}
+        onOpenChange={setDescontoOpen}
+        dados={descontoDados}
+        onAplicado={onPagamentoAutorizado}
       />
       <CobrancaClienteModal
         cliente={cobrancaCliente}

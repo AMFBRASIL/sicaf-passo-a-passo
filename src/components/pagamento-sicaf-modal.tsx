@@ -15,14 +15,28 @@ import {
   Lock,
   Loader2,
   AlertCircle,
+  Tag,
+  Percent,
+  UserCheck,
+  ArrowDown,
 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { mascararInputReal, parseRealToNumber } from "@/lib/money";
+import {
+  VALOR_MINIMO_BOLETO,
+  calcularDescontoTaxa,
+  erroDescontoTaxa,
+  type DescontoTipoCalculo,
+} from "@/lib/desconto-taxa";
 import bgImg from "@/assets/sicaf-pagamento.jpg";
 import { fetchSicafPlanos, gerarTaxaSicaf, type SicafPlano } from "@/lib/empresas-api";
 import { BoletoGeradoPanel, type BoletoData } from "@/components/sicaf/BoletoGeradoPanel";
@@ -77,6 +91,14 @@ function formatDateBR(iso: string) {
   return `${day}/${m}/${y}`;
 }
 
+const TIPOS_DESCONTO: { id: DescontoTipoCalculo; label: string; hint: string }[] = [
+  { id: "percentual", label: "Percentual", hint: "% sobre o plano" },
+  { id: "valor", label: "Valor (R$)", hint: "Abater um valor" },
+  { id: "valor_final", label: "Valor final", hint: "Quanto vai pagar" },
+];
+
+const ATALHOS_PERCENTUAL = [5, 10, 15, 20, 30];
+
 export function PagamentoSicafModal({
   open,
   onOpenChange,
@@ -84,6 +106,7 @@ export function PagamentoSicafModal({
   onGerado,
   onPago,
   permiteEscolherVencimentoBoleto = false,
+  permiteDesconto = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -93,7 +116,10 @@ export function PagamentoSicafModal({
   onPago?: () => void;
   /** Admin /admin/clientes — permite escolher data de vencimento do boleto. */
   permiteEscolherVencimentoBoleto?: boolean;
+  /** Admin /admin/clientes — permite dar desconto autorizado na taxa. */
+  permiteDesconto?: boolean;
 }) {
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>("plano");
   const [planoCodigo, setPlanoCodigo] = useState<string | null>(null);
   const [pagamento, setPagamento] = useState<Pagamento | null>(null);
@@ -114,6 +140,13 @@ export function PagamentoSicafModal({
     pagamentoId?: number;
   } | null>(null);
   const [dataVencimentoBoleto, setDataVencimentoBoleto] = useState(getSicafDueDateIso);
+
+  const [descontoAtivo, setDescontoAtivo] = useState(false);
+  const [descontoTipo, setDescontoTipo] = useState<DescontoTipoCalculo>("percentual");
+  const [descontoPercentual, setDescontoPercentual] = useState("");
+  const [descontoValorTexto, setDescontoValorTexto] = useState("");
+  const [descontoAutorizadoPor, setDescontoAutorizadoPor] = useState("");
+  const [descontoMotivo, setDescontoMotivo] = useState("");
 
   const planos = useMemo(
     () =>
@@ -146,6 +179,12 @@ export function PagamentoSicafModal({
       setBoletoData(null);
       setPixData(null);
       setDataVencimentoBoleto(getSicafDueDateIso());
+      setDescontoAtivo(false);
+      setDescontoTipo("percentual");
+      setDescontoPercentual("");
+      setDescontoValorTexto("");
+      setDescontoAutorizadoPor(user?.nome ?? "");
+      setDescontoMotivo("");
 
       setLoadingPlanos(true);
       fetchSicafPlanos()
@@ -160,14 +199,41 @@ export function PagamentoSicafModal({
         })
         .finally(() => setLoadingPlanos(false));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reinicia só ao abrir
   }, [open]);
 
   const stepIdx = steps.findIndex((s) => s.id === step);
 
-  const valorFmt = (v: number) =>
-    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const valorFmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  const valorCobranca = planoSel?.preco ?? 0;
+  const valorPlano = planoSel?.preco ?? 0;
+
+  const descontoInput = useMemo(() => {
+    if (descontoTipo === "percentual") {
+      const n = parseFloat(descontoPercentual.replace(",", "."));
+      return Number.isFinite(n) ? n : 0;
+    }
+    return parseRealToNumber(descontoValorTexto) ?? 0;
+  }, [descontoTipo, descontoPercentual, descontoValorTexto]);
+
+  const descontoCalc = useMemo(
+    () => calcularDescontoTaxa(valorPlano, descontoTipo, descontoInput),
+    [valorPlano, descontoTipo, descontoInput],
+  );
+  const descontoErro = erroDescontoTaxa(valorPlano, descontoTipo, descontoInput);
+  const descontoAplicado = permiteDesconto && descontoAtivo && descontoInput > 0 && !descontoErro;
+  const descontoPendencia =
+    !permiteDesconto || !descontoAtivo
+      ? null
+      : !descontoAutorizadoPor.trim()
+        ? "Informe quem autorizou o desconto."
+        : descontoMotivo.trim().length < 3
+          ? "Descreva o motivo / detalhes do desconto."
+          : !descontoInput
+            ? "Digite o valor do desconto."
+            : descontoErro;
+
+  const valorCobranca = descontoAplicado ? descontoCalc.final : valorPlano;
 
   const handleConfirmar = async () => {
     if (!empresa.clienteId || !pagamento || !planoCodigo) return;
@@ -180,6 +246,16 @@ export function PagamentoSicafModal({
       planoCodigo,
       dataVencimento: pagamento === "boleto" ? vencimentoBoletoIso : undefined,
       allowCustomDueDate: permiteEscolherVencimentoBoleto && pagamento === "boleto",
+      desconto: !permiteDesconto
+        ? undefined
+        : descontoAplicado
+          ? {
+              tipo: descontoTipo,
+              valor: descontoInput,
+              motivo: descontoMotivo.trim(),
+              autorizadoPor: descontoAutorizadoPor.trim(),
+            }
+          : null,
     });
 
     setProcessing(false);
@@ -252,12 +328,10 @@ export function PagamentoSicafModal({
                     CADBRASIL
                   </span>
                 </div>
-                <h2 className="text-[26px] font-bold leading-tight">
-                  Pagamento da taxa CADBRASIL
-                </h2>
+                <h2 className="text-[26px] font-bold leading-tight">Pagamento da taxa CADBRASIL</h2>
                 <p className="text-sm opacity-90 mt-2 leading-relaxed">
-                  Para iniciar a atualização do seu SICAF é necessário confirmar
-                  o pagamento da taxa de cadastro.
+                  Para iniciar a atualização do seu SICAF é necessário confirmar o pagamento da taxa
+                  de cadastro.
                 </p>
 
                 <ol className="mt-8 space-y-3">
@@ -280,10 +354,7 @@ export function PagamentoSicafModal({
                           {done ? <Check className="h-4 w-4" /> : i + 1}
                         </span>
                         <span
-                          className={cn(
-                            "text-sm font-medium",
-                            !done && !active && "opacity-60",
-                          )}
+                          className={cn("text-sm font-medium", !done && !active && "opacity-60")}
                         >
                           {s.label}
                         </span>
@@ -316,8 +387,8 @@ export function PagamentoSicafModal({
                           Escolha o tipo de cadastro
                         </h3>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Selecione a velocidade que sua empresa precisa para ficar
-                          habilitada em licitações.
+                          Selecione a velocidade que sua empresa precisa para ficar habilitada em
+                          licitações.
                         </p>
                       </div>
 
@@ -372,9 +443,7 @@ export function PagamentoSicafModal({
                                 <p className="text-[28px] font-bold mt-1 tabular-nums">
                                   {valorFmt(p.preco)}
                                 </p>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  {p.prazo}
-                                </p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{p.prazo}</p>
                                 <p className="text-sm mt-3 leading-relaxed text-muted-foreground">
                                   {p.desc}
                                 </p>
@@ -389,13 +458,197 @@ export function PagamentoSicafModal({
                         </div>
                       )}
 
+                      {permiteDesconto && planoSel && (
+                        <div
+                          className={cn(
+                            "rounded-2xl border-2 transition",
+                            descontoAtivo
+                              ? "border-amber-400 bg-amber-50/40 dark:bg-amber-950/20"
+                              : "border-dashed",
+                          )}
+                        >
+                          <label className="flex cursor-pointer items-center justify-between gap-4 p-4">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={cn(
+                                  "h-10 w-10 rounded-xl flex items-center justify-center",
+                                  descontoAtivo
+                                    ? "bg-amber-500 text-white"
+                                    : "bg-muted text-muted-foreground",
+                                )}
+                              >
+                                <Tag className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <p className="font-semibold">Aplicar desconto</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Negociação autorizada — o boleto sai com o valor reduzido.
+                                </p>
+                              </div>
+                            </div>
+                            <Switch checked={descontoAtivo} onCheckedChange={setDescontoAtivo} />
+                          </label>
+
+                          {descontoAtivo && (
+                            <div className="space-y-5 border-t border-amber-200 p-4 dark:border-amber-900/50">
+                              <div className="space-y-3">
+                                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                  <UserCheck className="h-3.5 w-3.5" /> Autorização
+                                </p>
+                                <div className="space-y-1.5">
+                                  <label className="text-sm font-medium">Autorizado por *</label>
+                                  <Input
+                                    value={descontoAutorizadoPor}
+                                    onChange={(e) => setDescontoAutorizadoPor(e.target.value)}
+                                    placeholder="Nome de quem autorizou o desconto"
+                                    maxLength={120}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-sm font-medium">
+                                    Motivo / detalhes da negociação *
+                                  </label>
+                                  <Textarea
+                                    value={descontoMotivo}
+                                    onChange={(e) => setDescontoMotivo(e.target.value)}
+                                    placeholder="Ex: Cliente não aceitou o valor cheio; diretoria aprovou 10% para fechar hoje."
+                                    className="min-h-[72px] resize-none"
+                                    maxLength={255}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                  <Percent className="h-3.5 w-3.5" /> Valor do desconto
+                                </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {TIPOS_DESCONTO.map((t) => (
+                                    <button
+                                      key={t.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setDescontoTipo(t.id);
+                                        setDescontoPercentual("");
+                                        setDescontoValorTexto("");
+                                      }}
+                                      className={cn(
+                                        "rounded-xl border p-2.5 text-left transition",
+                                        descontoTipo === t.id
+                                          ? "border-amber-500 bg-white ring-2 ring-amber-500/20 dark:bg-amber-950/40"
+                                          : "bg-background hover:bg-muted/40",
+                                      )}
+                                    >
+                                      <p className="text-sm font-semibold">{t.label}</p>
+                                      <p className="text-[11px] text-muted-foreground">{t.hint}</p>
+                                    </button>
+                                  ))}
+                                </div>
+
+                                {descontoTipo === "percentual" ? (
+                                  <>
+                                    <div className="relative">
+                                      <Input
+                                        inputMode="decimal"
+                                        value={descontoPercentual}
+                                        onChange={(e) =>
+                                          setDescontoPercentual(
+                                            e.target.value.replace(/[^\d,.]/g, ""),
+                                          )
+                                        }
+                                        placeholder="0"
+                                        className="h-16 pr-12 text-3xl font-bold tabular-nums"
+                                      />
+                                      <Percent className="absolute right-4 top-1/2 h-6 w-6 -translate-y-1/2 text-muted-foreground" />
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {ATALHOS_PERCENTUAL.map((p) => (
+                                        <Button
+                                          key={p}
+                                          type="button"
+                                          size="sm"
+                                          variant={descontoInput === p ? "default" : "outline"}
+                                          className="h-7 px-3 text-xs"
+                                          onClick={() => setDescontoPercentual(String(p))}
+                                        >
+                                          {p}%
+                                        </Button>
+                                      ))}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <Input
+                                    inputMode="numeric"
+                                    value={descontoValorTexto}
+                                    onChange={(e) =>
+                                      setDescontoValorTexto(mascararInputReal(e.target.value))
+                                    }
+                                    placeholder="R$ 0,00"
+                                    className="h-16 text-3xl font-bold tabular-nums"
+                                  />
+                                )}
+                              </div>
+
+                              <div className="rounded-xl border bg-background p-4">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">{planoSel.titulo}</span>
+                                  <span
+                                    className={cn(
+                                      "tabular-nums",
+                                      descontoAplicado
+                                        ? "line-through text-muted-foreground"
+                                        : "font-medium",
+                                    )}
+                                  >
+                                    {valorFmt(valorPlano)}
+                                  </span>
+                                </div>
+                                <div className="mt-1.5 flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Desconto</span>
+                                  <span className="tabular-nums font-medium text-amber-700 dark:text-amber-400">
+                                    {descontoAplicado
+                                      ? `− ${valorFmt(descontoCalc.desconto)} (${descontoCalc.percentual.toLocaleString("pt-BR")}%)`
+                                      : "—"}
+                                  </span>
+                                </div>
+                                <div className="my-3 flex items-center gap-2 text-muted-foreground">
+                                  <div className="h-px flex-1 bg-border" />
+                                  <ArrowDown className="h-3.5 w-3.5" />
+                                  <div className="h-px flex-1 bg-border" />
+                                </div>
+                                <div className="flex items-end justify-between gap-3">
+                                  <span className="text-sm font-medium">Novo valor do boleto</span>
+                                  <span
+                                    className={cn(
+                                      "text-4xl font-bold tabular-nums tracking-tight",
+                                      descontoErro ? "text-danger" : "text-success",
+                                    )}
+                                  >
+                                    {valorFmt(descontoInput ? descontoCalc.final : valorPlano)}
+                                  </span>
+                                </div>
+                                {descontoErro && (
+                                  <p className="mt-2 text-xs text-danger">{descontoErro}</p>
+                                )}
+                                {!descontoErro && (
+                                  <p className="mt-2 text-[11px] text-muted-foreground">
+                                    Mínimo permitido: {valorFmt(VALOR_MINIMO_BOLETO)}. O desconto
+                                    fica registrado no histórico do cliente com a autorização.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-sm flex gap-3">
                         <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                         <div>
                           <p className="font-semibold">Taxa única de cadastro</p>
                           <p className="text-muted-foreground mt-0.5">
-                            Pagamento único via Gerencianet/Efí conforme o plano escolhido.
-                            A manutenção mensal é opcional e pode ser ativada depois.
+                            Pagamento único via Gerencianet/Efí conforme o plano escolhido. A
+                            manutenção mensal é opcional e pode ser ativada depois.
                           </p>
                         </div>
                       </div>
@@ -408,15 +661,10 @@ export function PagamentoSicafModal({
                         <Badge variant="secondary" className="mb-2">
                           Etapa 2 de 3
                         </Badge>
-                        <h3 className="text-2xl font-bold leading-tight">
-                          Como prefere pagar?
-                        </h3>
+                        <h3 className="text-2xl font-bold leading-tight">Como prefere pagar?</h3>
                         <p className="text-sm text-muted-foreground mt-1">
                           Escolha a forma de pagamento da taxa{" "}
-                          <strong className="text-foreground">
-                            {valorFmt(valorCobranca)}
-                          </strong>
-                          .
+                          <strong className="text-foreground">{valorFmt(valorCobranca)}</strong>.
                         </p>
                       </div>
 
@@ -467,9 +715,7 @@ export function PagamentoSicafModal({
                                 <Icon className="h-6 w-6" />
                               </div>
                               <p className="text-base font-bold">{p.titulo}</p>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                {p.desc}
-                              </p>
+                              <p className="text-sm text-muted-foreground mt-1">{p.desc}</p>
                               {sel && (
                                 <div className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-primary">
                                   <Check className="h-4 w-4" /> Selecionado
@@ -489,9 +735,7 @@ export function PagamentoSicafModal({
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <p className="font-semibold text-sm">
-                                Data de vencimento (boleto)
-                              </p>
+                              <p className="font-semibold text-sm">Data de vencimento (boleto)</p>
                               {permiteEscolherVencimentoBoleto ? (
                                 <Badge variant="outline" className="text-[10px]">
                                   Admin
@@ -512,7 +756,8 @@ export function PagamentoSicafModal({
                                   className="mt-2 max-w-[220px] font-semibold"
                                 />
                                 <p className="text-xs text-muted-foreground mt-2">
-                                  Escolha o vencimento do boleto para este cliente (a partir de hoje).
+                                  Escolha o vencimento do boleto para este cliente (a partir de
+                                  hoje).
                                 </p>
                               </>
                             ) : (
@@ -539,9 +784,7 @@ export function PagamentoSicafModal({
                         <Badge variant="secondary" className="mb-2">
                           Etapa 3 de 3
                         </Badge>
-                        <h3 className="text-2xl font-bold leading-tight">
-                          Confirme o pagamento
-                        </h3>
+                        <h3 className="text-2xl font-bold leading-tight">Confirme o pagamento</h3>
                         <p className="text-sm text-muted-foreground mt-1">
                           Revise os dados antes de gerar a cobrança.
                         </p>
@@ -560,42 +803,39 @@ export function PagamentoSicafModal({
                             Empresa
                           </p>
                           <p className="font-semibold mt-0.5">{empresa.nome}</p>
-                          <p className="text-xs text-muted-foreground">
-                            CNPJ {empresa.cnpj}
-                          </p>
+                          <p className="text-xs text-muted-foreground">CNPJ {empresa.cnpj}</p>
                         </div>
                         <div className="divide-y text-sm">
                           <Row label="Plano" value={planoSel.titulo} />
                           <Row label="Prazo" value={planoSel.prazo} />
                           <Row
                             label="Forma de pagamento"
-                            value={
-                              pagamento === "pix" ? "PIX" : "Boleto bancário"
-                            }
+                            value={pagamento === "pix" ? "PIX" : "Boleto bancário"}
                           />
                           {pagamento === "boleto" && (
-                            <Row
-                              label="Vencimento"
-                              value={formatDateBR(vencimentoBoletoIso)}
-                            />
+                            <Row label="Vencimento" value={formatDateBR(vencimentoBoletoIso)} />
                           )}
-                          <Row
-                            label="Valor total"
-                            value={valorFmt(valorCobranca)}
-                            highlight
-                          />
+                          {descontoAplicado && (
+                            <>
+                              <Row label="Valor do plano" value={valorFmt(valorPlano)} />
+                              <Row
+                                label="Desconto"
+                                value={`− ${valorFmt(descontoCalc.desconto)} (${descontoCalc.percentual.toLocaleString("pt-BR")}%)`}
+                              />
+                              <Row label="Autorizado por" value={descontoAutorizadoPor.trim()} />
+                            </>
+                          )}
+                          <Row label="Valor total" value={valorFmt(valorCobranca)} highlight />
                         </div>
                       </div>
 
                       <div className="rounded-xl bg-success/5 border border-success/30 p-4 text-sm flex gap-3">
                         <ShieldCheck className="h-5 w-5 text-success shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-semibold">
-                            Liberação após confirmação
-                          </p>
+                          <p className="font-semibold">Liberação após confirmação</p>
                           <p className="text-muted-foreground mt-0.5">
-                            Assim que o pagamento for compensado, nosso time inicia
-                            imediatamente o seu cadastro SICAF.
+                            Assim que o pagamento for compensado, nosso time inicia imediatamente o
+                            seu cadastro SICAF.
                           </p>
                         </div>
                       </div>
@@ -608,21 +848,14 @@ export function PagamentoSicafModal({
                         <Badge variant="secondary" className="mb-2">
                           Etapa 4 de 4
                         </Badge>
-                        <h3 className="text-2xl font-bold leading-tight">
-                          Seu boleto está pronto
-                        </h3>
+                        <h3 className="text-2xl font-bold leading-tight">Seu boleto está pronto</h3>
                         <p className="text-sm text-muted-foreground mt-1">
                           Copie a linha digitável, abra ou baixe o PDF pelo link da Gerencianet/Efí.
                         </p>
                       </div>
-                      <BoletoGeradoPanel
-                        boletoData={boletoData}
-                        documento={empresa.cnpj}
-                        compact
-                      />
+                      <BoletoGeradoPanel boletoData={boletoData} documento={empresa.cnpj} compact />
                     </div>
                   )}
-
                 </div>
               </ScrollArea>
 
@@ -655,13 +888,22 @@ export function PagamentoSicafModal({
                     {step === "plano" ? "Cancelar" : "Voltar"}
                   </Button>
                   {step === "plano" && (
-                    <Button
-                      onClick={() => setStep("pagamento")}
-                      disabled={!planoCodigo || loadingPlanos || !!planosError}
-                      className="gap-2"
-                    >
-                      Continuar <ArrowRight className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-3">
+                      {descontoPendencia && (
+                        <span className="hidden text-xs text-amber-700 sm:inline dark:text-amber-400">
+                          {descontoPendencia}
+                        </span>
+                      )}
+                      <Button
+                        onClick={() => setStep("pagamento")}
+                        disabled={
+                          !planoCodigo || loadingPlanos || !!planosError || !!descontoPendencia
+                        }
+                        className="gap-2"
+                      >
+                        Continuar <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </div>
                   )}
                   {step === "pagamento" && (
                     <Button
@@ -720,24 +962,11 @@ export function PagamentoSicafModal({
   );
 }
 
-function Row({
-  label,
-  value,
-  highlight,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
+function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex items-center justify-between px-5 py-3">
       <span className="text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          "font-medium text-right",
-          highlight && "text-primary font-bold text-lg",
-        )}
-      >
+      <span className={cn("font-medium text-right", highlight && "text-primary font-bold text-lg")}>
         {value}
       </span>
     </div>

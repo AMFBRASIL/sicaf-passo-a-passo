@@ -10,6 +10,9 @@
 const { getDb } = require('../database/connection');
 const pagamentosService = require('./pagamentos.service');
 const planosService = require('./planos.service');
+const descontoService = require('./sicaf-desconto.service');
+
+const { valorComDesconto } = descontoService;
 
 /**
  * Gerar taxa SICAF para um cliente.
@@ -19,6 +22,8 @@ const planosService = require('./planos.service');
  * @param {number} opts.ano - Ano de referência (ex: 2026)
  * @param {string} opts.formaPagamento - 'boleto' ou 'pix'
  * @param {number} [opts.geradoPor] - ID do usuário logado
+ * @param {Object|null} [opts.desconto] - { tipo, valor, motivo, autorizadoPor }; null limpa o desconto.
+ *   Só é considerado com opts.permiteDesconto (equipe).
  * @returns {Promise<Object>}
  */
 async function gerarTaxa(opts) {
@@ -26,6 +31,7 @@ async function gerarTaxa(opts) {
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
   const { clienteId, ano, formaPagamento, dataVencimento, allowCustomDueDate, geradoPor, planoCodigo } = opts;
+  const controlaDesconto = Boolean(opts.permiteDesconto) && opts.desconto !== undefined;
 
   if (!clienteId) return { ok: false, error: 'clienteId é obrigatório' };
   if (!ano) return { ok: false, error: 'ano é obrigatório' };
@@ -39,6 +45,15 @@ async function gerarTaxa(opts) {
     // ── 2. Valor da taxa (plano escolhido ou configuração) ──
     const valorTaxa = await planosService.resolveValorTaxaSicaf(planoCodigo);
     const planoInfo = planoCodigo ? await planosService.getPlanoByCodigo(planoCodigo) : null;
+
+    let descontoValidado = null;
+    if (controlaDesconto) {
+      await descontoService.ensureDescontoColumns(db);
+      if (opts.desconto) {
+        descontoValidado = descontoService.validarDesconto(valorTaxa, opts.desconto);
+        if (!descontoValidado.ok) return descontoValidado;
+      }
+    }
 
     // ── 3. Verificar se já tem sicaf_cadastros ──
     let sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
@@ -101,12 +116,14 @@ async function gerarTaxa(opts) {
       .first();
 
     let taxaId;
+    let valorCobrado = valorTaxa;
 
     if (taxa) {
       // Reutilizar taxa existente (evitar duplicatas) — atualiza valor se plano mudou
       taxaId = taxa.id;
-      if (parseFloat(taxa.valor) !== valorTaxa) {
-        await db('taxas_sicaf').where('id', taxaId).update({ valor: valorTaxa });
+      valorCobrado = valorComDesconto(taxa, valorTaxa);
+      if (parseFloat(taxa.valor) !== valorCobrado) {
+        await db('taxas_sicaf').where('id', taxaId).update({ valor: valorCobrado });
       }
       console.log(`[Taxa SICAF] Taxa pendente já existe (id=${taxaId}) → gerando novo boleto/PIX`);
     } else {
@@ -126,6 +143,25 @@ async function gerarTaxa(opts) {
         status: 'Pendente',
       });
       console.log(`[Taxa SICAF] Taxa criada (id=${taxaId}), valor R$ ${valorTaxa.toFixed(2)}`);
+    }
+
+    if (controlaDesconto) {
+      await db('taxas_sicaf')
+        .where('id', taxaId)
+        .update(descontoService.camposDesconto(db, valorTaxa, descontoValidado, geradoPor));
+      valorCobrado = descontoValidado ? descontoValidado.calc.valorFinal : valorTaxa;
+      if (descontoValidado) {
+        try {
+          await db('historico_acoes').insert({
+            cliente_id: clienteId,
+            usuario_id: geradoPor || null,
+            acao: descontoService.textoHistoricoDesconto(taxaId, descontoValidado),
+            entidade: 'taxas_sicaf',
+            entidade_id: taxaId,
+            created_at: db.fn.now(),
+          });
+        } catch (_) {}
+      }
     }
 
     // ── 6. Gerar Boleto ou PIX via Gerencianet ──
@@ -160,10 +196,10 @@ async function gerarTaxa(opts) {
     // ── 7. Registrar no histórico quem gerou a taxa ──
     if (geradoPor) {
       const acaoDesc = isNovoCadastro
-        ? `Taxa de cadastro SICAF ${ano} gerada (R$ ${valorTaxa.toFixed(2)}, ${formaPagamento.toUpperCase()})`
+        ? `Taxa de cadastro SICAF ${ano} gerada (R$ ${valorCobrado.toFixed(2)}, ${formaPagamento.toUpperCase()})`
         : renovacaoPendente
-          ? `Novo ${formaPagamento.toUpperCase()} gerado para renovação pendente SICAF ${ano} (R$ ${valorTaxa.toFixed(2)})`
-          : `Taxa de renovação SICAF ${ano} gerada (R$ ${valorTaxa.toFixed(2)}, ${formaPagamento.toUpperCase()})`;
+          ? `Novo ${formaPagamento.toUpperCase()} gerado para renovação pendente SICAF ${ano} (R$ ${valorCobrado.toFixed(2)})`
+          : `Taxa de renovação SICAF ${ano} gerada (R$ ${valorCobrado.toFixed(2)}, ${formaPagamento.toUpperCase()})`;
       try {
         await db('historico_acoes').insert({
           cliente_id: clienteId,
@@ -191,7 +227,7 @@ async function gerarTaxa(opts) {
         isNovoCadastro,
         isRenovacaoPendente: !!renovacaoPendente,
         ano,
-        valor: valorTaxa,
+        valor: valorCobrado,
         formaPagamento,
         pagamento: pagamentoResult,
       },
@@ -483,7 +519,7 @@ async function alinharValorTaxaSicafPendente(taxaId, opts = {}) {
       planosService.inferPlanoCodigoFromDescricao(taxa.descricao);
     const valorEsperado = await planosService.resolveValorTaxaSicaf(planoCodigo);
     const valorAtual = Math.round(Number(taxa.valor) * 100) / 100;
-    const esperado = Math.round(Number(valorEsperado) * 100) / 100;
+    const esperado = valorComDesconto(taxa, valorEsperado);
 
     const abertos = await db('pagamentos')
       .where({ origem: 'sicaf', origem_id: id })
@@ -577,7 +613,7 @@ async function syncValoresTaxasPendentes() {
       const planoCodigo = planosService.inferPlanoCodigoFromDescricao(taxa.descricao);
       const esperado = await planosService.resolveValorTaxaSicaf(planoCodigo);
       const atual = Math.round(Number(taxa.valor) * 100) / 100;
-      const exp = Math.round(Number(esperado) * 100) / 100;
+      const exp = valorComDesconto(taxa, esperado);
       if (atual !== exp) {
         await db('taxas_sicaf').where('id', taxa.id).update({ valor: exp });
         updated += 1;

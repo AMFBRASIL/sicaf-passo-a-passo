@@ -13,6 +13,13 @@ type SicafTaxaService = {
     allowCustomDueDate?: boolean;
     geradoPor?: number;
     planoCodigo?: string;
+    permiteDesconto?: boolean;
+    desconto?: {
+      tipo: string;
+      valor: number;
+      motivo: string;
+      autorizadoPor?: string;
+    } | null;
   }) => Promise<{ ok: boolean; error?: string; dados?: unknown }>;
 };
 
@@ -29,6 +36,13 @@ export async function POST(request: Request) {
 
     const svc = await getSicafAgentModule<SicafTaxaService>("services/sicaf-taxa.service");
 
+    if (data.desconto && !isStaff) {
+      return NextResponse.json(
+        { ok: false, error: "Desconto só pode ser aplicado pela equipe CADBRASIL." },
+        { status: 403 },
+      );
+    }
+
     const result = await svc.gerarTaxa({
       clienteId: data.clienteId,
       ano: data.ano || new Date().getFullYear(),
@@ -37,6 +51,8 @@ export async function POST(request: Request) {
       allowCustomDueDate: isStaff && !!data.allowCustomDueDate,
       geradoPor: auth.usuarioId,
       planoCodigo: data.planoCodigo || null,
+      permiteDesconto: isStaff,
+      desconto: isStaff ? data.desconto : undefined,
     });
 
     return NextResponse.json(result, { status: result.ok ? 200 : 400 });
