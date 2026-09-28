@@ -172,27 +172,28 @@ function DiagnosticoPage() {
         const checklist = await fetchDocumentosChecklist(clienteId);
         await sleep(500);
         const docsPorNivel = checklist.docsPorNivel || {};
-        const totalDocs = Object.values(docsPorNivel).flat().length;
-        const faltandoDocs = Object.values(docsPorNivel)
-          .flat()
-          .filter((d) => d.status !== "ok").length;
-        marcar(
-          "documentos",
-          faltandoDocs === 0 && totalDocs > 0 ? "ok" : "alerta",
-          totalDocs === 0
-            ? "Checklist de documentos ainda não gerado"
-            : faltandoDocs === 0
-              ? `${totalDocs} documentos em ordem`
-              : `${faltandoDocs} de ${totalDocs} documentos pendentes`,
-        );
-
-        marcar("plano", "rodando");
         const diagnostico = buildDiagnosticoSicaf({
           empresa,
           painel,
           docsPorNivel,
           taxaPaga,
         });
+        const totalDocs = diagnostico.docsTotal;
+        const faltandoDocs = diagnostico.docsFaltando.length;
+        const todosValidados = diagnostico.niveisValidadosAssistente === 6;
+        marcar(
+          "documentos",
+          faltandoDocs === 0 && (totalDocs > 0 || todosValidados) ? "ok" : "alerta",
+          todosValidados
+            ? "Todos os níveis validados pelo Assistente — nenhum documento pendente"
+            : totalDocs === 0
+              ? "Checklist de documentos ainda não gerado"
+              : faltandoDocs === 0
+                ? `${totalDocs} documentos em ordem`
+                : `${faltandoDocs} de ${totalDocs} documentos pendentes`,
+        );
+
+        marcar("plano", "rodando");
         await sleep(500);
         marcar(
           "plano",
@@ -520,6 +521,7 @@ function Resultado({ resultado }: { resultado: DiagnosticoResultado }) {
     score,
     niveis,
     niveisValidados,
+    niveisValidadosAssistente,
     docsFaltando,
     docsTotal,
     docsOk,
@@ -528,6 +530,7 @@ function Resultado({ resultado }: { resultado: DiagnosticoResultado }) {
     taxaPaga,
     sicafStatus,
   } = resultado;
+  const todosValidadosAssistente = niveisValidadosAssistente === niveis.length;
 
   const niveisComPendencia = niveis.filter((n) => n.docsFaltando.length > 0);
   const tone = score >= 80 ? "ok" : score >= 50 ? "warn" : "danger";
@@ -584,13 +587,25 @@ function Resultado({ resultado }: { resultado: DiagnosticoResultado }) {
           <ResumoItem
             icon={<FileText className="h-4 w-4" />}
             label="Documentos"
-            value={docsTotal ? `${docsOk} de ${docsTotal} ok` : "—"}
+            value={
+              todosValidadosAssistente
+                ? "Validados"
+                : docsTotal
+                  ? `${docsOk} de ${docsTotal} ok`
+                  : "—"
+            }
             hint={
               docsFaltando.length
                 ? `${docsFaltando.length} pendente${docsFaltando.length === 1 ? "" : "s"}`
-                : "Nada pendente"
+                : todosValidadosAssistente
+                  ? "Validados no Assistente"
+                  : "Nada pendente"
             }
-            tone={docsFaltando.length === 0 && docsTotal > 0 ? "ok" : "warn"}
+            tone={
+              docsFaltando.length === 0 && (docsTotal > 0 || todosValidadosAssistente)
+                ? "ok"
+                : "warn"
+            }
           />
         </CardContent>
       </Card>
@@ -689,9 +704,11 @@ function Resultado({ resultado }: { resultado: DiagnosticoResultado }) {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{nivel.nome}</p>
                     <p className="text-xs text-muted-foreground">
-                      {nivel.docsTotal > 0
-                        ? `${nivel.docsOk} de ${nivel.docsTotal} documentos ok`
-                        : "Sem documentos mapeados"}
+                      {nivel.validadoAssistente
+                        ? "Validado no Assistente — documentos em ordem"
+                        : nivel.docsTotal > 0
+                          ? `${nivel.docsOk} de ${nivel.docsTotal} documentos ok`
+                          : "Sem documentos mapeados"}
                     </p>
                   </div>
                 </div>
@@ -732,7 +749,9 @@ function Resultado({ resultado }: { resultado: DiagnosticoResultado }) {
               <CheckCircle2 className="h-10 w-10 text-success" />
               <p className="text-sm font-semibold">Nenhum documento pendente</p>
               <p className="text-xs text-muted-foreground">
-                Todos os documentos exigidos para o SICAF já estão enviados e válidos.
+                {todosValidadosAssistente
+                  ? "Todos os níveis já foram validados pelo Assistente na Situação do Fornecedor."
+                  : "Todos os documentos exigidos para o SICAF já estão enviados e válidos."}
               </p>
             </div>
           ) : (

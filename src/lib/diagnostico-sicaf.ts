@@ -19,6 +19,7 @@ export type DiagnosticoNivel = {
   nome: string;
   color: string;
   status: NivelStatus;
+  validadoAssistente: boolean;
   docsTotal: number;
   docsOk: number;
   docsFaltando: DocChecklistItem[];
@@ -34,6 +35,7 @@ export type DiagnosticoResultado = {
   docsTotal: number;
   docsOk: number;
   niveisValidados: number;
+  niveisValidadosAssistente: number;
   score: number;
   proximaEtapa: DiagnosticoEtapa | null;
   pendenciasPainel: EmpresaGerenciarPainel["pendencias"];
@@ -58,6 +60,14 @@ function nivelStatusOf(empresa: EmpresaData, num: number): NivelStatus {
 /** Nível já recebeu dados reais do Assistente (Situação do Fornecedor). */
 function nivelSincronizado(status: NivelStatus): boolean {
   return status === "validado" || status === "vencendo" || status === "vencido";
+}
+
+/**
+ * Nível validado pelo Assistente na Situação do Fornecedor — mesma regra da tela Documentos.
+ * Os documentos desse nível já estão aceitos no Compras.gov.br, então não contam como pendência.
+ */
+export function nivelValidadoNoAssistente(status: NivelStatus): boolean {
+  return status === "validado" || status === "vencendo";
 }
 
 function etapaStatusFromNivel(status: NivelStatus): DiagnosticoEtapaStatus {
@@ -114,13 +124,16 @@ export function buildDiagnosticoSicaf(params: {
 
   const niveis: DiagnosticoNivel[] = NIVEIS_SICAF.map((nivel) => {
     const lista = docsPorNivel[nivel.num] || [];
-    const faltando = lista.filter(isDocFaltando);
+    const status = nivelStatusOf(empresa, nivel.num);
+    const validadoAssistente = nivelValidadoNoAssistente(status);
+    const faltando = validadoAssistente ? [] : lista.filter(isDocFaltando);
     return {
       num: nivel.num,
       roman: nivel.roman,
       nome: nivel.nome,
       color: nivel.color,
-      status: nivelStatusOf(empresa, nivel.num),
+      status,
+      validadoAssistente,
       docsTotal: lista.length,
       docsOk: lista.length - faltando.length,
       docsFaltando: faltando,
@@ -132,6 +145,8 @@ export function buildDiagnosticoSicaf(params: {
   const docsOk = docsTotal - docsFaltando.length;
   const niveisValidados = niveis.filter((n) => n.status === "validado").length;
   const niveisSincronizados = niveis.filter((n) => nivelSincronizado(n.status)).length;
+  const niveisValidadosAssistente = niveis.filter((n) => n.validadoAssistente).length;
+  const todosValidadosAssistente = niveisValidadosAssistente === NIVEIS_SICAF.length;
 
   const sicafStatus = painel?.sicaf?.status || "Sem SICAF";
   const sicafVencido = sicafStatus.toLowerCase() === "vencido";
@@ -158,9 +173,15 @@ export function buildDiagnosticoSicaf(params: {
     n: 2,
     titulo: "Documentação da empresa",
     descricao: "Documentos básicos usados para o cadastro e atualização no SICAF.",
-    status: docsBaseEnviados >= 4 ? "ok" : docsBaseEnviados > 0 ? "atencao" : "pendente",
-    detalhe:
-      docsBaseEnviados >= 4
+    status:
+      todosValidadosAssistente || docsBaseEnviados >= 4
+        ? "ok"
+        : docsBaseEnviados > 0
+          ? "atencao"
+          : "pendente",
+    detalhe: todosValidadosAssistente
+      ? "Documentação validada pelo Assistente na Situação do Fornecedor."
+      : docsBaseEnviados >= 4
         ? `${docsBaseEnviados} documentos da empresa já enviados.`
         : docsBaseEnviados > 0
           ? `Apenas ${docsBaseEnviados} documento(s) enviado(s) — envie os demais para liberar o cadastro.`
@@ -234,7 +255,11 @@ export function buildDiagnosticoSicaf(params: {
   ];
 
   const pesoTaxa = taxaPaga ? 20 : 0;
-  const pesoDocs = docsTotal ? Math.round((docsOk / docsTotal) * 40) : 0;
+  const pesoDocs = todosValidadosAssistente
+    ? 40
+    : docsTotal
+      ? Math.round((docsOk / docsTotal) * 40)
+      : 0;
   const pesoNiveis = Math.round((niveisValidados / NIVEIS_SICAF.length) * 40);
   const score = Math.max(0, Math.min(100, pesoTaxa + pesoDocs + pesoNiveis));
 
@@ -248,6 +273,7 @@ export function buildDiagnosticoSicaf(params: {
     docsTotal,
     docsOk,
     niveisValidados,
+    niveisValidadosAssistente,
     score,
     proximaEtapa: etapas.find((e) => e.status !== "ok") ?? null,
     pendenciasPainel: painel?.pendencias || [],
