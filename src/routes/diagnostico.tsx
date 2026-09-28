@@ -737,9 +737,17 @@ function Resultado({ resultado }: { resultado: DiagnosticoResultado }) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">Documentos que faltam</CardTitle>
             {docsFaltando.length > 0 && (
-              <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning-foreground text-[10px] font-semibold">
-                {docsFaltando.length} pendente{docsFaltando.length === 1 ? "" : "s"}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning-foreground text-[10px] font-semibold">
+                  {docsFaltando.length} pendente{docsFaltando.length === 1 ? "" : "s"}
+                </Badge>
+                <Button asChild size="sm" className="h-8 gap-1.5">
+                  <Link to="/assistente" search={{ cnpj: empresa.cnpj }}>
+                    <Bot className="h-3.5 w-3.5" />
+                    Resolver no Assistente
+                  </Link>
+                </Button>
+              </div>
             )}
           </div>
         </CardHeader>
@@ -806,6 +814,35 @@ function Resultado({ resultado }: { resultado: DiagnosticoResultado }) {
             </div>
           )}
         </CardContent>
+        {docsFaltando.length > 0 && (
+          <div className="border-t bg-gradient-to-br from-primary/10 via-card to-accent/40 p-5 sm:p-6">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <Bot className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-base font-bold leading-tight">
+                  Resolva {docsFaltando.length === 1 ? "essa pendência" : `essas ${docsFaltando.length} pendências`} com o Assistente
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  O Assistente CADBRASIL guia o envio de cada documento e atualiza seus níveis no
+                  Compras.gov.br para deixar o SICAF em dia.
+                </p>
+              </div>
+            </div>
+            <Button
+              asChild
+              size="lg"
+              className="mt-4 h-16 w-full gap-3 text-lg font-bold shadow-lg shadow-primary/20"
+            >
+              <Link to="/assistente" search={{ cnpj: empresa.cnpj }}>
+                <Bot className="h-6 w-6" />
+                Resolver meu SICAF com o Assistente
+                <ArrowRight className="h-6 w-6" />
+              </Link>
+            </Button>
+          </div>
+        )}
       </Card>
     </>
   );
