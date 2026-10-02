@@ -572,7 +572,26 @@ export async function autorizarServicoComComprovante(payload: {
     message?: string;
     comprovanteId?: number;
     validoAte?: string | null;
+    emailNotificacao?: {
+      enviado: boolean;
+      simulado?: boolean;
+      motivo?: string;
+      erro?: string;
+      para?: string;
+    } | null;
   }>;
+}
+
+/** Mensagem curta sobre o e-mail de ativação enviado ao cliente após a autorização. */
+export function avisoEmailAtivacao(
+  e?: { enviado: boolean; simulado?: boolean; motivo?: string; para?: string } | null,
+) {
+  if (!e) return undefined;
+  if (e.enviado) return `E-mail de ativação enviado para ${e.para || "o cliente"}.`;
+  if (e.simulado) return "E-mail de ativação registrado (SMTP em modo simulação).";
+  if (e.motivo === "sem_email_destino") return "Cliente sem e-mail cadastrado — ativação não foi enviada por e-mail.";
+  if (e.motivo === "validade_inalterada") return undefined;
+  return "Não foi possível enviar o e-mail de ativação ao cliente.";
 }
 
 export async function cancelarBoletoAdmin(payload: {

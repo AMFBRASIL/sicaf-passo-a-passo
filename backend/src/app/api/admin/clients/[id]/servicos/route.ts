@@ -31,6 +31,11 @@ type LicitacoesEService = {
   }) => Promise<Result>;
 };
 
+type ServicoEmailService = {
+  reenviar: (opts: { clienteId: number; servico: string }) => Promise<Result>;
+  preview: (opts: { clienteId: number; servico: string; renovacao?: boolean }) => Promise<Result>;
+};
+
 type Ctx = { params: Promise<{ id: string }> };
 
 async function clienteIdDe(ctx: Ctx) {
@@ -50,6 +55,20 @@ export async function GET(request: Request, ctx: Ctx) {
     await requireStaffAccess(request);
     const clienteId = await clienteIdDe(ctx);
     if (!clienteId) return NextResponse.json({ ok: false, error: "ID inválido" }, { status: 400 });
+
+    const url = new URL(request.url);
+    const previewServico = url.searchParams.get("preview");
+    if (previewServico) {
+      const emails = await getSicafAgentModule<ServicoEmailService>(
+        "services/servico-ativado-email.service",
+      );
+      const result = await emails.preview({
+        clienteId,
+        servico: previewServico,
+        renovacao: url.searchParams.get("renovacao") === "1",
+      });
+      return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+    }
 
     const [caufesp, bll, modulos, licitacoesE] = await Promise.all([
       getSicafAgentModule<AssessoriaService>("services/caufesp.service").then((s) =>
@@ -80,7 +99,7 @@ export async function GET(request: Request, ctx: Ctx) {
   }
 }
 
-/** Ações da equipe: cortesia | licitacoes_e_atualizar | licitacoes_e_responder */
+/** Ações da equipe: cortesia | licitacoes_e_atualizar | licitacoes_e_responder | reenviar_email */
 export async function POST(request: Request, ctx: Ctx) {
   try {
     const { usuarioId } = await requireStaffAccess(request);
@@ -114,6 +133,13 @@ export async function POST(request: Request, ctx: Ctx) {
           resolvido: Boolean(body.resolvido),
           usuarioId,
         });
+        break;
+      }
+      case "reenviar_email": {
+        const svc = await getSicafAgentModule<ServicoEmailService>(
+          "services/servico-ativado-email.service",
+        );
+        result = await svc.reenviar({ clienteId, servico: String(body.servico || "") });
         break;
       }
       default:

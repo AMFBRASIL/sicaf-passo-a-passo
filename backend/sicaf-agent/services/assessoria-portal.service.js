@@ -350,7 +350,13 @@ function criarServicoAssessoria(cfg) {
           updated_at: db.fn.now(),
         });
       await registrarHistorico(db, processo, `Pagamento da assessoria ${cfg.nome} confirmado`);
-      return { ok: true };
+
+      const emailNotificacao = await require('./servico-ativado-email.service').enviarServicoAtivado({
+        clienteId: processo.cliente_id,
+        servico: cfg.origem,
+        origemId: processo.id,
+      });
+      return { ok: true, emailNotificacao };
     } catch (e) {
       console.error(`${LOG_PREFIX} confirmarPagamento:`, e.message);
       return { ok: false, error: e.message };

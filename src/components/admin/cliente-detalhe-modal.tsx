@@ -66,6 +66,7 @@ import {
   mapFinanceiroToFaturas,
   autorizarPagamentoComComprovante,
   autorizarServicoComComprovante,
+  avisoEmailAtivacao,
   cancelarBoletoAdmin,
   novaValidadeSicafAposPagamento,
   diasAteNovaValidadeSicaf,
@@ -1601,9 +1602,14 @@ function FinanceiroTab({
       throw new Error("autorizacao_falhou");
     }
     toast.success(res.message || "Pagamento autorizado", {
-      description: res.validoAte
-        ? `${servicoAtivo.origemLabel} liberado até ${formatDatePainel(res.validoAte)}.`
-        : `${servicoAtivo.origemLabel} liberado.`,
+      description: [
+        res.validoAte
+          ? `${servicoAtivo.origemLabel} liberado até ${formatDatePainel(res.validoAte)}.`
+          : `${servicoAtivo.origemLabel} liberado.`,
+        avisoEmailAtivacao(res.emailNotificacao),
+      ]
+        .filter(Boolean)
+        .join(" "),
     });
     setServicoAtivo(null);
     onPagamentoAutorizado?.();

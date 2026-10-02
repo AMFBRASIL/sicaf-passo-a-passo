@@ -5,7 +5,10 @@ import {
   Briefcase,
   CheckCircle2,
   ExternalLink,
+  Eye,
   FileText,
+  Mail,
+  Send,
   Gift,
   Landmark,
   LifeBuoy,
@@ -34,13 +37,16 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AutorizarPagamentoModal } from "@/components/admin/autorizar-pagamento-modal";
-import { autorizarServicoComComprovante } from "@/lib/admin-clientes-api";
+import { autorizarServicoComComprovante, avisoEmailAtivacao } from "@/lib/admin-clientes-api";
 import {
   atualizarAcompanhamentoAdmin,
   atualizarProcessoAssessoriaAdmin,
   definirCortesiaModulo,
   fetchServicosCliente,
+  previewEmailAtivacao,
+  reenviarEmailAtivacao,
   responderApoioLicitacoesE,
+  type ServicoEmail,
   type AssessoriaResumo,
   type ModuloAssinaturaAdmin,
   type ServicosCliente,
@@ -614,6 +620,8 @@ function AssessoriaAdmin({
         </ul>
       </Card>
 
+      <EmailAtivacao clienteId={clienteId} servico={portal} ativo={processo.pago} />
+
       {pagamento && (
         <AutorizarPagamentoModal
           open={autorizarOpen}
@@ -649,7 +657,9 @@ function AssessoriaAdmin({
               toast.error(r.error || "Erro ao autorizar pagamento");
               throw new Error("autorizacao_falhou");
             }
-            toast.success(r.message || "Pagamento autorizado");
+            toast.success(r.message || "Pagamento autorizado", {
+              description: avisoEmailAtivacao(r.emailNotificacao),
+            });
             await carregar();
             onAlterado();
           }}
@@ -953,6 +963,8 @@ function ModuloAdmin({
         )}
       </Card>
 
+      <EmailAtivacao clienteId={clienteId} servico={modulo} ativo={Boolean(assinatura?.ativo)} modulo />
+
       <AutorizarPagamentoModal
         open={!!autorizar}
         onOpenChange={(v) => {
@@ -995,7 +1007,12 @@ function ModuloAdmin({
             throw new Error("autorizacao_falhou");
           }
           toast.success(r.message || "Pagamento autorizado", {
-            description: r.validoAte ? `${nome} liberado até ${dataModuloFmt(r.validoAte)}.` : undefined,
+            description: [
+              r.validoAte ? `${nome} liberado até ${dataModuloFmt(r.validoAte)}.` : "",
+              avisoEmailAtivacao(r.emailNotificacao),
+            ]
+              .filter(Boolean)
+              .join(" "),
           });
           setAutorizar(null);
           onAlterado();
@@ -1221,6 +1238,85 @@ function AcompanhamentoAdmin({
         </div>
       )}
     </div>
+  );
+}
+
+function EmailAtivacao({
+  clienteId,
+  servico,
+  ativo,
+  modulo,
+}: {
+  clienteId: number;
+  servico: ServicoEmail;
+  ativo: boolean;
+  modulo?: boolean;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const [abrindo, setAbrindo] = useState(false);
+
+  const visualizar = async (renovacao: boolean) => {
+    const janela = window.open("", "_blank");
+    setAbrindo(true);
+    const r = await previewEmailAtivacao(clienteId, servico, renovacao);
+    setAbrindo(false);
+    if (!r.ok) {
+      janela?.close();
+      toast.error(r.error);
+      return;
+    }
+    if (janela) {
+      janela.document.open();
+      janela.document.write(r.html);
+      janela.document.title = r.assunto;
+      janela.document.close();
+    }
+  };
+
+  const reenviar = async () => {
+    setEnviando(true);
+    const r = await reenviarEmailAtivacao(clienteId, servico);
+    setEnviando(false);
+    if (!r.ok) {
+      toast.error(r.error);
+      return;
+    }
+    toast.success(r.simulado ? "E-mail registrado (SMTP em modo simulação)" : `E-mail enviado para ${r.para}`);
+  };
+
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+      <div className="flex items-start gap-2.5">
+        <Mail className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+        <div className="text-xs">
+          <p className="text-sm font-semibold">E-mail de ativação</p>
+          <p className="text-muted-foreground">
+            Enviado automaticamente ao cliente quando o pagamento é confirmado, com o passo a passo
+            completo{modulo ? ". Renovações recebem um aviso curto." : "."}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={abrindo} onClick={() => void visualizar(false)}>
+          <Eye className="h-3.5 w-3.5" /> Visualizar
+        </Button>
+        {modulo && (
+          <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={abrindo} onClick={() => void visualizar(true)}>
+            <Eye className="h-3.5 w-3.5" /> Renovação
+          </Button>
+        )}
+        <Button
+          size="sm"
+          className="h-8 gap-1.5"
+          disabled={!ativo || enviando}
+          title={ativo ? "Reenviar ao e-mail cadastrado do cliente" : "Disponível após o pagamento ser confirmado"}
+          onClick={() => void reenviar()}
+        >
+          {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+          Reenviar ao cliente
+        </Button>
+      </div>
+    </Card>
   );
 }
 

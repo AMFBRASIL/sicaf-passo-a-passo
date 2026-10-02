@@ -345,7 +345,24 @@ function porModulo(modulo) {
         if (!assinatura || assinatura.modulo !== modulo) {
           return { ok: false, error: 'Assinatura não encontrada' };
         }
+        const anterior = assinatura.valido_ate ? isoDate(assinatura.valido_ate) : null;
         const validoAte = await recalcularValidade(db, assinatura);
+
+        let emailNotificacao = { enviado: false, motivo: 'validade_inalterada' };
+        if (validoAte && validoAte !== anterior) {
+          const { n } = await db('pagamentos')
+            .whereNull('deleted_at')
+            .where({ origem: MODULOS[modulo].origem, origem_id: assinatura.id, status: 'pago' })
+            .count({ n: '*' })
+            .first();
+          emailNotificacao = await require('./servico-ativado-email.service').enviarServicoAtivado({
+            clienteId: assinatura.cliente_id,
+            servico: modulo,
+            origemId: assinatura.id,
+            validoAte: (await montarStatus(db, assinatura.cliente_id, modulo)).validoAte || validoAte,
+            renovacao: Number(n) > 1,
+          });
+        }
         try {
           await db('historico_acoes').insert({
             cliente_id: assinatura.cliente_id,
@@ -356,7 +373,7 @@ function porModulo(modulo) {
             created_at: db.fn.now(),
           });
         } catch (_) {}
-        return { ok: true, validoAte };
+        return { ok: true, validoAte, emailNotificacao };
       } catch (e) {
         console.error(`${LOG_PREFIX} confirmarPagamento:`, e.message);
         return { ok: false, error: e.message };

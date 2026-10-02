@@ -193,6 +193,7 @@ async function autorizarServicoComComprovante({
     message: 'Pagamento autorizado e serviço liberado.',
     comprovanteId,
     validoAte: confirm.validoAte || null,
+    emailNotificacao: confirm.emailNotificacao || null,
   };
 }
 

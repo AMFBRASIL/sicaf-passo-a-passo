@@ -77,6 +77,7 @@ type PagamentoComprovanteService = {
     message?: string;
     comprovanteId?: number;
     validoAte?: string | null;
+    emailNotificacao?: { enviado: boolean; simulado?: boolean; motivo?: string; para?: string } | null;
   }>;
 };
 

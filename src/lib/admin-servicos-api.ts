@@ -99,6 +99,23 @@ export async function atualizarProcessoAssessoriaAdmin(
   );
 }
 
+export type ServicoEmail = "caufesp" | "bll" | "licitacoes_e" | "pncp";
+
+export function reenviarEmailAtivacao(clienteId: number, servico: ServicoEmail) {
+  return acao<{ para?: string; simulado?: boolean; assunto?: string }>(clienteId, {
+    acao: "reenviar_email",
+    servico,
+  });
+}
+
+export async function previewEmailAtivacao(clienteId: number, servico: ServicoEmail, renovacao = false) {
+  return parse<{ assunto: string; html: string; para: string | null }>(
+    await apiFetch(
+      `/api/admin/clients/${clienteId}/servicos?preview=${servico}${renovacao ? "&renovacao=1" : ""}`,
+    ),
+  );
+}
+
 /** Quantidade de itens aguardando a equipe (conferência de documentos e pedidos de apoio). */
 export function pendenciasEquipe(s: ServicosCliente) {
   const assessoria = (r: AssessoriaResumo) =>
