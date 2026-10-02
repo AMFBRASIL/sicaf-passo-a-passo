@@ -1,0 +1,171 @@
+/**
+ * Assessoria CADBRASIL para cadastro no CAUFESP (BEC/SP).
+ *
+ * Documentos: Decreto SP 52.205/2007, art. 18 (Registro Cadastral — pessoa jurídica).
+ * O cadastro no CAUFESP é gratuito no governo; a taxa é da assessoria CADBRASIL.
+ */
+const { criarServicoAssessoria } = require('./assessoria-portal.service');
+
+/** `exigidoPara` limita a obrigatoriedade ao tipo de atividade (bens/serviços). */
+const DOCUMENTOS_CAUFESP = [
+  {
+    codigo: 'contrato_social',
+    grupo: 'habilitacao_juridica',
+    nome: 'Contrato social / estatuto em vigor',
+    descricao: 'Ato constitutivo com a última alteração ou consolidação, registrado na Junta Comercial ou Cartório.',
+    obrigatorio: true,
+  },
+  {
+    codigo: 'prova_administradores',
+    grupo: 'habilitacao_juridica',
+    nome: 'Prova dos administradores em exercício',
+    descricao: 'Ata de eleição da diretoria — apenas quando os administradores não constam no contrato social.',
+    obrigatorio: false,
+  },
+  {
+    codigo: 'certidao_simplificada',
+    grupo: 'habilitacao_juridica',
+    nome: 'Certidão simplificada da Junta Comercial',
+    descricao: 'Comprova o registro da empresa no órgão competente.',
+    obrigatorio: true,
+    validade: true,
+  },
+  {
+    codigo: 'documento_representante',
+    grupo: 'habilitacao_juridica',
+    nome: 'Documento de identidade do representante legal',
+    descricao: 'RG ou CNH e CPF do sócio/administrador que assina pela empresa.',
+    obrigatorio: true,
+  },
+  {
+    codigo: 'cartao_cnpj',
+    grupo: 'regularidade_fiscal',
+    nome: 'Comprovante de inscrição no CNPJ',
+    descricao: 'Cartão CNPJ emitido no site da Receita Federal.',
+    obrigatorio: true,
+  },
+  {
+    codigo: 'inscricao_estadual',
+    grupo: 'regularidade_fiscal',
+    nome: 'Inscrição estadual (Cadesp)',
+    descricao: 'Prova de inscrição no cadastro de contribuintes estadual — para fornecimento de bens.',
+    obrigatorio: true,
+    exigidoPara: ['bens'],
+  },
+  {
+    codigo: 'inscricao_municipal',
+    grupo: 'regularidade_fiscal',
+    nome: 'Inscrição municipal (CCM / ficha cadastral)',
+    descricao: 'Prova de inscrição no cadastro de contribuintes municipal — para prestação de serviços.',
+    obrigatorio: true,
+    exigidoPara: ['servicos'],
+  },
+  {
+    codigo: 'cnd_federal',
+    grupo: 'regularidade_fiscal',
+    nome: 'Certidão de Débitos Federais e Dívida Ativa da União',
+    descricao: 'Certidão conjunta RFB/PGFN — inclui as contribuições previdenciárias (INSS).',
+    obrigatorio: true,
+    validade: true,
+  },
+  {
+    codigo: 'cnd_estadual',
+    grupo: 'regularidade_fiscal',
+    nome: 'Certidão de Tributos Estaduais',
+    descricao: 'Regularidade com a Fazenda Estadual — para fornecimento de bens.',
+    obrigatorio: true,
+    validade: true,
+    exigidoPara: ['bens'],
+  },
+  {
+    codigo: 'cnd_municipal',
+    grupo: 'regularidade_fiscal',
+    nome: 'Certidão de Tributos Municipais (mobiliários)',
+    descricao: 'Regularidade com a Fazenda Municipal — para prestação de serviços.',
+    obrigatorio: true,
+    validade: true,
+    exigidoPara: ['servicos'],
+  },
+  {
+    codigo: 'crf_fgts',
+    grupo: 'regularidade_fiscal',
+    nome: 'Certificado de Regularidade do FGTS (CRF)',
+    descricao: 'Emitido no site da Caixa Econômica Federal.',
+    obrigatorio: true,
+    validade: true,
+  },
+  {
+    codigo: 'cndt',
+    grupo: 'regularidade_fiscal',
+    nome: 'Certidão Negativa de Débitos Trabalhistas (CNDT)',
+    descricao: 'Emitida no site do Tribunal Superior do Trabalho.',
+    obrigatorio: true,
+    validade: true,
+  },
+  {
+    codigo: 'registro_entidade',
+    grupo: 'qualificacao_tecnica',
+    nome: 'Registro na entidade profissional competente',
+    descricao: 'CREA, CRA, CRF, CRM etc. — quando a atividade da empresa exigir.',
+    obrigatorio: false,
+    validade: true,
+  },
+  {
+    codigo: 'licencas_especiais',
+    grupo: 'qualificacao_tecnica',
+    nome: 'Licenças exigidas por lei para o ramo',
+    descricao: 'Ex.: ANVISA, Vigilância Sanitária, Polícia Federal — quando a atividade exigir.',
+    obrigatorio: false,
+    validade: true,
+  },
+  {
+    codigo: 'balanco_patrimonial',
+    grupo: 'qualificacao_economica',
+    nome: 'Balanço patrimonial e DRE do último exercício',
+    descricao: 'Assinados pelo contador e pelo sócio responsável. Não são aceitos balancetes ou balanços provisórios.',
+    obrigatorio: true,
+  },
+  {
+    codigo: 'certidao_falencia',
+    grupo: 'qualificacao_economica',
+    nome: 'Certidão negativa de falência e recuperação judicial',
+    descricao: 'Expedida pelo distribuidor da sede da empresa (inclui recuperação judicial e extrajudicial).',
+    obrigatorio: true,
+    validade: true,
+  },
+  {
+    codigo: 'declaracao_menor',
+    grupo: 'declaracoes',
+    nome: 'Declaração de regularidade perante o Ministério do Trabalho',
+    descricao: 'Modelo I do regulamento CAUFESP — não emprega menor (art. 7º, XXXIII da Constituição).',
+    obrigatorio: true,
+  },
+  {
+    codigo: 'declaracao_seguranca',
+    grupo: 'declaracoes',
+    nome: 'Declaração de cumprimento das normas de saúde e segurança no trabalho',
+    descricao: 'Modelo II do regulamento CAUFESP (art. 117 da Constituição do Estado de SP).',
+    obrigatorio: true,
+  },
+  {
+    codigo: 'certidao_me_epp',
+    grupo: 'declaracoes',
+    nome: 'Certidão de enquadramento ME/EPP',
+    descricao: 'Emitida pela Junta Comercial — apenas para microempresa ou empresa de pequeno porte.',
+    obrigatorio: false,
+  },
+];
+
+module.exports = criarServicoAssessoria({
+  nome: 'CAUFESP',
+  origem: 'caufesp',
+  tabelaProcessos: 'caufesp_processos',
+  tabelaDocumentos: 'caufesp_documentos',
+  chaveValor: 'valor_caufesp',
+  valorPadrao: 985.3,
+  descricaoCobranca: 'Assessoria CADBRASIL - Cadastro CAUFESP (BEC/SP)',
+  protocoloPrefixo: 'CAUFESP',
+  documentos: DOCUMENTOS_CAUFESP,
+  opcoes: ['bens', 'servicos', 'ambos'],
+  mensagemOpcaoPendente: 'Informe o tipo de atividade da empresa.',
+});

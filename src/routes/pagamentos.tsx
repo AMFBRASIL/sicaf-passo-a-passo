@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Wallet,
@@ -14,6 +14,9 @@ import {
   CalendarClock,
   Filter,
   Loader2,
+  Globe,
+  Landmark,
+  Briefcase,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +41,14 @@ import { PagamentoSicafModal } from "@/components/pagamento-sicaf-modal";
 import { PagamentoSicafResumoModal } from "@/components/pagamento-sicaf-resumo-modal";
 import { PagamentosPendentesWizard } from "@/components/pagamentos-pendentes-wizard";
 import { ManutencaoModal } from "@/components/manutencao-modal";
+import { ModuloMensalidadesDialog } from "@/components/modulos/modulo-assinatura";
+import {
+  MODULOS_INFO,
+  dataModuloFmt,
+  fetchModulosAssinatura,
+  type ModuloAssinatura,
+  type ModuloPago,
+} from "@/lib/modulos-api";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/pagamentos")({
@@ -61,6 +72,7 @@ type LinhaPag = {
   financeiro: ClienteFinanceiroPainel | null;
   sicaf: { status: PagStatus; valor: number; vencimento?: string; descricao: string };
   manutencao: { status: PagStatus; valor: number; diaVencimento?: number; descricao: string };
+  modulos: ModuloAssinatura[];
 };
 
 type Filtro = "todas" | "pendente" | "em_dia";
@@ -176,12 +188,69 @@ function buildLinhaPag(
   empresa: EmpresaData,
   financeiro: ClienteFinanceiroPainel | null,
   valores: ValoresRef,
+  modulos: ModuloAssinatura[],
 ): LinhaPag {
   return {
     empresa,
     financeiro,
     sicaf: buildSicafLinha(empresa, financeiro, valores),
     manutencao: buildManutencaoLinha(empresa, financeiro, valores),
+    modulos,
+  };
+}
+
+const ASSESSORIAS = [
+  { origem: "caufesp", titulo: "Assessoria CAUFESP (BEC/SP)", rota: "/caufesp" },
+  { origem: "bll", titulo: "Assessoria BLL Compras", rota: "/bll" },
+] as const;
+
+/** Assessorias só aparecem quando a empresa já gerou a cobrança na tela do portal. */
+function assessoriaLinha(
+  financeiro: ClienteFinanceiroPainel | null,
+  origem: (typeof ASSESSORIAS)[number]["origem"],
+) {
+  const itens = (financeiro?.servicos ?? []).filter((s) => s.origem === origem);
+  if (!itens.length) return null;
+  const pago = itens.find((s) => s.pago);
+  const aberto = itens.find((s) => s.pendente && !s.pago);
+  if (pago) {
+    return {
+      status: "em_dia" as PagStatus,
+      valor: pago.valor,
+      descricao: `Assessoria paga em ${formatFinanceDateBR(pago.dataPagamento)}`,
+    };
+  }
+  if (aberto) {
+    return {
+      status: "pendente" as PagStatus,
+      valor: aberto.valor,
+      descricao: `${aberto.formaPagamento || "Cobrança"} em aberto · vence ${formatFinanceDateBR(aberto.dataVencimento)}${aberto.vencido ? " · vencido" : ""}`,
+    };
+  }
+  return null;
+}
+
+/** Módulos mensais (Licitações-e, PNCP): opcionais, não contam como pendência da empresa. */
+function moduloLinha(m: ModuloAssinatura): { status: PagStatus; descricao: string } {
+  if (m.ativo) {
+    return {
+      status: "em_dia",
+      descricao: m.pagamentoAberto
+        ? `Ativo até ${dataModuloFmt(m.validoAte)} · próxima mensalidade gerada`
+        : `Ativo até ${dataModuloFmt(m.validoAte)}`,
+    };
+  }
+  if (m.pagamentoAberto) {
+    return {
+      status: "pendente",
+      descricao: `Mensalidade em aberto · vence ${dataModuloFmt(m.pagamentoAberto.vencimento)}`,
+    };
+  }
+  return {
+    status: "nao_contratado",
+    descricao: m.validoAte
+      ? `Assinatura encerrada em ${dataModuloFmt(m.validoAte)}`
+      : MODULOS_INFO[m.modulo].resumo,
   };
 }
 
@@ -202,6 +271,10 @@ function MeusPagamentosPage() {
     mode: "ativar" | "gerenciar";
   } | null>(null);
   const [processandoSicaf, setProcessandoSicaf] = useState(false);
+  const [moduloCtx, setModuloCtx] = useState<{
+    modulo: ModuloPago;
+    empresa: EmpresaData;
+  } | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -214,7 +287,7 @@ function MeusPagamentosPage() {
 
       const valores: ValoresRef = {
         valorSicaf: valRes.ok
-          ? valRes.valores?.valorCadastroSicaf ?? PRECO_FALLBACK.valorCadastroSicaf
+          ? (valRes.valores?.valorCadastroSicaf ?? PRECO_FALLBACK.valorCadastroSicaf)
           : PRECO_FALLBACK.valorCadastroSicaf,
         valorManutencao: manutVal,
       };
@@ -231,18 +304,21 @@ function MeusPagamentosPage() {
         return;
       }
 
-      const financeiros = await Promise.all(
-        empresas.map((e) => fetchClienteFinanceiro(e.clienteId!)),
-      );
+      const [financeiros, modulos] = await Promise.all([
+        Promise.all(empresas.map((e) => fetchClienteFinanceiro(e.clienteId!))),
+        Promise.all(empresas.map((e) => fetchModulosAssinatura(e.clienteId!))),
+      ]);
 
       setLinhas(
-        empresas.map((empresa, i) =>
-          buildLinhaPag(
+        empresas.map((empresa, i) => {
+          const mod = modulos[i];
+          return buildLinhaPag(
             empresa,
-            financeiros[i].ok ? financeiros[i].financeiro ?? null : null,
+            financeiros[i].ok ? (financeiros[i].financeiro ?? null) : null,
             valores,
-          ),
-        ),
+            mod.ok ? mod.modulos : [],
+          );
+        }),
       );
     } finally {
       setLoading(false);
@@ -258,8 +334,7 @@ function MeusPagamentosPage() {
     let emAberto = 0;
     let mensal = 0;
     for (const l of linhas) {
-      const temPendencia =
-        l.sicaf.status === "pendente" || l.manutencao.status === "pendente";
+      const temPendencia = l.sicaf.status === "pendente" || l.manutencao.status === "pendente";
       if (temPendencia) pendentes++;
 
       if (l.sicaf.status === "pendente") {
@@ -279,6 +354,9 @@ function MeusPagamentosPage() {
       if (l.empresa.manutencaoAtiva) {
         mensal += l.manutencao.valor;
       }
+      for (const m of l.modulos) {
+        if (m.ativo) mensal += m.valor;
+      }
     }
     return { pendentes, emAberto, mensal, total: linhas.length };
   }, [linhas]);
@@ -286,8 +364,7 @@ function MeusPagamentosPage() {
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return linhas.filter((l) => {
-      const temPendencia =
-        l.sicaf.status === "pendente" || l.manutencao.status === "pendente";
+      const temPendencia = l.sicaf.status === "pendente" || l.manutencao.status === "pendente";
       if (filtro === "pendente" && !temPendencia) return false;
       if (filtro === "em_dia" && temPendencia) return false;
       if (!q) return true;
@@ -330,8 +407,7 @@ function MeusPagamentosPage() {
   };
 
   const abrirManutencao = (linha: LinhaPag) => {
-    const gerenciar =
-      linha.empresa.manutencaoAtiva || linha.manutencao.status !== "nao_contratado";
+    const gerenciar = linha.empresa.manutencaoAtiva || linha.manutencao.status !== "nao_contratado";
     setManutCtx({
       empresa: linha.empresa,
       diaVencimento: linha.manutencao.diaVencimento,
@@ -350,7 +426,7 @@ function MeusPagamentosPage() {
       <PageHeader
         icon={<Wallet className="h-5 w-5" />}
         title="Pagamentos"
-        subtitle="SICAF conforme pagamento e vigência da licença. Manutenção conforme boletos mensais em aberto."
+        subtitle="SICAF conforme pagamento e vigência da licença. Manutenção e módulos (Licitações-e, PNCP) conforme mensalidades."
         action={
           <Button variant="outline" className="gap-1.5" asChild>
             <Link to="/empresas">
@@ -362,7 +438,12 @@ function MeusPagamentosPage() {
       />
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiCard icon={<Building2 className="h-4 w-4" />} label="Empresas" value={String(kpis.total)} tone="default" />
+        <KpiCard
+          icon={<Building2 className="h-4 w-4" />}
+          label="Empresas"
+          value={String(kpis.total)}
+          tone="default"
+        />
         <KpiCard
           icon={<AlertTriangle className="h-4 w-4" />}
           label="Pendentes"
@@ -443,6 +524,7 @@ function MeusPagamentosPage() {
               sicafLoading={processandoSicaf && empresaAcao?.clienteId === l.empresa.clienteId}
               onPagarSicaf={() => void abrirSicaf(l)}
               onAbrirManutencao={() => abrirManutencao(l)}
+              onAbrirModulo={(modulo) => setModuloCtx({ modulo, empresa: l.empresa })}
             />
           ))}
         </div>
@@ -488,6 +570,24 @@ function MeusPagamentosPage() {
         onCancelar={() => void carregar()}
         onPaymentGenerated={() => void carregar()}
       />
+
+      <ModuloMensalidadesDialog
+        open={Boolean(moduloCtx)}
+        onOpenChange={(v) => {
+          if (!v) setModuloCtx(null);
+        }}
+        modulo={moduloCtx?.modulo ?? null}
+        empresa={
+          moduloCtx?.empresa.clienteId
+            ? {
+                clienteId: moduloCtx.empresa.clienteId,
+                nome: moduloCtx.empresa.nome,
+                documento: moduloCtx.empresa.cnpj,
+              }
+            : null
+        }
+        onAtualizado={() => void carregar()}
+      />
     </PageContainer>
   );
 }
@@ -512,7 +612,9 @@ function KpiCard({
   return (
     <Card>
       <CardContent className="flex items-center gap-3 p-4">
-        <div className={`flex h-10 w-10 items-center justify-center rounded-lg border ${map[tone]}`}>
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-lg border ${map[tone]}`}
+        >
           {icon}
         </div>
         <div className="min-w-0">
@@ -622,14 +724,17 @@ function EmpresaPagamentosCard({
   linha,
   onPagarSicaf,
   onAbrirManutencao,
+  onAbrirModulo,
   sicafLoading,
 }: {
   linha: LinhaPag;
   onPagarSicaf: () => void;
   onAbrirManutencao: () => void;
+  onAbrirModulo: (modulo: ModuloPago) => void;
   sicafLoading?: boolean;
 }) {
   const { empresa, sicaf, manutencao, financeiro } = linha;
+  const navigate = useNavigate();
   const temPendencia = sicaf.status === "pendente" || manutencao.status === "pendente";
   const fmt = formatFinanceBRL;
 
@@ -708,6 +813,57 @@ function EmpresaPagamentosCard({
             )
           }
         />
+        {ASSESSORIAS.map((a) => {
+          const al = assessoriaLinha(financeiro, a.origem);
+          if (!al) return null;
+          return (
+            <PagamentoLinha
+              key={a.origem}
+              icon={<Briefcase className="h-5 w-5" />}
+              titulo={a.titulo}
+              descricao={al.descricao}
+              valor={fmt(al.valor)}
+              status={al.status}
+              onAcao={() => void navigate({ to: a.rota, search: { cnpj: empresa.cnpj } })}
+              acaoLabel={al.status === "pendente" ? "Ver cobrança" : "Acompanhar"}
+              acaoIcon={<Receipt className="h-3.5 w-3.5" />}
+            />
+          );
+        })}
+        {linha.modulos.map((m) => {
+          const ml = moduloLinha(m);
+          return (
+            <PagamentoLinha
+              key={m.modulo}
+              icon={
+                m.modulo === "pncp" ? (
+                  <Globe className="h-5 w-5" />
+                ) : (
+                  <Landmark className="h-5 w-5" />
+                )
+              }
+              titulo={`${m.nome} (mensal)`}
+              descricao={ml.descricao}
+              valor={fmt(m.pagamentoAberto?.valor ?? m.valor)}
+              status={ml.status}
+              onAcao={() => onAbrirModulo(m.modulo)}
+              acaoLabel={
+                ml.status === "nao_contratado"
+                  ? "Contratar"
+                  : ml.status === "pendente"
+                    ? "Ver boleto"
+                    : "Boletos"
+              }
+              acaoIcon={
+                ml.status === "nao_contratado" ? (
+                  <Plus className="h-3.5 w-3.5" />
+                ) : (
+                  <Receipt className="h-3.5 w-3.5" />
+                )
+              }
+            />
+          );
+        })}
       </CardContent>
     </Card>
   );

@@ -295,6 +295,7 @@ export async function fetchAdminClienteFinanceiro(clienteId: number) {
       sicaf?: { pagos?: FaturaApi[]; pendentes?: FaturaApi[] };
       manutencao?: { pagos?: FaturaApi[]; pendentes?: FaturaApi[] };
       personalizados?: FaturaApi[];
+      servicos?: ServicoFaturaApi[];
       pendencias?: FaturaApi[];
       pagamentosRecentes?: {
         id: number;
@@ -329,6 +330,15 @@ type FaturaApi = {
   created_at?: string | null;
   createdAt?: string | null;
   desconto?: DescontoTaxaInfo | null;
+};
+
+/** Cobranças de assessorias (CAUFESP, BLL) e módulos mensais (Licitações-e, PNCP). */
+export type ServicoFaturaApi = FaturaApi & {
+  origem: string;
+  origemLabel: string;
+  vencido?: boolean;
+  linkPdf?: string | null;
+  linkBoletoBanco?: string | null;
 };
 
 export type DescontoTipo = "percentual" | "valor" | "valor_final";
@@ -533,6 +543,35 @@ export async function autorizarPagamentoComComprovante(payload: {
       para?: string;
       templateNome?: string;
     };
+  }>;
+}
+
+/** Autorização manual de cobranças de serviços (CAUFESP, BLL, módulos) — por pagamento. */
+export async function autorizarServicoComComprovante(payload: {
+  pagamentoId: number;
+  clienteId: number;
+  formaPagamento?: string;
+  observacoes?: string;
+  comprovante: File;
+}) {
+  const formData = new FormData();
+  formData.append("tipo", "servico");
+  formData.append("pagamentoId", String(payload.pagamentoId));
+  formData.append("clienteId", String(payload.clienteId));
+  if (payload.formaPagamento) formData.append("formaPagamento", payload.formaPagamento);
+  if (payload.observacoes?.trim()) formData.append("observacoes", payload.observacoes.trim());
+  formData.append("comprovante", payload.comprovante);
+
+  const res = await apiFetch("/api/admin/financeiro/autorizar-pagamento", {
+    method: "POST",
+    body: formData,
+  });
+  return res.json() as Promise<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    comprovanteId?: number;
+    validoAte?: string | null;
   }>;
 }
 

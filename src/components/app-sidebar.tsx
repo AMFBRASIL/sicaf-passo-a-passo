@@ -10,7 +10,6 @@ import {
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
-  Layers,
   Headphones,
   FileSignature,
   HelpCircle,
@@ -48,7 +47,6 @@ type NavItem = {
 
 const visaoGeral: NavItem[] = [
   { title: "Início", url: "/", icon: LayoutDashboard },
-  { title: "Plataforma (beta)", url: "/inicio2", icon: Layers },
 ];
 
 const sicafCadastro: NavItem[] = [

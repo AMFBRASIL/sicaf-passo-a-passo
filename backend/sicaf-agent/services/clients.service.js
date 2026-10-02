@@ -3086,6 +3086,14 @@ async function loadAllPagamentosList(db, clienteId) {
   });
 }
 
+/** Origens de pagamentos de serviços do portal (fora SICAF/manutenção) → rótulo. */
+const ORIGENS_SERVICOS = {
+  caufesp: 'Assessoria CAUFESP',
+  bll: 'Assessoria BLL',
+  modulo_licitacoes_e: 'Módulo Assistente Licitações-e',
+  modulo_pncp: 'Módulo PNCP Inteligente',
+};
+
 /** Status em que boleto/PIX do pagamento não devem mais ser oferecidos ao cliente. */
 const PAGAMENTO_ASSET_STATUS_IGNORADO = [
   'cancelado', 'cancelada', 'estornado', 'erro', 'removido', 'expirado',
@@ -3308,12 +3316,50 @@ async function getClientFinanceiro(clienteId) {
       }, 'personalizado', clienteId);
     });
 
+    // Assessorias (CAUFESP, BLL) e módulos mensais: boleto e PIX da mesma cobrança viram uma guia.
+    const servicosPorChave = new Map();
+    for (const p of allPagamentos) {
+      if (!ORIGENS_SERVICOS[p.origem] || PAGAMENTO_ASSET_STATUS_IGNORADO.includes(p.status)) continue;
+      const key = `${p.origem}:${p.origem_id}:${p.descricao || ''}`;
+      if (!servicosPorChave.has(key)) servicosPorChave.set(key, []);
+      servicosPorChave.get(key).push(p);
+    }
+    const servicos = Array.from(servicosPorChave.values()).map((grupo) => {
+      const base = grupo.find((p) => isPaidFinanceStatus(p.status)) || grupo[0];
+      const assets = mergePagamentoAssets(base, grupo);
+      return {
+        ...mapFinanceRow({
+          id: base.id,
+          valor: base.valor,
+          status: base.status,
+          data_vencimento: base.data_vencimento,
+          data_pagamento: base.data_pagamento,
+          forma_pagamento: base.tipo,
+          descricao: base.descricao || ORIGENS_SERVICOS[base.origem],
+          created_at: base.created_at,
+          pagamentoId: base.id,
+          protocolo: base.protocolo,
+          gn_pdf: assets.gn_pdf,
+          gn_link: assets.gn_link,
+          gn_barcode: assets.gn_barcode,
+          qrcode_text: assets.qrcode_text,
+          qrcode_image: assets.qrcode_image,
+          provider_txid: assets.provider_txid,
+          provider_charge_id: assets.provider_charge_id,
+        }, 'personalizado', clienteId),
+        origem: base.origem,
+        origemLabel: ORIGENS_SERVICOS[base.origem],
+      };
+    });
+    const servicosPendentes = servicos.filter((s) => s.pendente && !s.pago);
+
     const pendencias = [
       ...sicafPendentes.filter((i) => i.vencido),
       ...manutPendentes.filter((i) => i.vencido),
       ...sicafPendentes.filter((i) => !i.vencido),
       ...manutPendentes.filter((i) => !i.vencido),
       ...personalizados.filter((i) => i.pendente && !i.pago),
+      ...servicosPendentes,
     ];
 
     const sum = (arr) => arr.reduce((acc, i) => acc + (i.valor || 0), 0);
@@ -3324,16 +3370,17 @@ async function getClientFinanceiro(clienteId) {
         resumo: {
           totalPagoSicaf: sum(sicafPagos),
           totalPagoManutencao: sum(manutPagos),
-          totalPendente: sum([...sicafPendentes, ...manutPendentes, ...personalizados.filter((p) => p.pendente)]),
+          totalPendente: sum([...sicafPendentes, ...manutPendentes, ...personalizados.filter((p) => p.pendente), ...servicosPendentes]),
           totalInadimplencia: sum(pendencias.filter((p) => p.vencido)),
           qtdPagoSicaf: sicafPagos.length,
           qtdPagoManutencao: manutPagos.length,
-          qtdPendentes: sicafPendentes.length + manutPendentes.length + personalizados.filter((p) => p.pendente).length,
+          qtdPendentes: sicafPendentes.length + manutPendentes.length + personalizados.filter((p) => p.pendente).length + servicosPendentes.length,
           qtdVencidos: pendencias.filter((p) => p.vencido).length,
         },
         sicaf: { pagos: sicafPagos, pendentes: sicafPendentes },
         manutencao: { pagos: manutPagos, pendentes: manutPendentes },
         personalizados,
+        servicos,
         pendencias,
         pagamentosRecentes: allPagamentos.slice(0, 20).map((p) => ({
           id: p.id,

@@ -19,12 +19,18 @@ type DbConnection = {
   getDb: () => {
     (table: string): {
       whereNull: (col: string) => {
-        where: (col: string, val: unknown) => {
+        where: (
+          col: string,
+          val: unknown,
+        ) => {
           first: () => Promise<DbRow | undefined>;
           update: (data: Record<string, unknown>) => Promise<void>;
         };
       };
-      where: (col: string, val: unknown) => {
+      where: (
+        col: string,
+        val: unknown,
+      ) => {
         first: () => Promise<DbRow | undefined>;
         update: (data: Record<string, unknown>) => Promise<void>;
       };
@@ -34,12 +40,17 @@ type DbConnection = {
 };
 
 type GerencianetService = {
-  consultarPix: (txid: string) => Promise<{ status?: string; pix?: { endToEndId?: string; horario?: string }[] }>;
+  consultarPix: (
+    txid: string,
+  ) => Promise<{ status?: string; pix?: { endToEndId?: string; horario?: string }[] }>;
   consultarCobranca: (chargeId: number) => Promise<{ data?: { status?: string }; status?: string }>;
 };
 
 type SicafTaxaService = {
-  confirmarPagamento: (taxaId: number, usuarioId?: number) => Promise<{ ok: boolean; error?: string }>;
+  confirmarPagamento: (
+    taxaId: number,
+    usuarioId?: number,
+  ) => Promise<{ ok: boolean; error?: string }>;
 };
 
 function pagamentosAtivos(db: NonNullable<ReturnType<DbConnection["getDb"]>>) {
@@ -54,7 +65,10 @@ export async function POST(request: Request) {
     const { getDb } = await getSicafAgentModule<DbConnection>("database/connection");
     const db = getDb();
     if (!db) {
-      return NextResponse.json({ ok: false, error: "Banco de dados não disponível" }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "Banco de dados não disponível" },
+        { status: 500 },
+      );
     }
 
     let pgto: DbRow | undefined;
@@ -80,9 +94,9 @@ export async function POST(request: Request) {
     }
 
     const gn = await getSicafAgentModule<GerencianetService>("services/gerencianet.service");
-    let gnData: Awaited<ReturnType<GerencianetService["consultarPix"]>> | Awaited<
-      ReturnType<GerencianetService["consultarCobranca"]>
-    >;
+    let gnData:
+      | Awaited<ReturnType<GerencianetService["consultarPix"]>>
+      | Awaited<ReturnType<GerencianetService["consultarCobranca"]>>;
     let gnStatus = "";
     let newStatus = pgto.status;
 
@@ -137,16 +151,33 @@ export async function POST(request: Request) {
     if (newStatus === "pago" && pgto.status !== "pago") {
       const updateData: Record<string, unknown> = { status: "pago", data_pagamento: db.fn.now() };
 
-      if (pgto.tipo === "pix" && gnData && "pix" in gnData && Array.isArray(gnData.pix) && gnData.pix.length > 0) {
+      if (
+        pgto.tipo === "pix" &&
+        gnData &&
+        "pix" in gnData &&
+        Array.isArray(gnData.pix) &&
+        gnData.pix.length > 0
+      ) {
         updateData.provider_e2eid = gnData.pix[0].endToEndId || null;
         if (gnData.pix[0].horario) updateData.data_pagamento = new Date(gnData.pix[0].horario);
       }
 
       await db("pagamentos").where("id", pgto.id).update(updateData);
 
+      const { servicoPorOrigem } = await getSicafAgentModule<{
+        servicoPorOrigem: (
+          origem: string,
+        ) => { confirmarPagamento: (origemId: number) => Promise<{ ok: boolean }> } | null;
+      }>("services/assessoria-portal.service");
+      const servicoOrigem = pgto.origem ? servicoPorOrigem(pgto.origem) : null;
+
       if (pgto.origem === "sicaf" && pgto.origem_id) {
-        const sicafTaxa = await getSicafAgentModule<SicafTaxaService>("services/sicaf-taxa.service");
+        const sicafTaxa = await getSicafAgentModule<SicafTaxaService>(
+          "services/sicaf-taxa.service",
+        );
         await sicafTaxa.confirmarPagamento(pgto.origem_id);
+      } else if (servicoOrigem && pgto.origem_id) {
+        await servicoOrigem.confirmarPagamento(pgto.origem_id);
       } else if (pgto.origem === "manutencao" && pgto.origem_id) {
         await db("manutencao_boletos").where("id", pgto.origem_id).update({
           status: "Pago",
@@ -163,8 +194,12 @@ export async function POST(request: Request) {
               }) => Promise<unknown>;
             }>("services/automacoes.service");
             void automacoes.onManutencaoBoletoPago({
-              clienteId: Number((boleto as { cliente_id?: number }).cliente_id || (pgto as { cliente_id?: number }).cliente_id),
-              manutencaoId: Number((boleto as { manutencao_id?: number }).manutencao_id) || undefined,
+              clienteId: Number(
+                (boleto as { cliente_id?: number }).cliente_id ||
+                  (pgto as { cliente_id?: number }).cliente_id,
+              ),
+              manutencaoId:
+                Number((boleto as { manutencao_id?: number }).manutencao_id) || undefined,
               boletoId: Number(pgto.origem_id),
             });
           }

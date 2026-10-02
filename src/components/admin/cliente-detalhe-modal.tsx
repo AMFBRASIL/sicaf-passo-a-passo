@@ -46,7 +46,10 @@ import {
   Link2,
   RotateCcw,
   Tag,
+  Briefcase,
 } from "lucide-react";
+import { ServicosClienteModal } from "./servicos-cliente-modal";
+import { fetchServicosCliente, pendenciasEquipe } from "@/lib/admin-servicos-api";
 import { AcoesTab } from "./cliente-acoes";
 import { SituacaoTab } from "./cliente-situacao-tab";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -62,6 +65,7 @@ import {
   flattenChecklistDocumentos,
   mapFinanceiroToFaturas,
   autorizarPagamentoComComprovante,
+  autorizarServicoComComprovante,
   cancelarBoletoAdmin,
   novaValidadeSicafAposPagamento,
   diasAteNovaValidadeSicaf,
@@ -75,6 +79,7 @@ import {
   type DocumentosPainelUi,
   type FaturaUi,
   type HistoricoUi,
+  type ServicoFaturaApi,
 } from "@/lib/admin-clientes-api";
 import { getNivelVencimentoLabel, type NivelDetailInfo } from "@/lib/nivel-status";
 import { toast } from "sonner";
@@ -179,20 +184,26 @@ export function ClienteDetalheModal({
   const [reativando, setReativando] = useState(false);
   const [detalhe, setDetalhe] = useState<ClienteDetalhe | null>(null);
   const [faturas, setFaturas] = useState<FaturaUi[]>([]);
+  const [servicos, setServicos] = useState<ServicoFaturaApi[]>([]);
   const [documentosPainel, setDocumentosPainel] = useState<DocumentosPainelUi | null>(null);
   const [tickets, setTickets] = useState<ReturnType<typeof mapTicketsToUi>>([]);
   const [historico, setHistorico] = useState<HistoricoUi[]>([]);
+  const [servicosOpen, setServicosOpen] = useState(false);
+  const [servicosPendencias, setServicosPendencias] = useState(0);
 
   const recarregarDados = useCallback(async (baseCliente: ClienteDetalhe) => {
     const clienteId = parseInt(baseCliente.id, 10);
     if (!Number.isFinite(clienteId)) return;
 
-    const [det, fin, tks, docs] = await Promise.all([
+    const [det, fin, tks, docs, srv] = await Promise.all([
       fetchAdminClienteDetalhe(clienteId),
       fetchAdminClienteFinanceiro(clienteId),
       fetchAdminTicketsCliente(clienteId),
       fetchAdminClienteDocumentos(clienteId),
+      fetchServicosCliente(clienteId),
     ]);
+
+    setServicosPendencias(srv.ok ? pendenciasEquipe(srv) : 0);
 
     if (det.ok && det.client) {
       const merged = mergeDetalheFromApi(baseCliente, det.client);
@@ -202,6 +213,7 @@ export function ClienteDetalheModal({
 
     if (fin.ok && fin.financeiro) {
       setFaturas(mapFinanceiroToFaturas(fin.financeiro));
+      setServicos(fin.financeiro.servicos ?? []);
     }
 
     if (tks.ok && tks.tickets) {
@@ -450,7 +462,12 @@ export function ClienteDetalheModal({
                   <SicafTab cliente={exibicao} onRenovar={() => setRenovarOpen(true)} />
                 )}
                 {step === "financeiro" && (
-                  <FinanceiroTab cliente={exibicao} faturasIniciais={faturas} onPagamentoAutorizado={atualizarPainel} />
+                  <FinanceiroTab
+                    cliente={exibicao}
+                    faturasIniciais={faturas}
+                    servicos={servicos}
+                    onPagamentoAutorizado={atualizarPainel}
+                  />
                 )}
                 {step === "documentos" && (
                   <DocumentosTab painel={documentosPainel} clienteId={parseInt(exibicao.id, 10)} />
@@ -493,6 +510,20 @@ export function ClienteDetalheModal({
                 )}
               </div>
               <div className="flex flex-wrap gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="relative gap-1.5 border-indigo-500/40 text-indigo-700 hover:bg-indigo-500/10 dark:text-indigo-300"
+                  title="CAUFESP, BLL, Licitações-e e PNCP"
+                  onClick={() => setServicosOpen(true)}
+                >
+                  <Briefcase className="h-3.5 w-3.5" /> Serviços
+                  {servicosPendencias > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white">
+                      {servicosPendencias}
+                    </span>
+                  )}
+                </Button>
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditarOpen(true)}>
                   <Edit3 className="h-3.5 w-3.5" /> Editar
                 </Button>
@@ -528,6 +559,13 @@ export function ClienteDetalheModal({
           </section>
         </div>
       </DialogContent>
+      <ServicosClienteModal
+        open={servicosOpen}
+        onOpenChange={setServicosOpen}
+        clienteId={parseInt(exibicao.id, 10)}
+        clienteNome={exibicao.razao}
+        onAlterado={atualizarPainel}
+      />
       <RenovarSicafModal
         open={renovarOpen}
         onOpenChange={setRenovarOpen}
@@ -1337,14 +1375,17 @@ function buildCobrancaPendenteFallback(
 function FinanceiroTab({
   cliente,
   faturasIniciais = [],
+  servicos = [],
   onPagamentoAutorizado,
 }: {
   cliente: ClienteDetalhe;
   faturasIniciais?: FaturaUi[];
+  servicos?: ServicoFaturaApi[];
   onPagamentoAutorizado?: () => void;
 }) {
   const [autorizarOpen, setAutorizarOpen] = useState(false);
   const [faturaAtiva, setFaturaAtiva] = useState<FaturaItem | null>(null);
+  const [servicoAtivo, setServicoAtivo] = useState<ServicoFaturaApi | null>(null);
   const [cancelarOpen, setCancelarOpen] = useState(false);
   const [faturaCancelId, setFaturaCancelId] = useState<string | null>(null);
   const [cancelando, setCancelando] = useState(false);
@@ -1367,13 +1408,20 @@ function FinanceiroTab({
     setFaturas(faturasSicaf);
   }, [faturasSicaf]);
 
-  const totalEmAberto = faturas
-    .filter((f) => f.status === "aberto")
-    .reduce((acc, f) => acc + f.valor, 0);
+  const servicosEmAberto = servicos
+    .filter((s) => !s.pago)
+    .reduce((acc, s) => acc + Number(s.valor || 0), 0);
+  const servicosPagos = servicos
+    .filter((s) => s.pago)
+    .reduce((acc, s) => acc + Number(s.valor || 0), 0);
 
-  const totalFaturado12m = faturas
-    .filter((f) => f.status === "pago")
-    .reduce((acc, f) => acc + f.valor, 0);
+  const totalEmAberto =
+    faturas.filter((f) => f.status === "aberto").reduce((acc, f) => acc + f.valor, 0) +
+    servicosEmAberto;
+
+  const totalFaturado12m =
+    faturas.filter((f) => f.status === "pago").reduce((acc, f) => acc + f.valor, 0) +
+    servicosPagos;
 
   const formaPreferida = useMemo(() => {
     const pix = faturas.filter((f) => f.forma === "PIX").length;
@@ -1531,6 +1579,36 @@ function FinanceiroTab({
     onPagamentoAutorizado?.();
   };
 
+  const confirmarAutorizacaoServico = async (payload: {
+    comprovante: File;
+    observacoes?: string;
+  }) => {
+    if (!servicoAtivo) return;
+    const clienteId = parseInt(cliente.id, 10);
+    if (!Number.isFinite(clienteId)) {
+      toast.error("Cliente inválido.");
+      throw new Error("cliente_invalido");
+    }
+    const res = await autorizarServicoComComprovante({
+      pagamentoId: servicoAtivo.id,
+      clienteId,
+      formaPagamento: servicoAtivo.formaPagamento,
+      observacoes: payload.observacoes,
+      comprovante: payload.comprovante,
+    });
+    if (!res.ok) {
+      toast.error(res.error || "Erro ao autorizar pagamento");
+      throw new Error("autorizacao_falhou");
+    }
+    toast.success(res.message || "Pagamento autorizado", {
+      description: res.validoAte
+        ? `${servicoAtivo.origemLabel} liberado até ${formatDatePainel(res.validoAte)}.`
+        : `${servicoAtivo.origemLabel} liberado.`,
+    });
+    setServicoAtivo(null);
+    onPagamentoAutorizado?.();
+  };
+
   const statusMeta: Record<FaturaItem["status"], { cls: string; txt: string }> = {
     pago: { cls: "bg-success/10 text-success", txt: "Pago" },
     aberto: { cls: "bg-danger/10 text-danger", txt: "Aberto" },
@@ -1633,10 +1711,10 @@ function FinanceiroTab({
               </tr>
             </thead>
             <tbody>
-              {faturas.length === 0 && (
+              {faturas.length === 0 && servicos.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-2 py-8 text-center text-sm text-muted-foreground">
-                    Nenhuma fatura SICAF registrada.
+                    Nenhuma fatura registrada.
                   </td>
                 </tr>
               )}
@@ -1749,6 +1827,89 @@ function FinanceiroTab({
                   </td>
                 </tr>
               ))}
+              {servicos.map((s) => {
+                const arquivo = s.linkPdf || s.linkBoletoBanco;
+                const forma = s.formaPagamento || "—";
+                return (
+                  <tr key={`servico-${s.id}`} className="border-b border-border/40 last:border-0">
+                    <td className="px-2 py-2 font-mono whitespace-nowrap align-middle">#S{s.id}</td>
+                    <td
+                      className="px-2 py-2 align-middle truncate"
+                      title={`${s.origemLabel} — ${s.descricao ?? ""}`}
+                    >
+                      <span className="mr-1 inline-flex rounded bg-indigo-500/10 px-1 text-[9px] font-semibold uppercase text-indigo-700 dark:text-indigo-300">
+                        {s.origemLabel}
+                      </span>
+                      {s.descricao}
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap align-middle">
+                      <Badge
+                        variant="outline"
+                        className={`rounded-full px-1.5 py-0 text-[9px] font-semibold ${
+                          forma === "PIX"
+                            ? "bg-violet-500/10 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/20"
+                            : "bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/20"
+                        }`}
+                      >
+                        {forma}
+                      </Badge>
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap align-middle tabular-nums">
+                      {formatDatePainel(s.createdAt)}
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap align-middle tabular-nums">
+                      {formatDatePainel(s.dataVencimento)}
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap align-middle tabular-nums">
+                      {s.pago ? formatDatePainel(s.dataPagamento) : "—"}
+                    </td>
+                    <td className="px-2 py-2 text-right font-medium whitespace-nowrap tabular-nums align-middle">
+                      {Number(s.valor || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap align-middle">
+                      <span
+                        className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                          s.pago ? statusMeta.pago.cls : statusMeta.aberto.cls
+                        }`}
+                      >
+                        {s.pago ? "Pago" : s.vencido ? "Vencido" : "Aberto"}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 align-middle">
+                      {!s.pago ? (
+                        <div className="flex flex-nowrap justify-end gap-1">
+                          {arquivo && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              title="Abrir boleto"
+                              className="h-7 shrink-0 px-2 text-[10px] gap-1 border-sky-500/30 text-sky-700 hover:bg-sky-500/10 dark:text-sky-300"
+                              onClick={() => abrirArquivo(arquivo)}
+                            >
+                              <Download className="h-3 w-3 shrink-0" />
+                              Boleto
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            title="Autorizar pagamento"
+                            aria-label="Autorizar pagamento"
+                            className="h-7 shrink-0 px-2 text-[10px] gap-1 bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => setServicoAtivo(s)}
+                          >
+                            <ShieldCheck className="h-3 w-3 shrink-0" />
+                            Autorizar
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="block text-right text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1771,6 +1932,14 @@ function FinanceiroTab({
             : null
         }
         onConfirmar={confirmarAutorizacao}
+      />
+      <AutorizarPagamentoModal
+        open={!!servicoAtivo}
+        onOpenChange={(open) => {
+          if (!open) setServicoAtivo(null);
+        }}
+        dados={servicoAtivo ? dadosAutorizacaoServico(servicoAtivo, cliente.razao) : null}
+        onConfirmar={confirmarAutorizacaoServico}
       />
       <CancelarFaturaModal
         open={cancelarOpen}
@@ -1826,6 +1995,41 @@ function MiniStat({
       <p className={`mt-1 text-lg font-bold ${t}`}>{value}</p>
     </Card>
   );
+}
+
+function dadosAutorizacaoServico(s: ServicoFaturaApi, clienteNome: string) {
+  const modulo = s.origem.startsWith("modulo_");
+  return {
+    descricao: s.origemLabel,
+    cliente: clienteNome,
+    valor: Number(s.valor || 0),
+    forma: (s.formaPagamento === "PIX" ? "PIX" : "Boleto") as "Boleto" | "PIX",
+    dataGeracao: formatDatePainel(s.createdAt),
+    referencia: { label: "Vencimento", valor: formatDatePainel(s.dataVencimento) },
+    aposAutorizacao: modulo
+      ? {
+          destaques: [
+            { label: "Acesso", valor: "Liberado" },
+            { label: "Período", valor: "+1 mês" },
+          ],
+          itens: [
+            <>Mensalidade marcada como <strong>Pago</strong></>,
+            "Comprovante salvo no histórico",
+            <>{s.origemLabel} <strong>liberado</strong> por mais 1 mês</>,
+          ],
+        }
+      : {
+          destaques: [
+            { label: "Assessoria", valor: "Paga" },
+            { label: "Próxima etapa", valor: "Documentação" },
+          ],
+          itens: [
+            <>Cobrança marcada como <strong>Pago</strong></>,
+            "Comprovante salvo no histórico",
+            <>{s.origemLabel} segue para a etapa de <strong>documentação</strong></>,
+          ],
+        },
+  };
 }
 
 function formatDatePainel(d?: string | null) {

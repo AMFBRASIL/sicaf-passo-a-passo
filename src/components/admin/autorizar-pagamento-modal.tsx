@@ -23,11 +23,18 @@ export interface AutorizarPagamentoDados {
   descricao: string;
   cliente: string;
   valor: number;
-  ano: number;
+  ano?: number;
   forma: "Boleto" | "PIX";
   dataGeracao: string;
-  novaValidade: string;
-  diasRenovados: number;
+  novaValidade?: string;
+  diasRenovados?: number;
+  /** Substitui o card "Ano referência" (cobranças que não são do SICAF). */
+  referencia?: { label: string; valor: string };
+  /** Substitui o bloco de renovação do SICAF pelo efeito da autorização no serviço. */
+  aposAutorizacao?: {
+    destaques: { label: string; valor: string }[];
+    itens: React.ReactNode[];
+  };
 }
 
 interface Props {
@@ -125,7 +132,10 @@ export function AutorizarPagamentoModal({
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <StatCard label="Ano referência" value={String(dados.ano)} />
+              <StatCard
+                label={dados.referencia?.label ?? "Ano referência"}
+                value={dados.referencia?.valor ?? String(dados.ano ?? "—")}
+              />
               <StatCard label="Gerado em" value={dados.dataGeracao} />
               <StatCard label="Forma" value={dados.forma} className="hidden sm:flex" />
               <StatCard label="Status" value="Pendente" tone="warn" className="hidden sm:flex" />
@@ -137,23 +147,33 @@ export function AutorizarPagamentoModal({
                 Após autorização
               </div>
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="rounded-lg border border-emerald-100 bg-white p-3 text-center">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                    Nova validade
-                  </p>
-                  <p className="mt-1 text-lg font-bold text-emerald-700">{dados.novaValidade}</p>
-                </div>
-                <div className="rounded-lg border border-emerald-100 bg-white p-3 text-center">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                    Dias renovados
-                  </p>
-                  <p className="mt-1 text-lg font-bold text-emerald-700">{dados.diasRenovados} dias</p>
-                </div>
+                {(
+                  dados.aposAutorizacao?.destaques ?? [
+                    { label: "Nova validade", valor: dados.novaValidade ?? "—" },
+                    { label: "Dias renovados", valor: `${dados.diasRenovados ?? 0} dias` },
+                  ]
+                ).map((d) => (
+                  <div
+                    key={d.label}
+                    className="rounded-lg border border-emerald-100 bg-white p-3 text-center"
+                  >
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {d.label}
+                    </p>
+                    <p className="mt-1 text-lg font-bold text-emerald-700">{d.valor}</p>
+                  </div>
+                ))}
               </div>
               <ul className="mt-4 space-y-2 text-sm text-slate-700">
-                <CheckItem>Taxa marcada como <strong>Pago</strong></CheckItem>
-                <CheckItem>Comprovante salvo no histórico</CheckItem>
-                <CheckItem>SICAF <strong>Ativo</strong> até {dados.novaValidade}</CheckItem>
+                {dados.aposAutorizacao ? (
+                  dados.aposAutorizacao.itens.map((item, i) => <CheckItem key={i}>{item}</CheckItem>)
+                ) : (
+                  <>
+                    <CheckItem>Taxa marcada como <strong>Pago</strong></CheckItem>
+                    <CheckItem>Comprovante salvo no histórico</CheckItem>
+                    <CheckItem>SICAF <strong>Ativo</strong> até {dados.novaValidade}</CheckItem>
+                  </>
+                )}
               </ul>
             </div>
 
@@ -256,7 +276,7 @@ export function AutorizarPagamentoModal({
         {/* Footer */}
         <div className="flex flex-col-reverse gap-3 border-t bg-muted/30 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground hidden sm:block">
-            O comprovante ficará vinculado à taxa e ao cliente no banco de dados.
+            O comprovante ficará vinculado à cobrança e ao cliente no banco de dados.
           </p>
           <div className="flex w-full gap-3 sm:w-auto">
             <Button

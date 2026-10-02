@@ -408,14 +408,23 @@ async function extrairTextoPDF(filePath) {
  * @param {number} fileSize - Tamanho em bytes
  * @returns {Promise<Object>}
  */
-async function analisarEdital(usuarioId, filePath, fileName, fileSize) {
+async function analisarEdital(usuarioId, filePath, fileName, fileSize, opts = {}) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
+  // semCredito: leitura incluída em módulo pago (não consome nem devolve crédito)
+  const semCredito = Boolean(opts.semCredito);
+  const devolverCredito = () =>
+    semCredito
+      ? Promise.resolve()
+      : db('usuario_creditos_ia').where('usuario_id', usuarioId).decrement('creditos_utilizados', 1);
+
   try {
     // 1. Verificar créditos
-    const creditoResult = await consumirCredito(usuarioId);
-    if (!creditoResult.ok) return creditoResult;
+    if (!semCredito) {
+      const creditoResult = await consumirCredito(usuarioId);
+      if (!creditoResult.ok) return creditoResult;
+    }
 
     // 2. Criar registro da leitura
     const [leituraId] = await db('leituras_edital_ia').insert({
@@ -438,7 +447,7 @@ async function analisarEdital(usuarioId, filePath, fileName, fileSize) {
         erro_mensagem: e.message,
       });
       // Devolver crédito
-      await db('usuario_creditos_ia').where('usuario_id', usuarioId).decrement('creditos_utilizados', 1);
+      await devolverCredito();
       return { ok: false, error: e.message, leituraId };
     }
 
@@ -447,7 +456,7 @@ async function analisarEdital(usuarioId, filePath, fileName, fileSize) {
         status: 'erro',
         erro_mensagem: 'Não foi possível extrair texto suficiente do documento. Verifique se o PDF contém texto selecionável (não é imagem).',
       });
-      await db('usuario_creditos_ia').where('usuario_id', usuarioId).decrement('creditos_utilizados', 1);
+      await devolverCredito();
       return { ok: false, error: 'Documento sem texto extraível', leituraId };
     }
 
@@ -489,7 +498,7 @@ async function analisarEdital(usuarioId, filePath, fileName, fileSize) {
         erro_mensagem: `Erro na análise IA: ${e.message}`,
       });
       // Devolver crédito em caso de erro da IA
-      await db('usuario_creditos_ia').where('usuario_id', usuarioId).decrement('creditos_utilizados', 1);
+      await devolverCredito();
       return { ok: false, error: `Erro na análise: ${e.message}`, leituraId };
     }
 

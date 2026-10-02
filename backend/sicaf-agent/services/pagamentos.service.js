@@ -18,6 +18,11 @@ const gerencianetService = require('./gerencianet.service');
 const PAGAMENTOS_TABLE = 'pagamentos';
 const PAYMENT_PROVIDER = 'gerencianet';
 
+/** Require tardio: os serviços de assessoria importam este módulo. */
+function servicoAssessoriaPorOrigem(origem) {
+  return require('./assessoria-portal.service').servicoPorOrigem(origem);
+}
+
 function pagamentosQuery(db) {
   return db(PAGAMENTOS_TABLE).whereNull('deleted_at');
 }
@@ -1122,6 +1127,8 @@ async function atualizarStatus(id, novoStatus, extras = {}) {
             status: 'Pago',
             data_pagamento: db.fn.now(),
           });
+        } else if (servicoAssessoriaPorOrigem(pgto.origem)) {
+          await servicoAssessoriaPorOrigem(pgto.origem).confirmarPagamento(pgto.origem_id);
         } else if (pgto.origem === 'manutencao') {
           await db('manutencao_boletos').where('id', pgto.origem_id).update({
             status: 'Pago',
@@ -1242,6 +1249,12 @@ async function propagarPagamentoConfirmado(db, pgto) {
   if (pgto.origem === 'sicaf' && pgto.origem_id) {
     const sicafTaxa = require('./sicaf-taxa.service');
     await sicafTaxa.confirmarPagamento(pgto.origem_id);
+    return;
+  }
+
+  const assessoria = servicoAssessoriaPorOrigem(pgto.origem);
+  if (assessoria && pgto.origem_id) {
+    await assessoria.confirmarPagamento(pgto.origem_id);
     return;
   }
 

@@ -100,6 +100,102 @@ async function autorizarComComprovante({
   };
 }
 
+/**
+ * Autoriza manualmente cobranças de serviços (CAUFESP, BLL, módulos mensais) a partir
+ * do registro em `pagamentos` e libera o serviço correspondente pela origem.
+ */
+async function autorizarServicoComComprovante({
+  pagamentoId,
+  clienteId,
+  formaPagamento,
+  arquivoUrl,
+  arquivoNome,
+  arquivoTipo,
+  arquivoTamanhoBytes,
+  observacoes,
+  autorizadoPor,
+}) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const pgto = await db('pagamentos').whereNull('deleted_at').where('id', pagamentoId).first();
+  if (!pgto) return { ok: false, error: 'Cobrança não encontrada' };
+  if (clienteId && Number(pgto.cliente_id) !== Number(clienteId)) {
+    return { ok: false, error: 'Cobrança não pertence a este cliente' };
+  }
+  if (pgto.status === 'pago') return { ok: false, error: 'Esta cobrança já está paga' };
+  if (['cancelado', 'estornado'].includes(String(pgto.status))) {
+    return { ok: false, error: 'Cobrança cancelada não pode ser autorizada' };
+  }
+
+  const { servicoPorOrigem } = require('./assessoria-portal.service');
+  const servico = pgto.origem ? servicoPorOrigem(pgto.origem) : null;
+  if (!servico || !pgto.origem_id) {
+    return { ok: false, error: 'Esta cobrança não é de um serviço autorizável por aqui' };
+  }
+  if (!arquivoUrl || !String(arquivoUrl).trim()) {
+    return { ok: false, error: 'Comprovante de pagamento é obrigatório' };
+  }
+
+  await db('pagamentos').where('id', pgto.id).update({
+    status: 'pago',
+    data_pagamento: db.fn.now(),
+    updated_at: db.fn.now(),
+  });
+
+  const confirm = await servico.confirmarPagamento(pgto.origem_id);
+  if (!confirm.ok) {
+    await db('pagamentos').where('id', pgto.id).update({
+      status: pgto.status,
+      data_pagamento: pgto.data_pagamento || null,
+    });
+    return { ok: false, error: confirm.error || 'Falha ao liberar o serviço' };
+  }
+
+  let comprovanteId = null;
+  try {
+    [comprovanteId] = await db('pagamento_comprovantes').insert({
+      cliente_id: pgto.cliente_id,
+      taxa_sicaf_id: null,
+      pagamento_id: pgto.id,
+      forma_pagamento: normForma(formaPagamento || pgto.tipo),
+      valor: pgto.valor,
+      arquivo_url: arquivoUrl,
+      arquivo_nome: arquivoNome || null,
+      arquivo_tipo: arquivoTipo || null,
+      arquivo_tamanho_bytes: arquivoTamanhoBytes || null,
+      observacoes: observacoes || null,
+      autorizado_por: autorizadoPor || null,
+      autorizado_em: db.fn.now(),
+    });
+  } catch (e) {
+    console.error('[PagamentoComprovante] Erro ao salvar comprovante de serviço:', e.message);
+    return {
+      ok: false,
+      error: 'Pagamento autorizado, mas falhou ao salvar o comprovante. Contate o suporte.',
+      servicoConfirmado: true,
+    };
+  }
+
+  try {
+    await db('historico_acoes').insert({
+      cliente_id: pgto.cliente_id,
+      usuario_id: autorizadoPor || null,
+      acao: `Pagamento autorizado manualmente (${pgto.descricao || pgto.origem} · pagamento #${pgto.id}) com comprovante`,
+      entidade: 'pagamento_comprovantes',
+      entidade_id: comprovanteId,
+      created_at: db.fn.now(),
+    });
+  } catch (_) {}
+
+  return {
+    ok: true,
+    message: 'Pagamento autorizado e serviço liberado.',
+    comprovanteId,
+    validoAte: confirm.validoAte || null,
+  };
+}
+
 async function listarPorCliente(clienteId, limit = 20) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
@@ -135,5 +231,6 @@ async function listarPorCliente(clienteId, limit = 20) {
 
 module.exports = {
   autorizarComComprovante,
+  autorizarServicoComComprovante,
   listarPorCliente,
 };

@@ -61,6 +61,23 @@ type PagamentoComprovanteService = {
       erro?: string;
     };
   }>;
+  autorizarServicoComComprovante: (opts: {
+    pagamentoId: number;
+    clienteId: number;
+    formaPagamento?: string;
+    arquivoUrl: string;
+    arquivoNome?: string;
+    arquivoTipo?: string;
+    arquivoTamanhoBytes?: number;
+    observacoes?: string;
+    autorizadoPor?: number;
+  }) => Promise<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    comprovanteId?: number;
+    validoAte?: string | null;
+  }>;
 };
 
 export async function POST(request: Request) {
@@ -81,7 +98,13 @@ export async function POST(request: Request) {
       ? String(formData.get("observacoes")).trim()
       : undefined;
 
-    if (!Number.isFinite(taxaId) || taxaId <= 0) {
+    const servico = String(formData.get("tipo") || "") === "servico";
+
+    if (servico) {
+      if (!Number.isFinite(pagamentoId) || !pagamentoId || pagamentoId <= 0) {
+        return NextResponse.json({ ok: false, error: "pagamentoId é obrigatório" }, { status: 400 });
+      }
+    } else if (!Number.isFinite(taxaId) || taxaId <= 0) {
       return NextResponse.json({ ok: false, error: "taxaId é obrigatório" }, { status: 400 });
     }
     if (!Number.isFinite(clienteId) || clienteId <= 0) {
@@ -131,6 +154,22 @@ export async function POST(request: Request) {
     const svc = await getSicafAgentModule<PagamentoComprovanteService>(
       "services/pagamento-comprovante.service",
     );
+
+    if (servico) {
+      const resultServico = await svc.autorizarServicoComComprovante({
+        pagamentoId: pagamentoId as number,
+        clienteId,
+        formaPagamento,
+        arquivoUrl,
+        arquivoNome: originalName,
+        arquivoTipo: comprovante.type || ext,
+        arquivoTamanhoBytes: buffer.length,
+        observacoes,
+        autorizadoPor: usuarioId,
+      });
+      return NextResponse.json(resultServico, { status: resultServico.ok ? 200 : 400 });
+    }
+
     const result = await svc.autorizarComComprovante({
       taxaId,
       pagamentoId: Number.isFinite(pagamentoId) ? pagamentoId : undefined,

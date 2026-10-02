@@ -51,6 +51,11 @@ export type ClienteFinanceiroPainel = {
     pendentes: PagamentoFinanceiroItem[];
   };
   personalizados?: PagamentoFinanceiroItem[];
+  /** Assessorias (CAUFESP, BLL) e módulos mensais (Licitações-e, PNCP). */
+  servicos?: (PagamentoFinanceiroItem & {
+    origem: "caufesp" | "bll" | "modulo_licitacoes_e" | "modulo_pncp";
+    origemLabel: string;
+  })[];
   pendencias?: PagamentoFinanceiroItem[];
 };
 
@@ -128,7 +133,9 @@ export async function detectarFluxoPagamentoSicaf(clienteId: number): Promise<{
 
 export type SituacaoFinanceiraEmpresa = "em_dia" | "pendente" | "vencido" | "sem_cobranca";
 
-export function classificarSituacaoFinanceira(financeiro?: ClienteFinanceiroPainel | null): SituacaoFinanceiraEmpresa {
+export function classificarSituacaoFinanceira(
+  financeiro?: ClienteFinanceiroPainel | null,
+): SituacaoFinanceiraEmpresa {
   if (!financeiro) return "sem_cobranca";
   const vencidos = financeiro.resumo?.qtdVencidos ?? 0;
   if (vencidos > 0) return "vencido";

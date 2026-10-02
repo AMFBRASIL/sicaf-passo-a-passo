@@ -71,6 +71,7 @@ export type LicitacoesListParams = {
   mira?: "0" | "1";
   uf?: string[];
   modalidade?: string[];
+  status?: string[];
   valor_min?: number;
   valor_max?: number;
   prazo_max_days?: number;
@@ -291,6 +292,7 @@ function buildQuery(params: LicitacoesListParams): string {
   if (params.mira) sp.set("mira", params.mira);
   if (params.uf?.length) sp.set("uf", params.uf.join(","));
   if (params.modalidade?.length) sp.set("modalidade", params.modalidade.join(","));
+  if (params.status?.length) sp.set("status", params.status.join(","));
   if (params.valor_min != null) sp.set("valor_min", String(params.valor_min));
   if (params.valor_max != null) sp.set("valor_max", String(params.valor_max));
   if (params.prazo_max_days != null) sp.set("prazo_max_days", String(params.prazo_max_days));
@@ -301,9 +303,9 @@ function buildQuery(params: LicitacoesListParams): string {
   return qs ? `?${qs}` : "";
 }
 
-export async function fetchLicitacoesStats(
-  options?: { kpisOnly?: boolean },
-): Promise<LicitacoesStatsResponse> {
+export async function fetchLicitacoesStats(options?: {
+  kpisOnly?: boolean;
+}): Promise<LicitacoesStatsResponse> {
   const qs = options?.kpisOnly ? "?kpisOnly=1" : "";
   const res = await apiFetch(`/api/licitacoes/stats${qs}`);
   return res.json();

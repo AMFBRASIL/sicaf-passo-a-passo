@@ -76,6 +76,11 @@ async function propagarLocal(db, pgto) {
     await sicafTaxa.confirmarPagamento(pgto.origem_id);
     return;
   }
+  const assessoria = require('./assessoria-portal.service').servicoPorOrigem(pgto.origem);
+  if (assessoria && pgto.origem_id) {
+    await assessoria.confirmarPagamento(pgto.origem_id);
+    return;
+  }
   if (pgto.origem === 'manutencao' && pgto.origem_id) {
     await db('manutencao_boletos').where('id', pgto.origem_id).update({
       status: 'Pago',

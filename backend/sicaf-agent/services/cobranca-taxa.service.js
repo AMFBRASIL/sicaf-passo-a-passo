@@ -131,6 +131,7 @@ function collectGuiasPagas(financeiro) {
     ...(financeiro?.sicaf?.pagos || []),
     ...(financeiro?.manutencao?.pagos || []),
     ...(financeiro?.personalizados || []).filter((p) => p.pago),
+    ...(financeiro?.servicos || []).filter((p) => p.pago),
   ];
 }
 

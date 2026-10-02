@@ -18,12 +18,14 @@ import { Route as ServicosIaRouteImport } from './routes/servicos-ia'
 import { Route as ServicosRouteImport } from './routes/servicos'
 import { Route as PropostasRouteImport } from './routes/propostas'
 import { Route as ProntidaoRouteImport } from './routes/prontidao'
+import { Route as PncpRouteImport } from './routes/pncp'
 import { Route as Pagamentos_naoefetuadoRouteImport } from './routes/pagamentos_naoefetuado'
 import { Route as PagamentosRouteImport } from './routes/pagamentos'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificacoesRouteImport } from './routes/notificacoes'
 import { Route as MissoesRouteImport } from './routes/missoes'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as LicitacoesERouteImport } from './routes/licitacoes-e'
 import { Route as LicitacoesRouteImport } from './routes/licitacoes'
 import { Route as Inicio2RouteImport } from './routes/inicio2'
 import { Route as FaltamRouteImport } from './routes/faltam'
@@ -36,6 +38,8 @@ import { Route as ConcorrenciaRouteImport } from './routes/concorrencia'
 import { Route as ConcluidoRouteImport } from './routes/concluido'
 import { Route as ColaboradoresRouteImport } from './routes/colaboradores'
 import { Route as CertidoesRouteImport } from './routes/certidoes'
+import { Route as CaufespRouteImport } from './routes/caufesp'
+import { Route as BllRouteImport } from './routes/bll'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AssistenteRouteImport } from './routes/assistente'
 import { Route as AjudaRouteImport } from './routes/ajuda'
@@ -45,6 +49,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthIndexRouteImport } from './routes/auth.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as PayCodeRouteImport } from './routes/pay.$code'
+import { Route as CadastrosFrenteRouteImport } from './routes/cadastros.$frente'
 import { Route as AuthRecuperarSenhaRouteImport } from './routes/auth.recuperar-senha'
 import { Route as AdminSuporteRemotoRouteImport } from './routes/admin.suporte-remoto'
 import { Route as AdminSuporteRouteImport } from './routes/admin.suporte'
@@ -119,6 +124,11 @@ const ProntidaoRoute = ProntidaoRouteImport.update({
   path: '/prontidao',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PncpRoute = PncpRouteImport.update({
+  id: '/pncp',
+  path: '/pncp',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const Pagamentos_naoefetuadoRoute = Pagamentos_naoefetuadoRouteImport.update({
   id: '/pagamentos_naoefetuado',
   path: '/pagamentos_naoefetuado',
@@ -147,6 +157,11 @@ const MissoesRoute = MissoesRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LicitacoesERoute = LicitacoesERouteImport.update({
+  id: '/licitacoes-e',
+  path: '/licitacoes-e',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LicitacoesRoute = LicitacoesRouteImport.update({
@@ -209,6 +224,16 @@ const CertidoesRoute = CertidoesRouteImport.update({
   path: '/certidoes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CaufespRoute = CaufespRouteImport.update({
+  id: '/caufesp',
+  path: '/caufesp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BllRoute = BllRouteImport.update({
+  id: '/bll',
+  path: '/bll',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -252,6 +277,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const PayCodeRoute = PayCodeRouteImport.update({
   id: '/pay/$code',
   path: '/pay/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CadastrosFrenteRoute = CadastrosFrenteRouteImport.update({
+  id: '/cadastros/$frente',
+  path: '/cadastros/$frente',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRecuperarSenhaRoute = AuthRecuperarSenhaRouteImport.update({
@@ -402,6 +432,8 @@ export interface FileRoutesByFullPath {
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
   '/auth': typeof AuthRouteWithChildren
+  '/bll': typeof BllRoute
+  '/caufesp': typeof CaufespRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
@@ -414,12 +446,14 @@ export interface FileRoutesByFullPath {
   '/faltam': typeof FaltamRoute
   '/inicio2': typeof Inicio2Route
   '/licitacoes': typeof LicitacoesRoute
+  '/licitacoes-e': typeof LicitacoesERoute
   '/login': typeof LoginRoute
   '/missoes': typeof MissoesRoute
   '/notificacoes': typeof NotificacoesRoute
   '/onboarding': typeof OnboardingRoute
   '/pagamentos': typeof PagamentosRoute
   '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
+  '/pncp': typeof PncpRoute
   '/prontidao': typeof ProntidaoRoute
   '/propostas': typeof PropostasRoute
   '/servicos': typeof ServicosRoute
@@ -455,6 +489,7 @@ export interface FileRoutesByFullPath {
   '/admin/suporte': typeof AdminSuporteRouteWithChildren
   '/admin/suporte-remoto': typeof AdminSuporteRemotoRoute
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
+  '/cadastros/$frente': typeof CadastrosFrenteRoute
   '/pay/$code': typeof PayCodeRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/': typeof AuthIndexRoute
@@ -466,6 +501,8 @@ export interface FileRoutesByTo {
   '/acesso-remoto': typeof AcessoRemotoRoute
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
+  '/bll': typeof BllRoute
+  '/caufesp': typeof CaufespRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
@@ -478,12 +515,14 @@ export interface FileRoutesByTo {
   '/faltam': typeof FaltamRoute
   '/inicio2': typeof Inicio2Route
   '/licitacoes': typeof LicitacoesRoute
+  '/licitacoes-e': typeof LicitacoesERoute
   '/login': typeof LoginRoute
   '/missoes': typeof MissoesRoute
   '/notificacoes': typeof NotificacoesRoute
   '/onboarding': typeof OnboardingRoute
   '/pagamentos': typeof PagamentosRoute
   '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
+  '/pncp': typeof PncpRoute
   '/prontidao': typeof ProntidaoRoute
   '/propostas': typeof PropostasRoute
   '/servicos': typeof ServicosRoute
@@ -518,6 +557,7 @@ export interface FileRoutesByTo {
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte-remoto': typeof AdminSuporteRemotoRoute
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
+  '/cadastros/$frente': typeof CadastrosFrenteRoute
   '/pay/$code': typeof PayCodeRoute
   '/admin': typeof AdminIndexRoute
   '/auth': typeof AuthIndexRoute
@@ -532,6 +572,8 @@ export interface FileRoutesById {
   '/ajuda': typeof AjudaRoute
   '/assistente': typeof AssistenteRoute
   '/auth': typeof AuthRouteWithChildren
+  '/bll': typeof BllRoute
+  '/caufesp': typeof CaufespRoute
   '/certidoes': typeof CertidoesRoute
   '/colaboradores': typeof ColaboradoresRoute
   '/concluido': typeof ConcluidoRoute
@@ -544,12 +586,14 @@ export interface FileRoutesById {
   '/faltam': typeof FaltamRoute
   '/inicio2': typeof Inicio2Route
   '/licitacoes': typeof LicitacoesRoute
+  '/licitacoes-e': typeof LicitacoesERoute
   '/login': typeof LoginRoute
   '/missoes': typeof MissoesRoute
   '/notificacoes': typeof NotificacoesRoute
   '/onboarding': typeof OnboardingRoute
   '/pagamentos': typeof PagamentosRoute
   '/pagamentos_naoefetuado': typeof Pagamentos_naoefetuadoRoute
+  '/pncp': typeof PncpRoute
   '/prontidao': typeof ProntidaoRoute
   '/propostas': typeof PropostasRoute
   '/servicos': typeof ServicosRoute
@@ -585,6 +629,7 @@ export interface FileRoutesById {
   '/admin/suporte': typeof AdminSuporteRouteWithChildren
   '/admin/suporte-remoto': typeof AdminSuporteRemotoRoute
   '/auth/recuperar-senha': typeof AuthRecuperarSenhaRoute
+  '/cadastros/$frente': typeof CadastrosFrenteRoute
   '/pay/$code': typeof PayCodeRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/': typeof AuthIndexRoute
@@ -600,6 +645,8 @@ export interface FileRouteTypes {
     | '/ajuda'
     | '/assistente'
     | '/auth'
+    | '/bll'
+    | '/caufesp'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
@@ -612,12 +659,14 @@ export interface FileRouteTypes {
     | '/faltam'
     | '/inicio2'
     | '/licitacoes'
+    | '/licitacoes-e'
     | '/login'
     | '/missoes'
     | '/notificacoes'
     | '/onboarding'
     | '/pagamentos'
     | '/pagamentos_naoefetuado'
+    | '/pncp'
     | '/prontidao'
     | '/propostas'
     | '/servicos'
@@ -653,6 +702,7 @@ export interface FileRouteTypes {
     | '/admin/suporte'
     | '/admin/suporte-remoto'
     | '/auth/recuperar-senha'
+    | '/cadastros/$frente'
     | '/pay/$code'
     | '/admin/'
     | '/auth/'
@@ -664,6 +714,8 @@ export interface FileRouteTypes {
     | '/acesso-remoto'
     | '/ajuda'
     | '/assistente'
+    | '/bll'
+    | '/caufesp'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
@@ -676,12 +728,14 @@ export interface FileRouteTypes {
     | '/faltam'
     | '/inicio2'
     | '/licitacoes'
+    | '/licitacoes-e'
     | '/login'
     | '/missoes'
     | '/notificacoes'
     | '/onboarding'
     | '/pagamentos'
     | '/pagamentos_naoefetuado'
+    | '/pncp'
     | '/prontidao'
     | '/propostas'
     | '/servicos'
@@ -716,6 +770,7 @@ export interface FileRouteTypes {
     | '/admin/sicaf'
     | '/admin/suporte-remoto'
     | '/auth/recuperar-senha'
+    | '/cadastros/$frente'
     | '/pay/$code'
     | '/admin'
     | '/auth'
@@ -729,6 +784,8 @@ export interface FileRouteTypes {
     | '/ajuda'
     | '/assistente'
     | '/auth'
+    | '/bll'
+    | '/caufesp'
     | '/certidoes'
     | '/colaboradores'
     | '/concluido'
@@ -741,12 +798,14 @@ export interface FileRouteTypes {
     | '/faltam'
     | '/inicio2'
     | '/licitacoes'
+    | '/licitacoes-e'
     | '/login'
     | '/missoes'
     | '/notificacoes'
     | '/onboarding'
     | '/pagamentos'
     | '/pagamentos_naoefetuado'
+    | '/pncp'
     | '/prontidao'
     | '/propostas'
     | '/servicos'
@@ -782,6 +841,7 @@ export interface FileRouteTypes {
     | '/admin/suporte'
     | '/admin/suporte-remoto'
     | '/auth/recuperar-senha'
+    | '/cadastros/$frente'
     | '/pay/$code'
     | '/admin/'
     | '/auth/'
@@ -796,6 +856,8 @@ export interface RootRouteChildren {
   AjudaRoute: typeof AjudaRoute
   AssistenteRoute: typeof AssistenteRoute
   AuthRoute: typeof AuthRouteWithChildren
+  BllRoute: typeof BllRoute
+  CaufespRoute: typeof CaufespRoute
   CertidoesRoute: typeof CertidoesRoute
   ColaboradoresRoute: typeof ColaboradoresRoute
   ConcluidoRoute: typeof ConcluidoRoute
@@ -808,12 +870,14 @@ export interface RootRouteChildren {
   FaltamRoute: typeof FaltamRoute
   Inicio2Route: typeof Inicio2Route
   LicitacoesRoute: typeof LicitacoesRoute
+  LicitacoesERoute: typeof LicitacoesERoute
   LoginRoute: typeof LoginRoute
   MissoesRoute: typeof MissoesRoute
   NotificacoesRoute: typeof NotificacoesRoute
   OnboardingRoute: typeof OnboardingRoute
   PagamentosRoute: typeof PagamentosRoute
   Pagamentos_naoefetuadoRoute: typeof Pagamentos_naoefetuadoRoute
+  PncpRoute: typeof PncpRoute
   ProntidaoRoute: typeof ProntidaoRoute
   PropostasRoute: typeof PropostasRoute
   ServicosRoute: typeof ServicosRoute
@@ -823,6 +887,7 @@ export interface RootRouteChildren {
   SicafAssistantChatRoute: typeof SicafAssistantChatRoute
   Sicaf_oldRoute: typeof Sicaf_oldRoute
   SuporteRoute: typeof SuporteRoute
+  CadastrosFrenteRoute: typeof CadastrosFrenteRoute
   PayCodeRoute: typeof PayCodeRoute
 }
 
@@ -891,6 +956,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProntidaoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pncp': {
+      id: '/pncp'
+      path: '/pncp'
+      fullPath: '/pncp'
+      preLoaderRoute: typeof PncpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pagamentos_naoefetuado': {
       id: '/pagamentos_naoefetuado'
       path: '/pagamentos_naoefetuado'
@@ -931,6 +1003,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/licitacoes-e': {
+      id: '/licitacoes-e'
+      path: '/licitacoes-e'
+      fullPath: '/licitacoes-e'
+      preLoaderRoute: typeof LicitacoesERouteImport
       parentRoute: typeof rootRouteImport
     }
     '/licitacoes': {
@@ -1017,6 +1096,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CertidoesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/caufesp': {
+      id: '/caufesp'
+      path: '/caufesp'
+      fullPath: '/caufesp'
+      preLoaderRoute: typeof CaufespRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bll': {
+      id: '/bll'
+      path: '/bll'
+      fullPath: '/bll'
+      preLoaderRoute: typeof BllRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
@@ -1078,6 +1171,13 @@ declare module '@tanstack/react-router' {
       path: '/pay/$code'
       fullPath: '/pay/$code'
       preLoaderRoute: typeof PayCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cadastros/$frente': {
+      id: '/cadastros/$frente'
+      path: '/cadastros/$frente'
+      fullPath: '/cadastros/$frente'
+      preLoaderRoute: typeof CadastrosFrenteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/recuperar-senha': {
@@ -1372,6 +1472,8 @@ const rootRouteChildren: RootRouteChildren = {
   AjudaRoute: AjudaRoute,
   AssistenteRoute: AssistenteRoute,
   AuthRoute: AuthRouteWithChildren,
+  BllRoute: BllRoute,
+  CaufespRoute: CaufespRoute,
   CertidoesRoute: CertidoesRoute,
   ColaboradoresRoute: ColaboradoresRoute,
   ConcluidoRoute: ConcluidoRoute,
@@ -1384,12 +1486,14 @@ const rootRouteChildren: RootRouteChildren = {
   FaltamRoute: FaltamRoute,
   Inicio2Route: Inicio2Route,
   LicitacoesRoute: LicitacoesRoute,
+  LicitacoesERoute: LicitacoesERoute,
   LoginRoute: LoginRoute,
   MissoesRoute: MissoesRoute,
   NotificacoesRoute: NotificacoesRoute,
   OnboardingRoute: OnboardingRoute,
   PagamentosRoute: PagamentosRoute,
   Pagamentos_naoefetuadoRoute: Pagamentos_naoefetuadoRoute,
+  PncpRoute: PncpRoute,
   ProntidaoRoute: ProntidaoRoute,
   PropostasRoute: PropostasRoute,
   ServicosRoute: ServicosRoute,
@@ -1399,6 +1503,7 @@ const rootRouteChildren: RootRouteChildren = {
   SicafAssistantChatRoute: SicafAssistantChatRoute,
   Sicaf_oldRoute: Sicaf_oldRoute,
   SuporteRoute: SuporteRoute,
+  CadastrosFrenteRoute: CadastrosFrenteRoute,
   PayCodeRoute: PayCodeRoute,
 }
 export const routeTree = rootRouteImport
