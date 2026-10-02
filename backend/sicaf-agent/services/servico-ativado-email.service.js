@@ -11,6 +11,7 @@ const { getDb } = require('../database/connection');
 const WHATSAPP_NUMERO = process.env.CADBRASIL_WHATSAPP_NUMERO || '551121220202';
 const WHATSAPP_DISPLAY = process.env.CADBRASIL_WHATSAPP_DISPLAY || '(11) 2122-0202';
 const DIAS_RENOVACAO = 7;
+const EMAIL_EQUIPE = process.env.CADBRASIL_EMAIL_EQUIPE_SERVICOS || 'documentos@fornecedordigital.com.br';
 
 const ORIGEM_POR_SERVICO = {
   caufesp: 'caufesp',
@@ -667,6 +668,166 @@ function emailRenovacao(ctx, servico) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Aviso interno para a central dos colaboradores                       */
+/* ------------------------------------------------------------------ */
+
+const SERVICOS_EQUIPE = {
+  caufesp: {
+    nome: 'Assessoria Cadastro CAUFESP (BEC/SP)',
+    acento: '#047857',
+    tarefas: [
+      'Acompanhar o envio dos documentos pelo cliente no portal (o cliente indica se fornece bens, serviços ou ambos).',
+      'Conferir cada documento na <strong>Central de serviços</strong> do cliente e aprovar ou recusar com o motivo.',
+      'Com tudo aprovado, fazer o pré-cadastro no CAUFESP, enviar à Unidade Cadastradora e registrar o número do protocolo.',
+      'Acompanhar a análise do Governo de SP até a emissão do CRC.',
+    ],
+  },
+  bll: {
+    nome: 'Assessoria Cadastro BLL Compras',
+    acento: '#7c3aed',
+    tarefas: [
+      'Acompanhar o envio dos documentos pelo cliente no portal (inclusive o contrato social autenticado).',
+      'Conferir cada documento na <strong>Central de serviços</strong> do cliente e aprovar ou recusar com o motivo.',
+      'Fazer o cadastro da empresa na BLL e registrar o protocolo.',
+      'Orientar o cliente sobre o plano da BLL (trimestral ou por êxito), pago diretamente à BLL.',
+    ],
+  },
+  licitacoes_e: {
+    nome: 'Módulo Assistente Licitações-e',
+    acento: '#ca8a04',
+    tarefas: [
+      'Fazer contato de boas-vindas e orientar as etapas de liberação do acesso ao Licitações-e (Banco do Brasil).',
+      'Acompanhar pedidos de apoio do cliente na aba Licitações-e da <strong>Central de serviços</strong>.',
+    ],
+  },
+  pncp: {
+    nome: 'Módulo PNCP Inteligente',
+    acento: '#1d4ed8',
+    tarefas: [
+      'Fazer contato de boas-vindas e apresentar a pesquisa de oportunidades, a leitura de edital com IA e o treinamento.',
+      'Ajudar o cliente a configurar as palavras-chave do ramo dele para a pesquisa no PNCP.',
+    ],
+  },
+};
+
+function emailEquipe({ cliente, servico, pgto, validoAte, renovacao, clienteSemEmail }) {
+  const cfg = SERVICOS_EQUIPE[servico];
+  const empresa = cliente?.razao_social || `Cliente #${cliente?.id ?? '—'}`;
+  const cnpj = cliente?.documento || '—';
+  const telefone = cliente?.responsavel_telefone || cliente?.telefone || cliente?.celular || '—';
+  const tipo = renovacao ? 'Renovação de mensalidade' : 'Nova contratação';
+  const modulo = Boolean(MODULOS_NOME[servico]);
+  const tarefas = renovacao
+    ? ['Nenhuma ação obrigatória: o acesso foi renovado automaticamente. Verifique apenas se há pedidos de apoio pendentes.']
+    : cfg.tarefas;
+
+  const corpo = [
+    paragrafo(
+      renovacao
+        ? `O cliente <strong>${esc(empresa)}</strong> renovou a mensalidade do <strong>${esc(cfg.nome)}</strong>.`
+        : `O cliente <strong>${esc(empresa)}</strong> contratou o serviço <strong>${esc(cfg.nome)}</strong> e o pagamento foi confirmado.`,
+    ),
+    clienteSemEmail
+      ? caixa({
+          titulo: 'Cliente sem e-mail cadastrado',
+          html: 'O cliente não recebeu o comunicado de ativação. Atualize o e-mail no cadastro e use "Reenviar ao cliente" na Central de serviços.',
+          fundo: '#fef2f2',
+          borda: '#dc2626',
+          cor: '#7f1d1d',
+        })
+      : '',
+    secao('Dados da contratação'),
+    tabelaResumo([
+      ['Serviço', cfg.nome],
+      ['Tipo', tipo, renovacao ? '#1d4ed8' : '#047857'],
+      ['Valor pago', moeda(pgto?.valor), '#047857'],
+      ['Forma de pagamento', formaPagamentoLabel(pgto?.tipo)],
+      ['Data do pagamento', dataBr(pgto?.data_pagamento || pgto?.updated_at || new Date())],
+      modulo ? ['Acesso liberado até', dataBr(validoAte)] : null,
+    ]),
+    secao('Dados do cliente'),
+    tabelaResumo([
+      ['Código do cliente', String(cliente?.id ?? '—')],
+      ['Empresa', empresa],
+      ['CNPJ', cnpj],
+      ['Responsável', cliente?.responsavel_nome || '—'],
+      ['E-mail', cliente?.email || 'Não cadastrado', cliente?.email ? null : '#b91c1c'],
+      ['Telefone', telefone],
+    ]),
+    secao('O que fazer agora'),
+    lista(tarefas, cfg.acento),
+    `<table role="presentation" width="100%" style="margin:18px 0 6px">${botao(`${portalBase()}/admin/clientes`, 'Abrir clientes no admin', cfg.acento)}</table>`,
+    paragrafo(
+      `<span style="font-size:13px;color:#64748b">No admin, busque pelo CNPJ ${esc(cnpj)}, abra o cliente e clique em <strong>Serviços</strong>.</span>`,
+    ),
+  ].join('');
+
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${esc(cfg.nome)}</title></head>
+<body style="margin:0;padding:0;background:#e8edf2">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#e8edf2;padding:32px 12px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:660px;background:#ffffff;border:1px solid #c5d0db">
+        <tr>
+          <td style="background:#0f2f52;padding:24px 32px;border-bottom:4px solid ${cfg.acento};font-family:${FONT}">
+            <p style="margin:0 0 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.75)">Central dos colaboradores · Aviso interno</p>
+            <h1 style="margin:0;font-size:22px;line-height:1.3;color:#ffffff;font-weight:700;font-family:Georgia,'Times New Roman',serif">${renovacao ? 'Mensalidade renovada' : 'Novo serviço contratado'}</h1>
+            <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,.88)">${esc(cfg.nome)} · ${esc(empresa)}</p>
+          </td>
+        </tr>
+        <tr><td style="padding:28px 32px 16px">${corpo}</td></tr>
+        <tr>
+          <td style="background:#f1f5f9;border-top:1px solid #cbd5e1;padding:16px 32px;text-align:center;font-family:${FONT}">
+            <p style="margin:0;font-size:11px;line-height:1.6;color:#64748b">Aviso automático do portal CADBRASIL enviado em ${esc(hoje)}. Uso interno da equipe.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  return {
+    assunto: `[${renovacao ? 'Renovação' : 'Novo serviço'}] ${cfg.nome} — ${empresa} · ${cnpj}`,
+    html,
+    texto: [
+      `${renovacao ? 'Mensalidade renovada' : 'Novo serviço contratado'}: ${cfg.nome}`,
+      `Empresa: ${empresa} | CNPJ: ${cnpj} | Código: ${cliente?.id ?? '—'}`,
+      `Responsável: ${cliente?.responsavel_nome || '—'} | E-mail: ${cliente?.email || 'não cadastrado'} | Telefone: ${telefone}`,
+      `Valor: ${moeda(pgto?.valor)} | ${formaPagamentoLabel(pgto?.tipo)}${modulo ? ` | Acesso até ${dataBr(validoAte)}` : ''}`,
+      clienteSemEmail ? 'ATENÇÃO: cliente sem e-mail cadastrado, não recebeu o comunicado de ativação.' : '',
+      'O que fazer agora:',
+      ...tarefas.map((t) => `- ${t.replace(/<[^>]+>/g, '')}`),
+      `Admin: ${portalBase()}/admin/clientes`,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  };
+}
+
+async function avisarEquipe({ cliente, servico, pgto, validoAte, renovacao, clienteSemEmail }) {
+  try {
+    const email = emailEquipe({ cliente, servico, pgto, validoAte, renovacao, clienteSemEmail });
+    const envio = await require('./email.service').send({
+      to: EMAIL_EQUIPE,
+      subject: email.assunto,
+      html: email.html,
+      text: email.texto,
+    });
+    if (!envio.ok && !envio.skipped) {
+      console.warn(`[ServicoAtivadoEmail] aviso equipe ${servico} cliente=${cliente?.id}:`, envio.error);
+      return { enviado: false, para: EMAIL_EQUIPE, erro: envio.error || 'Falha ao enviar' };
+    }
+    return { enviado: Boolean(envio.sent), simulado: Boolean(envio.skipped), para: EMAIL_EQUIPE };
+  } catch (e) {
+    console.error(`[ServicoAtivadoEmail] aviso equipe ${servico} cliente=${cliente?.id}:`, e.message);
+    return { enviado: false, para: EMAIL_EQUIPE, erro: e.message };
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Montagem e envio                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -718,18 +879,32 @@ async function ultimoPagamentoPago(db, servico, origemId) {
 }
 
 /**
- * Envia o comunicado de ativação/renovação ao e-mail cadastrado do cliente.
+ * Envia o comunicado de ativação/renovação ao e-mail cadastrado do cliente e, com `notificarEquipe`,
+ * o aviso interno para a central dos colaboradores (`equipe` no retorno).
  * Nunca lança: falhas voltam em `{ enviado: false, motivo, erro }`.
  */
-async function enviarServicoAtivado({ clienteId, servico, origemId, validoAte, renovacao = false, observacoes }) {
+async function enviarServicoAtivado({
+  clienteId,
+  servico,
+  origemId,
+  validoAte,
+  renovacao = false,
+  observacoes,
+  notificarEquipe = true,
+}) {
   const db = getDb();
   if (!db) return { enviado: false, motivo: 'sem_db' };
   try {
     const cliente = await db('clientes').where('id', clienteId).first();
     const para = String(cliente?.email || '').trim();
-    if (!para) return { enviado: false, motivo: 'sem_email_destino' };
-
     const pgto = origemId ? await ultimoPagamentoPago(db, servico, origemId) : null;
+
+    const equipe = notificarEquipe
+      ? await avisarEquipe({ cliente: cliente || { id: clienteId }, servico, pgto, validoAte, renovacao, clienteSemEmail: !para })
+      : undefined;
+
+    if (!para) return { enviado: false, motivo: 'sem_email_destino', equipe };
+
     const email = montarEmail({
       cliente,
       servico,
@@ -748,10 +923,10 @@ async function enviarServicoAtivado({ clienteId, servico, origemId, validoAte, r
     });
     if (!envio.ok && !envio.skipped) {
       console.warn(`[ServicoAtivadoEmail] ${servico} cliente=${clienteId}:`, envio.error);
-      return { enviado: false, motivo: 'erro_envio', erro: envio.error || 'Falha ao enviar', para };
+      return { enviado: false, motivo: 'erro_envio', erro: envio.error || 'Falha ao enviar', para, equipe };
     }
     console.log(`[ServicoAtivadoEmail] ${servico}${renovacao ? ' (renovação)' : ''} enviado para cliente ${clienteId}`);
-    return { enviado: Boolean(envio.sent), simulado: Boolean(envio.skipped), para, assunto: email.assunto };
+    return { enviado: Boolean(envio.sent), simulado: Boolean(envio.skipped), para, assunto: email.assunto, equipe };
   } catch (e) {
     console.error(`[ServicoAtivadoEmail] ${servico} cliente=${clienteId}:`, e.message);
     return { enviado: false, motivo: 'erro_envio', erro: e.message };
@@ -777,7 +952,13 @@ async function reenviar({ clienteId, servico }) {
   if (!ctx.pago) {
     return { ok: false, error: 'O serviço ainda não está ativo para este cliente.' };
   }
-  const r = await enviarServicoAtivado({ clienteId, servico, origemId: ctx.origemId, validoAte: ctx.validoAte });
+  const r = await enviarServicoAtivado({
+    clienteId,
+    servico,
+    origemId: ctx.origemId,
+    validoAte: ctx.validoAte,
+    notificarEquipe: false,
+  });
   if (!r.enviado && !r.simulado) {
     return {
       ok: false,
@@ -811,6 +992,7 @@ async function preview({ clienteId, servico, renovacao = false }) {
 module.exports = {
   enviarServicoAtivado,
   montarEmail,
+  montarAvisoEquipe: emailEquipe,
   reenviar,
   preview,
 };
