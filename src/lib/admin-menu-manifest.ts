@@ -24,6 +24,7 @@ import {
   Mail,
   MonitorUp,
   Gavel,
+  Layers,
 } from "lucide-react";
 
 export type AdminMenuCategory = "Operação" | "Atendimento" | "Inteligência" | "Gestão" | "CRM";
@@ -50,6 +51,7 @@ export const ADMIN_MENU_MANIFEST: AdminMenuItem[] = [
   { paginaId: "atendimento", title: "Central de Atendimento", url: "/admin/atendimento", category: "Atendimento", icon: PhoneCall },
   { paginaId: "suporte-remoto", title: "Suporte Remoto", url: "/admin/suporte-remoto", category: "Atendimento", icon: MonitorUp },
   { paginaId: "alerts", title: "Central de Alertas", url: "/admin/alertas", category: "Atendimento", icon: BellRing },
+  { paginaId: "servicos-captacao", title: "Serviços", url: "/admin/servicos", category: "CRM", icon: Layers },
   { paginaId: "crm-clientes", title: "CRM Clientes", url: "/admin/crm-clientes", category: "CRM", icon: Kanban },
   { paginaId: "email-marketing", title: "Email Marketing", url: "/admin/email-marketing", category: "CRM", icon: Mail },
   { paginaId: "google-ads-tracking", title: "Google Ads", url: "/admin/google-ads", category: "Inteligência", icon: TrendingUp },

@@ -73,8 +73,19 @@ import {
   type EmailMktTemplate,
   type EmailMktVariavel,
 } from "@/lib/admin-email-marketing-api";
+import {
+  fetchAgendaServicos,
+  type Campanha as CampanhaServico,
+  type Rotina,
+} from "@/lib/admin-servicos-captacao-api";
+import { ServicosAgendaTab } from "@/components/admin/captacao/servicos-agenda-tab";
+
+type EmailMarketingSearch = { aba?: string };
 
 export const Route = createFileRoute("/admin/email-marketing")({
+  validateSearch: (search: Record<string, unknown>): EmailMarketingSearch => ({
+    aba: typeof search.aba === "string" ? search.aba : undefined,
+  }),
   component: EmailMarketingPage,
 });
 
@@ -109,6 +120,10 @@ const statusMeta: Record<Status, { label: string; cls: string; icon: typeof Mail
 };
 
 function EmailMarketingPage() {
+  const { aba: abaInicial } = Route.useSearch();
+  const [aba, setAba] = useState(abaInicial || "campanhas");
+  const [rotinasServicos, setRotinasServicos] = useState<Rotina[]>([]);
+  const [campanhasServicos, setCampanhasServicos] = useState<CampanhaServico[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<"todos" | keyof typeof categoriaMeta>("todos");
@@ -140,9 +155,17 @@ function EmailMarketingPage() {
     if (res.kpis) setKpis(res.kpis);
   }, []);
 
+  const carregarServicos = useCallback(async () => {
+    const res = await fetchAgendaServicos();
+    if (!res.ok) return;
+    setRotinasServicos(res.rotinas);
+    setCampanhasServicos(res.campanhas);
+  }, []);
+
   useEffect(() => {
     void carregar();
-  }, [carregar]);
+    void carregarServicos();
+  }, [carregar, carregarServicos]);
 
   const filtradas = useMemo(() => {
     return campanhas.filter((c) => {
@@ -184,7 +207,13 @@ function EmailMarketingPage() {
         icon={<Mail className="h-5 w-5" />}
         action={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => void carregar()}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                void carregar();
+                void carregarServicos();
+              }}
+            >
               <RefreshCw className="h-4 w-4 mr-1.5" /> Atualizar
             </Button>
             <Button variant="outline" onClick={() => setAgendaOpen(true)}>
@@ -204,13 +233,29 @@ function EmailMarketingPage() {
         <Kpi label="Clientes ativos" value={kpis.clientesAtivos.toLocaleString("pt-BR")} icon={Users} tone="text-amber-600 bg-amber-100" hint="Manutenção ativa" />
       </div>
 
-      <Tabs defaultValue="campanhas">
+      <Tabs value={aba} onValueChange={setAba}>
         <TabsList>
           <TabsTrigger value="campanhas">Campanhas</TabsTrigger>
+          <TabsTrigger value="servicos" className="gap-1.5">
+            Processos dos serviços
+            {rotinasServicos.some((r) => r.ativa) && (
+              <span className="rounded-full bg-blue-600 px-1.5 text-[10px] font-bold text-white">
+                {rotinasServicos.filter((r) => r.ativa).length}
+              </span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="automacoes">Automações</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="nova">Nova campanha</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="servicos" className="mt-4">
+          <ServicosAgendaTab
+            rotinas={rotinasServicos}
+            campanhas={campanhasServicos}
+            onAtualizar={carregarServicos}
+          />
+        </TabsContent>
 
         <TabsContent value="campanhas" className="mt-4 space-y-4">
           <Card className="p-3 flex flex-col sm:flex-row gap-2 sm:items-center">
@@ -405,6 +450,11 @@ function EmailMarketingPage() {
         open={agendaOpen}
         onOpenChange={setAgendaOpen}
         items={campanhas.filter((c) => c.status === "agendado" || c.status === "rascunho")}
+        rotinasServicos={rotinasServicos.filter((r) => r.ativa)}
+        onVerServicos={() => {
+          setAgendaOpen(false);
+          setAba("servicos");
+        }}
         onChanged={() => void carregar()}
       />
       <DetalhesCampanhaModal
@@ -1846,11 +1896,15 @@ function AgendamentosModal({
   open,
   onOpenChange,
   items,
+  rotinasServicos,
+  onVerServicos,
   onChanged,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   items: Campanha[];
+  rotinasServicos: Rotina[];
+  onVerServicos: () => void;
   onChanged: () => void;
 }) {
   const remove = async (id: string) => {
@@ -1873,17 +1927,55 @@ function AgendamentosModal({
       subtitle="Campanhas programadas e rascunhos aguardando envio."
       footer={
         <>
-          <div className="text-xs text-muted-foreground">{items.length} itens na fila</div>
+          <div className="text-xs text-muted-foreground">
+            {items.length + rotinasServicos.length} itens na fila
+          </div>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Fechar
           </Button>
         </>
       }
     >
-      {items.length === 0 ? (
-        <div className="text-center py-10 text-sm text-muted-foreground">
-          Nenhuma campanha na fila de agendamento.
+      {rotinasServicos.length > 0 && (
+        <div className="mb-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Rotinas dos serviços
+            </p>
+            <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={onVerServicos}>
+              Gerenciar
+            </Button>
+          </div>
+          {rotinasServicos.map((r) => (
+            <div key={r.id} className="rounded-xl border p-3 flex items-center gap-3">
+              <div
+                className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center text-white"
+                style={{ background: r.cor || "#64748b" }}
+              >
+                <Layers className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate">{r.nome}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                  {r.servicoNome} · {r.segmentoNome} · próximo envio{" "}
+                  {r.proximaExecucao
+                    ? new Date(r.proximaExecucao).toLocaleString("pt-BR", {
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      })
+                    : "—"}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
+      )}
+      {items.length === 0 ? (
+        rotinasServicos.length ? null : (
+          <div className="text-center py-10 text-sm text-muted-foreground">
+            Nenhuma campanha na fila de agendamento.
+          </div>
+        )
       ) : (
         <div className="space-y-2">
           {items.map((c) => {

@@ -54,6 +54,7 @@ import { Route as AuthRecuperarSenhaRouteImport } from './routes/auth.recuperar-
 import { Route as AdminSuporteRemotoRouteImport } from './routes/admin.suporte-remoto'
 import { Route as AdminSuporteRouteImport } from './routes/admin.suporte'
 import { Route as AdminSicafRouteImport } from './routes/admin.sicaf'
+import { Route as AdminServicosRouteImport } from './routes/admin.servicos'
 import { Route as AdminRelatoriosRouteImport } from './routes/admin.relatorios'
 import { Route as AdminProcessosRouteImport } from './routes/admin.processos'
 import { Route as AdminPerfisRouteImport } from './routes/admin.perfis'
@@ -77,7 +78,9 @@ import { Route as AdminAuditoriaRouteImport } from './routes/admin.auditoria'
 import { Route as AdminAtendimentoRouteImport } from './routes/admin.atendimento'
 import { Route as AdminAlertasRouteImport } from './routes/admin.alertas'
 import { Route as AdminSuporteIndexRouteImport } from './routes/admin.suporte.index'
+import { Route as AdminServicosIndexRouteImport } from './routes/admin.servicos.index'
 import { Route as AdminSuporteTicketIdRouteImport } from './routes/admin.suporte.$ticketId'
+import { Route as AdminServicosServicoRouteImport } from './routes/admin.servicos.$servico'
 
 const SuporteRoute = SuporteRouteImport.update({
   id: '/suporte',
@@ -304,6 +307,11 @@ const AdminSicafRoute = AdminSicafRouteImport.update({
   path: '/sicaf',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminServicosRoute = AdminServicosRouteImport.update({
+  id: '/servicos',
+  path: '/servicos',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminRelatoriosRoute = AdminRelatoriosRouteImport.update({
   id: '/relatorios',
   path: '/relatorios',
@@ -419,10 +427,20 @@ const AdminSuporteIndexRoute = AdminSuporteIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminSuporteRoute,
 } as any)
+const AdminServicosIndexRoute = AdminServicosIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminServicosRoute,
+} as any)
 const AdminSuporteTicketIdRoute = AdminSuporteTicketIdRouteImport.update({
   id: '/$ticketId',
   path: '/$ticketId',
   getParentRoute: () => AdminSuporteRoute,
+} as any)
+const AdminServicosServicoRoute = AdminServicosServicoRouteImport.update({
+  id: '/$servico',
+  path: '/$servico',
+  getParentRoute: () => AdminServicosRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -485,6 +503,7 @@ export interface FileRoutesByFullPath {
   '/admin/perfis': typeof AdminPerfisRoute
   '/admin/processos': typeof AdminProcessosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
+  '/admin/servicos': typeof AdminServicosRouteWithChildren
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRouteWithChildren
   '/admin/suporte-remoto': typeof AdminSuporteRemotoRoute
@@ -493,7 +512,9 @@ export interface FileRoutesByFullPath {
   '/pay/$code': typeof PayCodeRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/': typeof AuthIndexRoute
+  '/admin/servicos/$servico': typeof AdminServicosServicoRoute
   '/admin/suporte/$ticketId': typeof AdminSuporteTicketIdRoute
+  '/admin/servicos/': typeof AdminServicosIndexRoute
   '/admin/suporte/': typeof AdminSuporteIndexRoute
 }
 export interface FileRoutesByTo {
@@ -561,7 +582,9 @@ export interface FileRoutesByTo {
   '/pay/$code': typeof PayCodeRoute
   '/admin': typeof AdminIndexRoute
   '/auth': typeof AuthIndexRoute
+  '/admin/servicos/$servico': typeof AdminServicosServicoRoute
   '/admin/suporte/$ticketId': typeof AdminSuporteTicketIdRoute
+  '/admin/servicos': typeof AdminServicosIndexRoute
   '/admin/suporte': typeof AdminSuporteIndexRoute
 }
 export interface FileRoutesById {
@@ -625,6 +648,7 @@ export interface FileRoutesById {
   '/admin/perfis': typeof AdminPerfisRoute
   '/admin/processos': typeof AdminProcessosRoute
   '/admin/relatorios': typeof AdminRelatoriosRoute
+  '/admin/servicos': typeof AdminServicosRouteWithChildren
   '/admin/sicaf': typeof AdminSicafRoute
   '/admin/suporte': typeof AdminSuporteRouteWithChildren
   '/admin/suporte-remoto': typeof AdminSuporteRemotoRoute
@@ -633,7 +657,9 @@ export interface FileRoutesById {
   '/pay/$code': typeof PayCodeRoute
   '/admin/': typeof AdminIndexRoute
   '/auth/': typeof AuthIndexRoute
+  '/admin/servicos/$servico': typeof AdminServicosServicoRoute
   '/admin/suporte/$ticketId': typeof AdminSuporteTicketIdRoute
+  '/admin/servicos/': typeof AdminServicosIndexRoute
   '/admin/suporte/': typeof AdminSuporteIndexRoute
 }
 export interface FileRouteTypes {
@@ -698,6 +724,7 @@ export interface FileRouteTypes {
     | '/admin/perfis'
     | '/admin/processos'
     | '/admin/relatorios'
+    | '/admin/servicos'
     | '/admin/sicaf'
     | '/admin/suporte'
     | '/admin/suporte-remoto'
@@ -706,7 +733,9 @@ export interface FileRouteTypes {
     | '/pay/$code'
     | '/admin/'
     | '/auth/'
+    | '/admin/servicos/$servico'
     | '/admin/suporte/$ticketId'
+    | '/admin/servicos/'
     | '/admin/suporte/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -774,7 +803,9 @@ export interface FileRouteTypes {
     | '/pay/$code'
     | '/admin'
     | '/auth'
+    | '/admin/servicos/$servico'
     | '/admin/suporte/$ticketId'
+    | '/admin/servicos'
     | '/admin/suporte'
   id:
     | '__root__'
@@ -837,6 +868,7 @@ export interface FileRouteTypes {
     | '/admin/perfis'
     | '/admin/processos'
     | '/admin/relatorios'
+    | '/admin/servicos'
     | '/admin/sicaf'
     | '/admin/suporte'
     | '/admin/suporte-remoto'
@@ -845,7 +877,9 @@ export interface FileRouteTypes {
     | '/pay/$code'
     | '/admin/'
     | '/auth/'
+    | '/admin/servicos/$servico'
     | '/admin/suporte/$ticketId'
+    | '/admin/servicos/'
     | '/admin/suporte/'
   fileRoutesById: FileRoutesById
 }
@@ -1208,6 +1242,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSicafRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/servicos': {
+      id: '/admin/servicos'
+      path: '/servicos'
+      fullPath: '/admin/servicos'
+      preLoaderRoute: typeof AdminServicosRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/relatorios': {
       id: '/admin/relatorios'
       path: '/relatorios'
@@ -1369,6 +1410,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSuporteIndexRouteImport
       parentRoute: typeof AdminSuporteRoute
     }
+    '/admin/servicos/': {
+      id: '/admin/servicos/'
+      path: '/'
+      fullPath: '/admin/servicos/'
+      preLoaderRoute: typeof AdminServicosIndexRouteImport
+      parentRoute: typeof AdminServicosRoute
+    }
     '/admin/suporte/$ticketId': {
       id: '/admin/suporte/$ticketId'
       path: '/$ticketId'
@@ -1376,8 +1424,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSuporteTicketIdRouteImport
       parentRoute: typeof AdminSuporteRoute
     }
+    '/admin/servicos/$servico': {
+      id: '/admin/servicos/$servico'
+      path: '/$servico'
+      fullPath: '/admin/servicos/$servico'
+      preLoaderRoute: typeof AdminServicosServicoRouteImport
+      parentRoute: typeof AdminServicosRoute
+    }
   }
 }
+
+interface AdminServicosRouteChildren {
+  AdminServicosServicoRoute: typeof AdminServicosServicoRoute
+  AdminServicosIndexRoute: typeof AdminServicosIndexRoute
+}
+
+const AdminServicosRouteChildren: AdminServicosRouteChildren = {
+  AdminServicosServicoRoute: AdminServicosServicoRoute,
+  AdminServicosIndexRoute: AdminServicosIndexRoute,
+}
+
+const AdminServicosRouteWithChildren = AdminServicosRoute._addFileChildren(
+  AdminServicosRouteChildren,
+)
 
 interface AdminSuporteRouteChildren {
   AdminSuporteTicketIdRoute: typeof AdminSuporteTicketIdRoute
@@ -1416,6 +1485,7 @@ interface AdminRouteChildren {
   AdminPerfisRoute: typeof AdminPerfisRoute
   AdminProcessosRoute: typeof AdminProcessosRoute
   AdminRelatoriosRoute: typeof AdminRelatoriosRoute
+  AdminServicosRoute: typeof AdminServicosRouteWithChildren
   AdminSicafRoute: typeof AdminSicafRoute
   AdminSuporteRoute: typeof AdminSuporteRouteWithChildren
   AdminSuporteRemotoRoute: typeof AdminSuporteRemotoRoute
@@ -1445,6 +1515,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminPerfisRoute: AdminPerfisRoute,
   AdminProcessosRoute: AdminProcessosRoute,
   AdminRelatoriosRoute: AdminRelatoriosRoute,
+  AdminServicosRoute: AdminServicosRouteWithChildren,
   AdminSicafRoute: AdminSicafRoute,
   AdminSuporteRoute: AdminSuporteRouteWithChildren,
   AdminSuporteRemotoRoute: AdminSuporteRemotoRoute,

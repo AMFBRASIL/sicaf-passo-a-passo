@@ -156,6 +156,13 @@ function initSicafAgentModules() {
   } catch (e) {
     console.warn("[sicaf-bridge] Cron boletim licitações:", e.message);
   }
+  try {
+    if (!process.env.VERCEL) {
+      loadModule("services/servicos-captacao-cron.service").start();
+    }
+  } catch (e) {
+    console.warn("[sicaf-bridge] Cron captação de serviços:", e.message);
+  }
   initialized = true;
 }
 

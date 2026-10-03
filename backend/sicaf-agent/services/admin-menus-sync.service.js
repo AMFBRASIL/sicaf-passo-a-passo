@@ -19,6 +19,7 @@ const ADMIN_PANEL_MANIFEST = [
   { paginaId: 'atendimento', paginaNome: 'Central de Atendimento', categoria: 'Atendimento', rota: '/admin/atendimento' },
   { paginaId: 'suporte-remoto', paginaNome: 'Suporte Remoto', categoria: 'Atendimento', rota: '/admin/suporte-remoto' },
   { paginaId: 'alerts', paginaNome: 'Central de Alertas', categoria: 'Atendimento', rota: '/admin/alertas' },
+  { paginaId: 'servicos-captacao', paginaNome: 'Serviços', categoria: 'CRM', rota: '/admin/servicos' },
   { paginaId: 'crm-clientes', paginaNome: 'CRM Clientes', categoria: 'CRM', rota: '/admin/crm-clientes' },
   { paginaId: 'email-marketing', paginaNome: 'Email Marketing', categoria: 'CRM', rota: '/admin/email-marketing' },
   { paginaId: 'google-ads-tracking', paginaNome: 'Google Ads', categoria: 'Inteligência', rota: '/admin/google-ads' },

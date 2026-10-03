@@ -602,10 +602,11 @@ async function queryDestinatarios(db, publicoTipo) {
     rows = await base().catch(() => []);
   }
 
+  const descadastrados = await require('./servicos-captacao.service').emailsDescadastrados(db);
   const byEmail = new Map();
   for (const r of rows) {
     const email = String(r.email || '').trim().toLowerCase();
-    if (!email || !email.includes('@')) continue;
+    if (!email || !email.includes('@') || descadastrados.has(email)) continue;
     if (!byEmail.has(email)) {
       byEmail.set(email, {
         clienteId: r.cliente_id,
