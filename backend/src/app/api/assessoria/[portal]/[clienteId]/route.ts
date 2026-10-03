@@ -23,6 +23,11 @@ type AssessoriaService = {
     usuarioId?: number;
   }) => Promise<Result>;
   removerDocumento: (opts: { clienteId: number; codigo: string }) => Promise<Result>;
+  salvarTermoAssinado: (opts: {
+    clienteId: number;
+    arquivoUrl: string;
+    arquivoNome?: string | null;
+  }) => Promise<Result>;
   enviarParaAnalise: (opts: {
     clienteId: number;
     observacao?: string;
@@ -82,7 +87,7 @@ export async function GET(request: Request, ctx: Ctx) {
   }
 }
 
-/** Ações do cliente: cobranca | atividade | documento | remover_documento | enviar_analise */
+/** Ações do cliente: cobranca | atividade | documento | remover_documento | enviar_analise | termo_assinado */
 export async function POST(request: Request, ctx: Ctx) {
   try {
     const auth = await autorizar(request, ctx);
@@ -116,6 +121,13 @@ export async function POST(request: Request, ctx: Ctx) {
       case "remover_documento":
         result = await s.removerDocumento({ clienteId, codigo: String(body.codigo || "") });
         break;
+      case "termo_assinado":
+        result = await s.salvarTermoAssinado({
+          clienteId,
+          arquivoUrl: String(body.arquivoUrl || ""),
+          arquivoNome: body.arquivoNome ? String(body.arquivoNome) : null,
+        });
+        break;
       case "enviar_analise":
         result = await s.enviarParaAnalise({
           clienteId,
@@ -132,7 +144,7 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 }
 
-/** Equipe CADBRASIL: status do processo, protocolo, validade do cadastro e avaliação de documentos. */
+/** Equipe CADBRASIL: status, protocolo, validade do cadastro, avaliação de documentos e termo do portal. */
 export async function PATCH(request: Request, ctx: Ctx) {
   try {
     const auth = await autorizar(request, ctx);
@@ -152,6 +164,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
       protocoloPortal: body.protocoloPortal,
       cadastroValidade: body.cadastroValidade,
       documentos: body.documentos,
+      termoModelo: body.termoModelo,
+      termoAvaliacao: body.termoAvaliacao,
       usuarioId: auth.usuarioId,
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 400 });

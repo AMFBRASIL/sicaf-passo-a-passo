@@ -48,7 +48,29 @@ export type AssessoriaPagamento = {
   criadoEm?: string | null;
 };
 
+export type TermoStatus =
+  | "aguardando_modelo"
+  | "aguardando_assinatura"
+  | "assinado"
+  | "aprovado"
+  | "recusado";
+
+/** Termo gerado pelo portal (Termo de Adesão da BLL) que o cliente devolve assinado. */
+export type AssessoriaTermo = {
+  nome: string;
+  status: TermoStatus;
+  modeloUrl: string | null;
+  modeloNome: string | null;
+  disponibilizadoEm: string | null;
+  assinadoUrl: string | null;
+  assinadoNome: string | null;
+  assinadoEm: string | null;
+  observacao: string | null;
+  podeEnviarAssinado: boolean;
+};
+
 export type AssessoriaPainel = {
+  termo: AssessoriaTermo | null;
   processo: {
     id: number;
     status: AssessoriaStatus;
@@ -116,6 +138,25 @@ export function definirEscolhaAssessoria(
   atividade: string,
 ) {
   return acao(portal, clienteId, { acao: "atividade", atividade });
+}
+
+export async function enviarTermoAssinado(payload: {
+  portal: AssessoriaPortal;
+  clienteId: number;
+  arquivo: File;
+}) {
+  const upload = await uploadStorageFile(
+    payload.arquivo,
+    `clientes/${payload.clienteId}/${payload.portal}`,
+  );
+  if (!upload.ok || !(upload.fullUrl || upload.url)) {
+    return { ok: false as const, error: upload.error || "Falha no upload do arquivo" };
+  }
+  return acao(payload.portal, payload.clienteId, {
+    acao: "termo_assinado",
+    arquivoUrl: upload.fullUrl || upload.url,
+    arquivoNome: upload.originalName || payload.arquivo.name,
+  });
 }
 
 export async function enviarDocumentoAssessoria(payload: {

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ExternalLink,
   Eye,
+  FileSignature,
   FileText,
   Mail,
   Send,
@@ -42,6 +43,7 @@ import {
   atualizarAcompanhamentoAdmin,
   atualizarProcessoAssessoriaAdmin,
   definirCortesiaModulo,
+  enviarModeloTermoAdmin,
   fetchServicosCliente,
   previewEmailAtivacao,
   reenviarEmailAtivacao,
@@ -53,11 +55,14 @@ import {
 } from "@/lib/admin-servicos-api";
 import {
   enviarDocumentoAssessoria,
+  enviarTermoAssinado,
   fetchAssessoriaPainel,
   type AssessoriaDocumento,
   type AssessoriaPainel,
   type AssessoriaPortal,
   type AssessoriaStatus,
+  type AssessoriaTermo,
+  type TermoStatus,
 } from "@/lib/assessoria-portal-api";
 import {
   RESULTADOS,
@@ -146,6 +151,7 @@ function resumoAssessoria(r: AssessoriaResumo | undefined) {
   if (!r || !r.existe) return { texto: "Não iniciado", tom: "muted" as const };
   if (!r.pago) return { texto: "Aguardando pagamento", tom: "warn" as const };
   if (r.status === "conferencia_cadbrasil") return { texto: "Conferir documentos", tom: "acao" as const };
+  if (r.termoStatus === "assinado") return { texto: "Conferir termo assinado", tom: "acao" as const };
   if (r.status === "aprovado") return { texto: "Aprovado", tom: "ok" as const };
   if (STATUS_ALERTA.includes(r.status)) return { texto: STATUS_ASSESSORIA[r.status], tom: "warn" as const };
   return { texto: STATUS_ASSESSORIA[r.status], tom: "info" as const };
@@ -378,18 +384,22 @@ function AssessoriaAdmin({
     if (resumo.existe) void carregar();
   }, [resumo.existe, carregar]);
 
-  const patch = async (campos: Parameters<typeof atualizarProcessoAssessoriaAdmin>[2], sucesso: string) => {
-    setSalvando(true);
-    const res = await atualizarProcessoAssessoriaAdmin(portal, clienteId, campos);
-    setSalvando(false);
+  const concluir = (res: Awaited<ReturnType<typeof atualizarProcessoAssessoriaAdmin>>, sucesso: string) => {
     if (!res.ok) {
       toast.error(res.error);
       return false;
     }
     aplicar(res);
-    toast.success(sucesso);
+    toast.success(sucesso, { description: avisoEmailTermo(res.emailTermo) });
     onAlterado();
     return true;
+  };
+
+  const patch = async (campos: Parameters<typeof atualizarProcessoAssessoriaAdmin>[2], sucesso: string) => {
+    setSalvando(true);
+    const res = await atualizarProcessoAssessoriaAdmin(portal, clienteId, campos);
+    setSalvando(false);
+    return concluir(res, sucesso);
   };
 
   if (!resumo.existe) {
@@ -553,6 +563,40 @@ function AssessoriaAdmin({
           </Button>
         </div>
       </Card>
+
+      {painel.termo && processo.pago && (
+        <TermoAdmin
+          termo={painel.termo}
+          portalNome={portal === "bll" ? "BLL" : cfg.nome}
+          ocupado={salvando}
+          onEnviarModelo={async (arquivo) => {
+            const r = await enviarModeloTermoAdmin(portal, clienteId, arquivo);
+            concluir(r, `${painel.termo!.nome} disponibilizado ao cliente`);
+          }}
+          onEnviarAssinado={async (arquivo) => {
+            const r = await enviarTermoAssinado({ portal, clienteId, arquivo });
+            if (!r.ok) {
+              toast.error(r.error);
+              return;
+            }
+            aplicar(r);
+            toast.success("Termo assinado registrado — confira e aprove");
+            onAlterado();
+          }}
+          onAprovar={() =>
+            void patch(
+              { termoAvaliacao: { status: "aprovado" }, status: "analise_governo" },
+              `${painel.termo!.nome} aprovado — processo em validação pela ${portal === "bll" ? "BLL" : cfg.nome}`,
+            )
+          }
+          onRecusar={(motivo) =>
+            patch(
+              { termoAvaliacao: { status: "recusado", observacao: motivo } },
+              `${painel.termo!.nome} recusado — reenvio liberado para o cliente`,
+            )
+          }
+        />
+      )}
 
       <Card className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -813,6 +857,222 @@ function DocumentoAdmin({
         </div>
       )}
     </li>
+  );
+}
+
+const TERMO_ADMIN: Record<TermoStatus, { txt: string; tom: keyof typeof TOM_CLS }> = {
+  aguardando_modelo: { txt: "Anexar termo gerado pelo portal", tom: "acao" },
+  aguardando_assinatura: { txt: "Aguardando assinatura do cliente", tom: "warn" },
+  assinado: { txt: "Conferir termo assinado", tom: "acao" },
+  aprovado: { txt: "Conferido e enviado", tom: "ok" },
+  recusado: { txt: "Recusado · aguardando reenvio", tom: "warn" },
+};
+
+function avisoEmailTermo(e?: { enviado?: boolean; simulado?: boolean; motivo?: string }) {
+  if (!e) return undefined;
+  if (e.enviado) return "Cliente avisado por e-mail.";
+  if (e.simulado) return "E-mail simulado (envio desativado neste ambiente).";
+  if (e.motivo === "sem_email_destino") return "Cliente sem e-mail cadastrado — avise pelo WhatsApp.";
+  return "Não foi possível enviar o e-mail ao cliente — avise pelo WhatsApp.";
+}
+
+function TermoAdmin({
+  termo,
+  portalNome,
+  ocupado,
+  onEnviarModelo,
+  onEnviarAssinado,
+  onAprovar,
+  onRecusar,
+}: {
+  termo: AssessoriaTermo;
+  portalNome: string;
+  ocupado: boolean;
+  onEnviarModelo: (arquivo: File) => Promise<void>;
+  onEnviarAssinado: (arquivo: File) => Promise<void>;
+  onAprovar: () => void;
+  onRecusar: (motivo: string) => Promise<boolean>;
+}) {
+  const modeloRef = useRef<HTMLInputElement>(null);
+  const assinadoRef = useRef<HTMLInputElement>(null);
+  const [enviando, setEnviando] = useState<"modelo" | "assinado" | null>(null);
+  const [recusando, setRecusando] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const st = TERMO_ADMIN[termo.status];
+
+  const arquivoInput = (ref: typeof modeloRef, tipo: "modelo" | "assinado", acao: (f: File) => Promise<void>) => (
+    <input
+      ref={ref}
+      type="file"
+      accept="application/pdf,image/*"
+      className="hidden"
+      onChange={(e) => {
+        const f = e.target.files?.[0];
+        e.target.value = "";
+        if (!f) return;
+        setEnviando(tipo);
+        void acao(f).finally(() => setEnviando(null));
+      }}
+    />
+  );
+
+  return (
+    <Card className="space-y-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <FileSignature className="h-4 w-4 text-indigo-600" /> {termo.nome}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Gerado pela {portalNome} no pré-cadastro. O cliente baixa, assina como representante legal e
+            devolve pelo portal.
+          </p>
+        </div>
+        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", TOM_CLS[st.tom])}>{st.txt}</span>
+      </div>
+
+      <ul className="divide-y rounded-lg border text-xs">
+        <li className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+          <div className="min-w-0">
+            <p className="font-semibold">1. Termo gerado pela {portalNome}</p>
+            <p className="text-muted-foreground">
+              {termo.modeloUrl
+                ? `Disponibilizado ao cliente em ${dataHoraFmt(termo.disponibilizadoEm)}`
+                : "Faça o pré-cadastro, baixe o termo no site do portal e anexe aqui. O cliente é avisado por e-mail."}
+            </p>
+          </div>
+          <div className="flex items-center gap-1">
+            {termo.modeloUrl && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 px-2 text-[10px]"
+                onClick={() => window.open(termo.modeloUrl!, "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLink className="h-3 w-3" /> Abrir
+              </Button>
+            )}
+            {termo.status !== "aprovado" && (
+              <>
+                {arquivoInput(modeloRef, "modelo", onEnviarModelo)}
+                <Button
+                  size="sm"
+                  variant={termo.modeloUrl ? "ghost" : "default"}
+                  className="h-7 gap-1 px-2 text-[10px]"
+                  disabled={ocupado || enviando !== null}
+                  onClick={() => modeloRef.current?.click()}
+                >
+                  {enviando === "modelo" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Upload className="h-3 w-3" />
+                  )}
+                  {termo.modeloUrl ? "Substituir" : "Anexar termo"}
+                </Button>
+              </>
+            )}
+          </div>
+        </li>
+
+        <li className="space-y-2 px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-semibold">2. Termo assinado pelo cliente</p>
+              <p className="text-muted-foreground">
+                {termo.assinadoUrl
+                  ? `Recebido em ${dataHoraFmt(termo.assinadoEm)}${termo.assinadoNome ? ` · ${termo.assinadoNome}` : ""}`
+                  : termo.modeloUrl
+                    ? "Aguardando o cliente enviar pelo portal."
+                    : "Disponível depois que o termo for anexado."}
+              </p>
+              {termo.status === "recusado" && termo.observacao && (
+                <p className="mt-0.5 text-rose-700">Motivo da recusa: {termo.observacao}</p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {termo.assinadoUrl && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1 px-2 text-[10px]"
+                  onClick={() => window.open(termo.assinadoUrl!, "_blank", "noopener,noreferrer")}
+                >
+                  <ExternalLink className="h-3 w-3" /> Abrir
+                </Button>
+              )}
+              {termo.status === "assinado" && (
+                <>
+                  <Button
+                    size="sm"
+                    className="h-7 gap-1 bg-emerald-600 px-2 text-[10px] hover:bg-emerald-700"
+                    disabled={ocupado}
+                    onClick={onAprovar}
+                  >
+                    <CheckCircle2 className="h-3 w-3" /> Aprovar e marcar como enviado à {portalNome}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 border-rose-500/30 px-2 text-[10px] text-rose-700 hover:bg-rose-500/10"
+                    disabled={ocupado}
+                    onClick={() => setRecusando((v) => !v)}
+                  >
+                    <XCircle className="h-3 w-3" /> Recusar
+                  </Button>
+                </>
+              )}
+              {termo.podeEnviarAssinado && (
+                <>
+                  {arquivoInput(assinadoRef, "assinado", onEnviarAssinado)}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1 px-2 text-[10px]"
+                    title="Quando o cliente mandar o termo assinado por WhatsApp ou e-mail"
+                    disabled={ocupado || enviando !== null}
+                    onClick={() => assinadoRef.current?.click()}
+                  >
+                    {enviando === "assinado" ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Upload className="h-3 w-3" />
+                    )}
+                    Enviar pelo cliente
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+          {recusando && (
+            <div className="flex gap-2">
+              <Input
+                className="h-8 text-xs"
+                autoFocus
+                placeholder="Motivo da recusa (o cliente recebe por e-mail e vê no portal)"
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+              />
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-8 text-xs"
+                disabled={!motivo.trim() || ocupado}
+                onClick={() => {
+                  void onRecusar(motivo.trim()).then((ok) => {
+                    if (ok) {
+                      setRecusando(false);
+                      setMotivo("");
+                    }
+                  });
+                }}
+              >
+                Confirmar recusa
+              </Button>
+            </div>
+          )}
+        </li>
+      </ul>
+    </Card>
   );
 }
 

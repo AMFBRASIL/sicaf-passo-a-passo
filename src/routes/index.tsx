@@ -10,6 +10,11 @@ import { fetchLicitacoesKpis } from "@/lib/licitacoes-api";
 import { requirePortalAuth } from "@/lib/require-portal-auth";
 import { FrenteCadastroCard } from "@/components/frente-cadastro-card";
 import { FRENTES_CADASTRO } from "@/lib/frentes-cadastro";
+import {
+  SERVICO_POR_FRENTE,
+  fetchNovidadesServicos,
+  type NovidadesServicos,
+} from "@/lib/servicos-novidades-api";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -358,6 +363,13 @@ function InicioPage() {
     naMira: 0,
     oportunidades: 0,
   });
+  const [novidades, setNovidades] = useState<NovidadesServicos | null>(null);
+
+  useEffect(() => {
+    void fetchNovidadesServicos().then((r) => {
+      if (r.ok) setNovidades(r.servicos);
+    });
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -443,9 +455,16 @@ function InicioPage() {
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {FRENTES_CADASTRO.map((frente) => (
-            <FrenteCadastroCard key={frente.id} frente={frente} />
-          ))}
+          {FRENTES_CADASTRO.map((frente) => {
+            const servico = SERVICO_POR_FRENTE[frente.id];
+            return (
+              <FrenteCadastroCard
+                key={frente.id}
+                frente={frente}
+                novidades={servico && novidades ? novidades[servico] : undefined}
+              />
+            );
+          })}
         </div>
       </section>
 

@@ -281,6 +281,7 @@ async function checkUsuarioIsStaff(usuarioId, jwtTipo) {
 module.exports = {
   assertClienteAcessivel,
   assertClienteAcessivelById,
+  listClientesForUsuario,
   isStaffTipo,
   isUsuarioStaff,
   checkUsuarioIsStaff,

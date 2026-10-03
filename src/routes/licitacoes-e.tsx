@@ -40,6 +40,7 @@ import { AcompanhamentoDetalhe } from "@/components/licitacoes-e/acompanhamento-
 import { ModuloGate } from "@/components/modulos/modulo-assinatura";
 import { fetchEmpresas } from "@/lib/empresas-api";
 import { resolveEmpresaPorCnpj } from "@/lib/documentos-api";
+import { useMarcarServicoVisto } from "@/lib/servicos-novidades-api";
 import type { EmpresaData } from "@/lib/empresas-shared";
 import {
   RESULTADOS,
@@ -124,6 +125,7 @@ function LicitacoesEPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [empresa, setEmpresa] = useState<EmpresaData | null>(null);
   const [trocarOpen, setTrocarOpen] = useState(false);
+  useMarcarServicoVisto("licitacoes_e", empresa?.clienteId);
 
   const selecionar = useCallback(
     (c: string, replace?: boolean) => void navigate({ search: { cnpj: c }, replace }),

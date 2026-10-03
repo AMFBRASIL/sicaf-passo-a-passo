@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Download,
   ExternalLink,
   FileCheck2,
   FileText,
@@ -46,6 +47,7 @@ import {
   definirEscolhaAssessoria,
   enviarAnaliseAssessoria,
   enviarDocumentoAssessoria,
+  enviarTermoAssinado,
   fetchAssessoriaPainel,
   gerarCobrancaAssessoria,
   removerDocumentoAssessoria,
@@ -54,7 +56,9 @@ import {
   type AssessoriaPainel,
   type AssessoriaPortal,
   type AssessoriaStatus,
+  type AssessoriaTermo,
 } from "@/lib/assessoria-portal-api";
+import { useMarcarServicoVisto } from "@/lib/servicos-novidades-api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -149,6 +153,7 @@ export function AssessoriaPortalPage({
 
   const { portal } = config;
   const clienteId = empresa?.clienteId ?? null;
+  useMarcarServicoVisto(portal, painel ? clienteId : null);
   const scrollToEtapa = useCallback(
     (n: number) =>
       document
@@ -503,11 +508,24 @@ export function AssessoriaPortalPage({
             icon={Send}
             texto={config.etapas.protocolo}
             extra={
-              processo.protocoloPortal ? (
-                <p className="text-sm">
-                  {config.rotuloProtocolo}:{" "}
-                  <strong className="font-mono">{processo.protocoloPortal}</strong>
-                </p>
+              processo.protocoloPortal || (painel.termo && etapaAtual >= 4) ? (
+                <div className="space-y-3">
+                  {processo.protocoloPortal && (
+                    <p className="text-sm">
+                      {config.rotuloProtocolo}:{" "}
+                      <strong className="font-mono">{processo.protocoloPortal}</strong>
+                    </p>
+                  )}
+                  {painel.termo && etapaAtual >= 4 && (
+                    <TermoCliente
+                      portal={portal}
+                      nomePortal={config.nome}
+                      termo={painel.termo}
+                      clienteId={empresa.clienteId!}
+                      onAplicar={aplicar}
+                    />
+                  )}
+                </div>
               ) : null
             }
           />
@@ -657,6 +675,152 @@ function EtapaInfo({
       <p className="text-sm leading-relaxed text-muted-foreground">{texto}</p>
       {extra && <div className="mt-3">{extra}</div>}
     </EtapaShell>
+  );
+}
+
+function dataHoraFmt(v?: string | null) {
+  if (!v) return "";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime())
+    ? String(v)
+    : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function TermoCliente({
+  portal,
+  nomePortal,
+  termo,
+  clienteId,
+  onAplicar,
+}: {
+  portal: AssessoriaPortal;
+  nomePortal: string;
+  termo: AssessoriaTermo;
+  clienteId: number;
+  onAplicar: Aplicar;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async (arquivo: File) => {
+    setEnviando(true);
+    const r = await enviarTermoAssinado({ portal, clienteId, arquivo });
+    setEnviando(false);
+    onAplicar(r, `${termo.nome} assinado enviado. Vamos conferir e avisar você.`);
+  };
+
+  if (termo.status === "aguardando_modelo" || !termo.modeloUrl) {
+    return (
+      <div className="flex items-start gap-3 rounded-lg border border-dashed bg-muted/30 p-3">
+        <Hourglass className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Estamos fazendo o pré-cadastro na {nomePortal}. Assim que a {nomePortal} gerar o{" "}
+          <strong>{termo.nome}</strong>, ele aparece aqui para você baixar e assinar — e avisamos
+          você por e-mail.
+        </p>
+      </div>
+    );
+  }
+
+  const aguardandoCliente = termo.status === "aguardando_assinatura" || termo.status === "recusado";
+  const badge = {
+    aguardando_assinatura: { txt: "Aguardando sua assinatura", cls: "border-primary/30 bg-primary/10 text-primary" },
+    recusado: { txt: "Reenvio necessário", cls: "border-warning/30 bg-warning/10 text-warning-foreground" },
+    assinado: { txt: "Em conferência pela CADBRASIL", cls: "border-sky-500/30 bg-sky-500/10 text-sky-700" },
+    aprovado: { txt: `Enviado à ${nomePortal}`, cls: "border-success/30 bg-success/10 text-success" },
+  }[termo.status];
+
+  return (
+    <div
+      className={cn(
+        "space-y-3 rounded-xl border p-4",
+        aguardandoCliente ? "border-primary/40 bg-primary/5" : "bg-muted/20",
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <FileText className="h-4 w-4 text-primary" /> {termo.nome}
+        </p>
+        <Badge variant="outline" className={cn("text-[10px] font-semibold", badge.cls)}>
+          {badge.txt}
+        </Badge>
+      </div>
+
+      {termo.status === "recusado" && termo.observacao && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <div>
+            <p className="font-semibold">O termo precisa ser ajustado</p>
+            <p className="mt-0.5 text-muted-foreground">{termo.observacao}</p>
+          </div>
+        </div>
+      )}
+
+      {aguardandoCliente && (
+        <ol className="list-decimal space-y-1 pl-5 text-xs leading-relaxed text-muted-foreground">
+          <li>Baixe o {termo.nome} gerado pela {nomePortal}.</li>
+          <li>
+            Assine como <strong>representante legal</strong>: com certificado digital ICP-Brasil
+            (e-CPF ou e-CNPJ) ou imprima, assine e <strong>reconheça firma em cartório</strong>.
+          </li>
+          <li>Envie aqui o arquivo assinado (PDF legível). Nossa equipe confere e envia à {nomePortal}.</li>
+        </ol>
+      )}
+
+      {termo.status === "assinado" && (
+        <p className="flex items-start gap-2 text-xs text-muted-foreground">
+          <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          Termo assinado recebido em {dataHoraFmt(termo.assinadoEm)}. Nossa equipe está conferindo a
+          assinatura antes de enviar à {nomePortal}.
+        </p>
+      )}
+      {termo.status === "aprovado" && (
+        <p className="flex items-start gap-2 text-xs text-muted-foreground">
+          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+          Termo conferido e enviado à {nomePortal}. Agora é só aguardar a validação.
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <Button asChild size="sm" variant={aguardandoCliente ? "outline" : "ghost"} className="gap-1.5">
+          <a href={termo.modeloUrl} target="_blank" rel="noopener noreferrer">
+            <Download className="h-3.5 w-3.5" /> Baixar {termo.nome}
+          </a>
+        </Button>
+        {termo.assinadoUrl && !aguardandoCliente && (
+          <Button asChild size="sm" variant="ghost" className="gap-1.5">
+            <a href={termo.assinadoUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-3.5 w-3.5" /> Ver termo enviado
+            </a>
+          </Button>
+        )}
+        {termo.podeEnviarAssinado && (
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void enviar(f);
+              }}
+            />
+            <Button
+              size="sm"
+              variant={aguardandoCliente ? "default" : "outline"}
+              className="gap-1.5"
+              disabled={enviando}
+              onClick={() => inputRef.current?.click()}
+            >
+              {enviando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {aguardandoCliente ? "Enviar termo assinado" : "Substituir arquivo"}
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

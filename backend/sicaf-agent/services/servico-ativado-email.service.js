@@ -173,7 +173,7 @@ function documentosHtml(servico, documentos) {
   return html;
 }
 
-function layout({ preheader, selo, titulo, subtitulo, acento, corpo, assinatura }) {
+function layout({ preheader, selo, titulo, subtitulo, acento, corpo, assinatura, rotuloData = 'Ativado em' }) {
   const hoje = new Date().toLocaleDateString('pt-BR');
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -193,7 +193,7 @@ function layout({ preheader, selo, titulo, subtitulo, acento, corpo, assinatura 
               </td>
               <td align="right" valign="top" width="110" style="font-family:${FONT}">
                 <div style="display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:10px 12px;text-align:center">
-                  <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.7)">Ativado em</div>
+                  <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.7)">${esc(rotuloData)}</div>
                   <div style="font-size:14px;font-weight:700;color:#ffffff;margin-top:2px">${esc(hoje)}</div>
                 </div>
               </td>
@@ -710,6 +710,35 @@ const SERVICOS_EQUIPE = {
   },
 };
 
+function layoutInterno({ titulo, subtitulo, acento, corpo }) {
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${esc(titulo)}</title></head>
+<body style="margin:0;padding:0;background:#e8edf2">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#e8edf2;padding:32px 12px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:660px;background:#ffffff;border:1px solid #c5d0db">
+        <tr>
+          <td style="background:#0f2f52;padding:24px 32px;border-bottom:4px solid ${acento};font-family:${FONT}">
+            <p style="margin:0 0 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.75)">Central dos colaboradores · Aviso interno</p>
+            <h1 style="margin:0;font-size:22px;line-height:1.3;color:#ffffff;font-weight:700;font-family:Georgia,'Times New Roman',serif">${esc(titulo)}</h1>
+            <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,.88)">${esc(subtitulo)}</p>
+          </td>
+        </tr>
+        <tr><td style="padding:28px 32px 16px">${corpo}</td></tr>
+        <tr>
+          <td style="background:#f1f5f9;border-top:1px solid #cbd5e1;padding:16px 32px;text-align:center;font-family:${FONT}">
+            <p style="margin:0;font-size:11px;line-height:1.6;color:#64748b">Aviso automático do portal CADBRASIL enviado em ${esc(hoje)}. Uso interno da equipe.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 function emailEquipe({ cliente, servico, pgto, validoAte, renovacao, clienteSemEmail }) {
   const cfg = SERVICOS_EQUIPE[servico];
   const empresa = cliente?.razao_social || `Cliente #${cliente?.id ?? '—'}`;
@@ -762,36 +791,14 @@ function emailEquipe({ cliente, servico, pgto, validoAte, renovacao, clienteSemE
     ),
   ].join('');
 
-  const hoje = new Date().toLocaleDateString('pt-BR');
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${esc(cfg.nome)}</title></head>
-<body style="margin:0;padding:0;background:#e8edf2">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#e8edf2;padding:32px 12px">
-    <tr><td align="center">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:660px;background:#ffffff;border:1px solid #c5d0db">
-        <tr>
-          <td style="background:#0f2f52;padding:24px 32px;border-bottom:4px solid ${cfg.acento};font-family:${FONT}">
-            <p style="margin:0 0 6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.75)">Central dos colaboradores · Aviso interno</p>
-            <h1 style="margin:0;font-size:22px;line-height:1.3;color:#ffffff;font-weight:700;font-family:Georgia,'Times New Roman',serif">${renovacao ? 'Mensalidade renovada' : 'Novo serviço contratado'}</h1>
-            <p style="margin:8px 0 0;font-size:13px;color:rgba(255,255,255,.88)">${esc(cfg.nome)} · ${esc(empresa)}</p>
-          </td>
-        </tr>
-        <tr><td style="padding:28px 32px 16px">${corpo}</td></tr>
-        <tr>
-          <td style="background:#f1f5f9;border-top:1px solid #cbd5e1;padding:16px 32px;text-align:center;font-family:${FONT}">
-            <p style="margin:0;font-size:11px;line-height:1.6;color:#64748b">Aviso automático do portal CADBRASIL enviado em ${esc(hoje)}. Uso interno da equipe.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
-
   return {
     assunto: `[${renovacao ? 'Renovação' : 'Novo serviço'}] ${cfg.nome} — ${empresa} · ${cnpj}`,
-    html,
+    html: layoutInterno({
+      titulo: renovacao ? 'Mensalidade renovada' : 'Novo serviço contratado',
+      subtitulo: `${cfg.nome} · ${empresa}`,
+      acento: cfg.acento,
+      corpo,
+    }),
     texto: [
       `${renovacao ? 'Mensalidade renovada' : 'Novo serviço contratado'}: ${cfg.nome}`,
       `Empresa: ${empresa} | CNPJ: ${cnpj} | Código: ${cliente?.id ?? '—'}`,
@@ -825,6 +832,187 @@ async function avisarEquipe({ cliente, servico, pgto, validoAte, renovacao, clie
     console.error(`[ServicoAtivadoEmail] aviso equipe ${servico} cliente=${cliente?.id}:`, e.message);
     return { enviado: false, para: EMAIL_EQUIPE, erro: e.message };
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Termo do portal (ex.: Termo de Adesão da BLL)                        */
+/* ------------------------------------------------------------------ */
+
+const PORTAL_TERMO = {
+  bll: { portal: 'BLL', rota: '/bll', acento: '#7c3aed' },
+  caufesp: { portal: 'CAUFESP', rota: '/caufesp', acento: '#047857' },
+};
+
+function emailTermoCliente({ cliente, servico, nomeTermo, motivoRecusa }) {
+  const p = PORTAL_TERMO[servico];
+  const nome = cliente?.responsavel_nome || cliente?.razao_social || 'Cliente';
+  const empresa = cliente?.razao_social || 'sua empresa';
+  const cnpjDigits = String(cliente?.documento || '').replace(/\D/g, '');
+  const link = `${portalBase()}${p.rota}${cnpjDigits ? `?cnpj=${encodeURIComponent(cnpjDigits)}` : ''}`;
+  const recusa = Boolean(motivoRecusa);
+
+  const corpo = [
+    paragrafo(`Prezado(a) <strong>${esc(nome)}</strong>,`),
+    paragrafo(
+      recusa
+        ? `Conferimos o <strong>${esc(nomeTermo)}</strong> assinado da empresa <strong>${esc(empresa)}</strong> e ele precisa ser ajustado antes de seguir para a ${esc(p.portal)}.`
+        : `O pré-cadastro da empresa <strong>${esc(empresa)}</strong> foi feito na ${esc(p.portal)} e o <strong>${esc(nomeTermo)}</strong> já está disponível no portal CADBRASIL. Falta só a assinatura do representante legal para concluirmos esta etapa.`,
+    ),
+    recusa
+      ? caixa({
+          titulo: 'O que precisa ser ajustado',
+          html: esc(motivoRecusa),
+          fundo: '#fef2f2',
+          borda: '#dc2626',
+          cor: '#7f1d1d',
+        })
+      : '',
+    secao(recusa ? 'Como reenviar' : 'Como assinar e devolver'),
+    passos(
+      [
+        {
+          titulo: `Baixe o ${nomeTermo}`,
+          texto: `No portal CADBRASIL, abra a assessoria ${esc(p.portal)} e vá até a etapa <strong>Cadastro na plataforma ${esc(p.portal)}</strong>. Clique em <strong>Baixar ${esc(nomeTermo)}</strong>.`,
+        },
+        {
+          titulo: 'Assine como representante legal',
+          texto:
+            'Use uma das formas aceitas: <strong>assinatura digital com certificado ICP-Brasil</strong> (e-CPF do representante ou e-CNPJ da empresa) ou imprima, assine e <strong>reconheça firma em cartório</strong>, depois digitalize em PDF legível.',
+        },
+        {
+          titulo: 'Envie o termo assinado pelo portal',
+          texto: `Na mesma etapa, clique em <strong>Enviar termo assinado</strong> e selecione o arquivo. Não é preciso mandar por e-mail.`,
+        },
+        {
+          titulo: `Conferência e envio à ${p.portal}`,
+          texto: `Nossa equipe confere a assinatura e envia o termo à ${esc(p.portal)} junto com o contrato social. Você acompanha a validação no portal.`,
+        },
+      ],
+      p.acento,
+    ),
+    caixa({
+      titulo: 'Atenção',
+      html: `O termo deve ser assinado por quem consta como representante legal no contrato social (ou por procurador com procuração enviada na etapa de documentos). Assinaturas simples, sem certificado digital ou firma reconhecida, não são aceitas pela ${esc(p.portal)}.`,
+      fundo: '#fffbeb',
+      borda: '#d97706',
+      cor: '#92400e',
+    }),
+    `<table role="presentation" width="100%" style="margin:18px 0 6px">${botao(link, recusa ? 'Reenviar o termo assinado' : `Baixar o ${nomeTermo}`, p.acento)}</table>`,
+  ].join('');
+
+  const titulo = recusa ? `${nomeTermo}: reenvio necessário` : `${nomeTermo} pronto para assinatura`;
+  return {
+    assunto: `${titulo} · ${p.portal} · ${empresa}`,
+    html: layout({
+      preheader: recusa
+        ? `O ${nomeTermo} precisa de ajuste: ${motivoRecusa}`
+        : `Baixe o ${nomeTermo}, assine como representante legal e devolva pelo portal CADBRASIL.`,
+      selo: `Assessoria CADBRASIL · ${p.portal}`,
+      titulo,
+      subtitulo: recusa
+        ? 'Veja o que precisa ser ajustado e reenvie pelo portal'
+        : 'Assinatura do representante legal para concluir o cadastro',
+      acento: p.acento,
+      corpo,
+      assinatura: `o seu cadastro na ${p.portal}`,
+      rotuloData: 'Enviado em',
+    }),
+    texto: [
+      `Prezado(a) ${nome},`,
+      recusa
+        ? `O ${nomeTermo} assinado de ${empresa} precisa ser ajustado: ${motivoRecusa}`
+        : `O ${nomeTermo} da ${p.portal} de ${empresa} está disponível no portal CADBRASIL.`,
+      `Baixe o termo, assine como representante legal (certificado digital ICP-Brasil ou firma reconhecida) e envie o arquivo assinado pelo portal: ${link}`,
+      `Dúvidas: WhatsApp ${WHATSAPP_DISPLAY}.`,
+    ].join('\n\n'),
+  };
+}
+
+function emailTermoEquipe({ cliente, servico, nomeTermo, arquivoUrl }) {
+  const p = PORTAL_TERMO[servico];
+  const empresa = cliente?.razao_social || `Cliente #${cliente?.id ?? '—'}`;
+  const cnpj = cliente?.documento || '—';
+  const corpo = [
+    paragrafo(
+      `O cliente <strong>${esc(empresa)}</strong> enviou o <strong>${esc(nomeTermo)}</strong> assinado pelo portal.`,
+    ),
+    tabelaResumo([
+      ['Código do cliente', String(cliente?.id ?? '—')],
+      ['Empresa', empresa],
+      ['CNPJ', cnpj],
+      ['Responsável', cliente?.responsavel_nome || '—'],
+    ]),
+    secao('O que fazer agora'),
+    lista(
+      [
+        'Abrir o termo e conferir se foi assinado pelo representante legal, com certificado digital ICP-Brasil ou firma reconhecida.',
+        `Se estiver correto: enviar à ${esc(p.portal)} junto com o contrato social e clicar em <strong>Aprovar e marcar como enviado à ${esc(p.portal)}</strong> na Central de serviços.`,
+        'Se houver problema: clicar em <strong>Recusar</strong> e informar o motivo — o cliente recebe o aviso por e-mail e reenvia pelo portal.',
+      ],
+      p.acento,
+    ),
+    `<table role="presentation" width="100%" style="margin:18px 0 6px">${botao(arquivoUrl, 'Abrir o termo assinado', p.acento)}${botaoSecundario(`${portalBase()}/admin/clientes`, 'Abrir clientes no admin')}</table>`,
+  ].join('');
+
+  return {
+    assunto: `[Termo assinado] ${nomeTermo} ${p.portal} — ${empresa} · ${cnpj}`,
+    html: layoutInterno({
+      titulo: `${nomeTermo} assinado recebido`,
+      subtitulo: `Assessoria ${p.portal} · ${empresa}`,
+      acento: p.acento,
+      corpo,
+    }),
+    texto: [
+      `${nomeTermo} assinado recebido — ${empresa} (CNPJ ${cnpj}, código ${cliente?.id ?? '—'}).`,
+      `Arquivo: ${arquivoUrl}`,
+      `Confira a assinatura, envie à ${p.portal} e aprove na Central de serviços (${portalBase()}/admin/clientes).`,
+    ].join('\n'),
+  };
+}
+
+async function enviarTermo(destino, email, rotulo) {
+  try {
+    const envio = await require('./email.service').send({
+      to: destino,
+      subject: email.assunto,
+      html: email.html,
+      text: email.texto,
+    });
+    if (!envio.ok && !envio.skipped) {
+      console.warn(`[ServicoAtivadoEmail] ${rotulo}:`, envio.error);
+      return { enviado: false, para: destino, erro: envio.error || 'Falha ao enviar' };
+    }
+    return { enviado: Boolean(envio.sent), simulado: Boolean(envio.skipped), para: destino };
+  } catch (e) {
+    console.error(`[ServicoAtivadoEmail] ${rotulo}:`, e.message);
+    return { enviado: false, para: destino, erro: e.message };
+  }
+}
+
+/** Avisa o cliente que o termo está disponível para assinatura (ou que precisa ser reenviado). */
+async function enviarTermoParaCliente({ clienteId, servico, nomeTermo, motivoRecusa }) {
+  const db = getDb();
+  if (!db || !PORTAL_TERMO[servico]) return { enviado: false, motivo: 'sem_db' };
+  const cliente = await db('clientes').where('id', clienteId).first();
+  const para = String(cliente?.email || '').trim();
+  if (!para) return { enviado: false, motivo: 'sem_email_destino' };
+  return enviarTermo(
+    para,
+    emailTermoCliente({ cliente, servico, nomeTermo, motivoRecusa }),
+    `termo cliente ${servico} cliente=${clienteId}`,
+  );
+}
+
+/** Avisa a central dos colaboradores que o cliente devolveu o termo assinado. */
+async function avisarEquipeTermoAssinado({ clienteId, servico, nomeTermo, arquivoUrl }) {
+  const db = getDb();
+  if (!db || !PORTAL_TERMO[servico]) return { enviado: false, motivo: 'sem_db' };
+  const cliente = (await db('clientes').where('id', clienteId).first()) || { id: clienteId };
+  return enviarTermo(
+    EMAIL_EQUIPE,
+    emailTermoEquipe({ cliente, servico, nomeTermo, arquivoUrl }),
+    `termo equipe ${servico} cliente=${clienteId}`,
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -993,6 +1181,10 @@ module.exports = {
   enviarServicoAtivado,
   montarEmail,
   montarAvisoEquipe: emailEquipe,
+  montarTermoCliente: emailTermoCliente,
+  montarTermoEquipe: emailTermoEquipe,
+  enviarTermoParaCliente,
+  avisarEquipeTermoAssinado,
   reenviar,
   preview,
 };

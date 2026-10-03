@@ -22,6 +22,26 @@ const STATUS = {
 const STATUS_VALIDOS = Object.values(STATUS);
 const STATUS_EDITAVEIS = [STATUS.DOCUMENTACAO, STATUS.PENDENCIA_DOCUMENTOS, STATUS.EXIGENCIA_GOVERNO];
 
+/** Termo gerado pelo portal (ex.: Termo de Adesão da BLL): a equipe anexa, o cliente devolve assinado. */
+const TERMO = {
+  AGUARDANDO_MODELO: 'aguardando_modelo',
+  AGUARDANDO_ASSINATURA: 'aguardando_assinatura',
+  ASSINADO: 'assinado',
+  APROVADO: 'aprovado',
+  RECUSADO: 'recusado',
+};
+const TERMO_COLUNAS = {
+  termo_status: (t) => t.string('termo_status', 24).nullable(),
+  termo_url: (t) => t.string('termo_url', 500).nullable(),
+  termo_nome: (t) => t.string('termo_nome', 255).nullable(),
+  termo_disponibilizado_em: (t) => t.dateTime('termo_disponibilizado_em').nullable(),
+  termo_assinado_url: (t) => t.string('termo_assinado_url', 500).nullable(),
+  termo_assinado_nome: (t) => t.string('termo_assinado_nome', 255).nullable(),
+  termo_assinado_em: (t) => t.dateTime('termo_assinado_em').nullable(),
+  termo_observacao: (t) => t.string('termo_observacao', 255).nullable(),
+};
+const STATUS_TERMO_CLIENTE = [STATUS.PROTOCOLADO, STATUS.EXIGENCIA_GOVERNO];
+
 /** Origem do pagamento (pagamentos.origem) → serviço com `confirmarPagamento(origemId)`. */
 const SERVICOS_POR_ORIGEM = {
   caufesp: () => require('./caufesp.service'),
@@ -54,6 +74,7 @@ function toIsoDate(v) {
  * @param {Array} cfg.documentos - catálogo { codigo, grupo, nome, descricao, obrigatorio, validade?, exigidoPara? }
  * @param {string[]} cfg.opcoes - valores aceitos na escolha do cliente (gravada em `atividade`)
  * @param {string} cfg.mensagemOpcaoPendente
+ * @param {{ nome: string }} [cfg.termo] - termo gerado pelo portal que o cliente devolve assinado
  */
 function criarServicoAssessoria(cfg) {
   const LOG_PREFIX = `[${cfg.nome}]`;
@@ -95,6 +116,16 @@ function criarServicoAssessoria(cfg) {
             t.timestamps(true, true);
             t.unique(['processo_id', 'codigo']);
           });
+        }
+        if (!(await db.schema.hasColumn(cfg.tabelaProcessos, 'equipe_atualizou_em'))) {
+          await db.schema.alterTable(cfg.tabelaProcessos, (t) => t.dateTime('equipe_atualizou_em').nullable());
+        }
+        if (cfg.termo) {
+          for (const [coluna, criar] of Object.entries(TERMO_COLUNAS)) {
+            if (!(await db.schema.hasColumn(cfg.tabelaProcessos, coluna))) {
+              await db.schema.alterTable(cfg.tabelaProcessos, criar);
+            }
+          }
         }
       })().catch((e) => {
         ensurePromise = null;
@@ -172,6 +203,26 @@ function criarServicoAssessoria(cfg) {
     };
   }
 
+  function montarTermo(processo) {
+    if (!cfg.termo) return null;
+    const status = processo.termo_status || TERMO.AGUARDANDO_MODELO;
+    return {
+      nome: cfg.termo.nome,
+      status,
+      modeloUrl: processo.termo_url || null,
+      modeloNome: processo.termo_nome || null,
+      disponibilizadoEm: processo.termo_disponibilizado_em || null,
+      assinadoUrl: processo.termo_assinado_url || null,
+      assinadoNome: processo.termo_assinado_nome || null,
+      assinadoEm: processo.termo_assinado_em || null,
+      observacao: processo.termo_observacao || null,
+      podeEnviarAssinado:
+        Boolean(processo.termo_url) &&
+        [TERMO.AGUARDANDO_ASSINATURA, TERMO.ASSINADO, TERMO.RECUSADO].includes(status) &&
+        STATUS_TERMO_CLIENTE.includes(processo.status),
+    };
+  }
+
   async function montarPainel(db, processo) {
     const enviados = await db(cfg.tabelaDocumentos).where('processo_id', processo.id);
     const porCodigo = new Map(enviados.map((d) => [d.codigo, d]));
@@ -204,6 +255,7 @@ function criarServicoAssessoria(cfg) {
     const pendentes = obrigatorios.filter((d) => !d.enviado || d.enviado.status === 'recusado');
 
     return {
+      termo: montarTermo(processo),
       processo: {
         id: processo.id,
         status: processo.status,
@@ -266,6 +318,7 @@ function criarServicoAssessoria(cfg) {
         documentosEnviados: docs.length,
         documentosAguardando: docs.filter((d) => d.status === 'enviado').length,
         documentosRecusados: docs.filter((d) => d.status === 'recusado').length,
+        termoStatus: cfg.termo ? processo.termo_status || TERMO.AGUARDANDO_MODELO : null,
         atualizadoEm: processo.updated_at,
       };
     } catch (e) {
@@ -456,7 +509,45 @@ function criarServicoAssessoria(cfg) {
     return getPainel(clienteId);
   }
 
-  /** Equipe CADBRASIL: avança o processo e/ou avalia documentos. */
+  /** Cliente devolve o termo assinado pelo representante legal. */
+  async function salvarTermoAssinado({ clienteId, arquivoUrl, arquivoNome }) {
+    const db = getDb();
+    if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+    if (!cfg.termo) return { ok: false, error: 'Este processo não possui termo para assinatura.' };
+    if (!arquivoUrl) return { ok: false, error: 'Arquivo não informado.' };
+
+    const processo = await obterOuCriarProcesso(db, Number(clienteId));
+    if (!montarTermo(processo).podeEnviarAssinado) {
+      return {
+        ok: false,
+        error: processo.termo_url
+          ? `O ${cfg.termo.nome} já foi conferido — aguarde o retorno da CADBRASIL.`
+          : `O ${cfg.termo.nome} ainda não foi disponibilizado pela CADBRASIL.`,
+      };
+    }
+
+    await db(cfg.tabelaProcessos)
+      .where('id', processo.id)
+      .update({
+        termo_status: TERMO.ASSINADO,
+        termo_assinado_url: String(arquivoUrl).slice(0, 500),
+        termo_assinado_nome: arquivoNome ? String(arquivoNome).slice(0, 255) : null,
+        termo_assinado_em: db.fn.now(),
+        termo_observacao: null,
+        updated_at: db.fn.now(),
+      });
+    await registrarHistorico(db, processo, `${cfg.termo.nome} assinado enviado pelo cliente`);
+
+    const emailEquipe = await require('./servico-ativado-email.service').avisarEquipeTermoAssinado({
+      clienteId: processo.cliente_id,
+      servico: cfg.origem,
+      nomeTermo: cfg.termo.nome,
+      arquivoUrl,
+    });
+    return { ...(await getPainel(clienteId)), emailEquipe };
+  }
+
+  /** Equipe CADBRASIL: avança o processo, avalia documentos e conduz o termo do portal. */
   async function atualizarProcessoAdmin({
     clienteId,
     status,
@@ -464,13 +555,15 @@ function criarServicoAssessoria(cfg) {
     protocoloPortal,
     cadastroValidade,
     documentos,
+    termoModelo,
+    termoAvaliacao,
     usuarioId,
   }) {
     const db = getDb();
     if (!db) return { ok: false, error: 'Banco de dados não disponível' };
     const processo = await obterOuCriarProcesso(db, Number(clienteId));
 
-    const update = { updated_at: db.fn.now() };
+    const update = { updated_at: db.fn.now(), equipe_atualizou_em: db.fn.now() };
     if (status !== undefined) {
       if (!STATUS_VALIDOS.includes(status)) return { ok: false, error: 'Status inválido.' };
       update.status = status;
@@ -478,6 +571,46 @@ function criarServicoAssessoria(cfg) {
     if (observacaoCadbrasil !== undefined) update.observacao_cadbrasil = observacaoCadbrasil || null;
     if (protocoloPortal !== undefined) update.protocolo_caufesp = protocoloPortal || null;
     if (cadastroValidade !== undefined) update.crc_validade = cadastroValidade || null;
+
+    if ((termoModelo || termoAvaliacao) && !cfg.termo) {
+      return { ok: false, error: 'Este processo não possui termo para assinatura.' };
+    }
+    if (termoModelo) {
+      if (!termoModelo.arquivoUrl) return { ok: false, error: 'Arquivo do termo não informado.' };
+      Object.assign(update, {
+        termo_status: TERMO.AGUARDANDO_ASSINATURA,
+        termo_url: String(termoModelo.arquivoUrl).slice(0, 500),
+        termo_nome: termoModelo.arquivoNome ? String(termoModelo.arquivoNome).slice(0, 255) : null,
+        termo_disponibilizado_em: db.fn.now(),
+        termo_assinado_url: null,
+        termo_assinado_nome: null,
+        termo_assinado_em: null,
+        termo_observacao: null,
+      });
+      const atual = update.status || processo.status;
+      if ([STATUS.DOCUMENTACAO, STATUS.CONFERENCIA, STATUS.PENDENCIA_DOCUMENTOS].includes(atual)) {
+        update.status = STATUS.PROTOCOLADO;
+      }
+    }
+    if (termoAvaliacao) {
+      if (!processo.termo_assinado_url) {
+        return { ok: false, error: `O cliente ainda não enviou o ${cfg.termo.nome} assinado.` };
+      }
+      if (termoAvaliacao.status === TERMO.APROVADO) {
+        update.termo_status = TERMO.APROVADO;
+        update.termo_observacao = null;
+      } else if (termoAvaliacao.status === TERMO.RECUSADO) {
+        const motivo = String(termoAvaliacao.observacao || '').trim();
+        if (!motivo) return { ok: false, error: 'Informe o motivo da recusa.' };
+        update.termo_status = TERMO.RECUSADO;
+        update.termo_observacao = motivo.slice(0, 255);
+        if (!STATUS_TERMO_CLIENTE.includes(update.status || processo.status)) {
+          update.status = STATUS.PROTOCOLADO;
+        }
+      } else {
+        return { ok: false, error: 'Avaliação do termo inválida.' };
+      }
+    }
     await db(cfg.tabelaProcessos).where('id', processo.id).update(update);
 
     if (Array.isArray(documentos)) {
@@ -493,10 +626,30 @@ function criarServicoAssessoria(cfg) {
       }
     }
 
-    if (status && status !== processo.status) {
-      await registrarHistorico(db, processo, `Processo ${cfg.nome}: ${processo.status} → ${status}`, usuarioId);
+    if (update.status && update.status !== processo.status) {
+      await registrarHistorico(db, processo, `Processo ${cfg.nome}: ${processo.status} → ${update.status}`, usuarioId);
     }
-    return getPainel(clienteId);
+
+    let emailTermo;
+    if (termoModelo || termoAvaliacao?.status === TERMO.RECUSADO) {
+      await registrarHistorico(
+        db,
+        processo,
+        termoModelo
+          ? `${cfg.termo.nome} disponibilizado para assinatura`
+          : `${cfg.termo.nome} recusado: ${update.termo_observacao}`,
+        usuarioId,
+      );
+      emailTermo = await require('./servico-ativado-email.service').enviarTermoParaCliente({
+        clienteId: processo.cliente_id,
+        servico: cfg.origem,
+        nomeTermo: cfg.termo.nome,
+        motivoRecusa: termoModelo ? null : update.termo_observacao,
+      });
+    } else if (termoAvaliacao) {
+      await registrarHistorico(db, processo, `${cfg.termo.nome} assinado conferido`, usuarioId);
+    }
+    return { ...(await getPainel(clienteId)), emailTermo };
   }
 
   return {
@@ -511,8 +664,9 @@ function criarServicoAssessoria(cfg) {
     salvarDocumento,
     removerDocumento,
     enviarParaAnalise,
+    salvarTermoAssinado,
     atualizarProcessoAdmin,
   };
 }
 
-module.exports = { STATUS, criarServicoAssessoria, servicoPorOrigem };
+module.exports = { STATUS, TERMO, criarServicoAssessoria, servicoPorOrigem };

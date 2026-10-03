@@ -67,6 +67,9 @@ function ensureTables(db) {
           t.timestamps(true, true);
         });
       }
+      if (!(await db.schema.hasColumn(TABELA, 'respondido_em'))) {
+        await db.schema.alterTable(TABELA, (t) => t.dateTime('respondido_em').nullable());
+      }
       if (!(await db.schema.hasTable(TABELA_PERFIL))) {
         await db.schema.createTable(TABELA_PERFIL, (t) => {
           t.increments('id').primary();
@@ -374,6 +377,7 @@ async function responderApoio({ clienteId, id, observacao, resolvido, usuarioId 
 
   const update = {
     observacao_cadbrasil: observacao ? String(observacao).slice(0, 4000) : null,
+    respondido_em: observacao ? db.fn.now() : null,
     updated_at: db.fn.now(),
   };
   if (resolvido) {

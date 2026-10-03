@@ -46,6 +46,7 @@ import { SelecionarEmpresaModal } from "@/components/selecionar-empresa-modal";
 import { ModuloGate } from "@/components/modulos/modulo-assinatura";
 import { fetchEmpresas } from "@/lib/empresas-api";
 import { resolveEmpresaPorCnpj } from "@/lib/documentos-api";
+import { useMarcarServicoVisto } from "@/lib/servicos-novidades-api";
 import type { EmpresaData } from "@/lib/empresas-shared";
 import { lerEditalComIa, type AnaliseEdital } from "@/lib/licitacoes-e-api";
 import { buildWhatsAppSuporteUrl } from "@/lib/whatsapp-suporte";
@@ -116,6 +117,7 @@ function PncpPage() {
   const [erro, setErro] = useState<string | null>(null);
   const [empresa, setEmpresa] = useState<EmpresaData | null>(null);
   const [trocarOpen, setTrocarOpen] = useState(false);
+  useMarcarServicoVisto("pncp", empresa?.clienteId);
 
   const selecionar = useCallback(
     (c: string, replace?: boolean) => void navigate({ search: { cnpj: c }, replace }),

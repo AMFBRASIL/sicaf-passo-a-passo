@@ -117,7 +117,7 @@ const BLL_CONFIG: AssessoriaPortalConfig = {
     conferencia:
       "Nossa equipe confere cada documento: validade das certidões, assinaturas, dados do representante legal e compatibilidade com o contrato social. Se algo precisar de ajuste, avisamos aqui e você reenvia na etapa 2.",
     protocolo:
-      "Com tudo em ordem, fazemos com você o pré-cadastro na BLL Compras (bll.org.br) no plano escolhido. A BLL gera o Termo de Adesão, que deve ser assinado pelo representante legal (assinatura digital ou com firma reconhecida) e enviado junto com o contrato social.",
+      "Com tudo em ordem, fazemos o pré-cadastro na BLL Compras (bll.org.br) no plano escolhido. A BLL gera o Termo de Adesão, que disponibilizamos aqui: baixe, assine como representante legal (certificado digital ou firma reconhecida) e devolva nesta mesma etapa. Nós conferimos e enviamos à BLL junto com o contrato social.",
     analise:
       "A BLL confere o Termo de Adesão e os documentos e libera o acesso do fornecedor. Essa validação é feita exclusivamente pela BLL; se houver pendência, avisamos você aqui para corrigir.",
     aprovado:

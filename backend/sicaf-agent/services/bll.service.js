@@ -135,4 +135,5 @@ module.exports = criarServicoAssessoria({
   documentos: DOCUMENTOS_BLL,
   opcoes: ['trimestral', 'exito'],
   mensagemOpcaoPendente: 'Escolha o plano da BLL que a empresa vai usar.',
+  termo: { nome: 'Termo de Adesão' },
 });

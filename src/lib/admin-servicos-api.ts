@@ -1,8 +1,10 @@
 import { apiFetch } from "@/lib/api-fetch";
+import { uploadStorageFile } from "@/lib/storage-api";
 import type {
   AssessoriaPainel,
   AssessoriaPortal,
   AssessoriaStatus,
+  TermoStatus,
 } from "@/lib/assessoria-portal-api";
 import type { Acompanhamento, EtapaAcesso, LicitacoesEPainel } from "@/lib/licitacoes-e-api";
 import type { ModuloAssinatura, ModuloPago } from "@/lib/modulos-api";
@@ -18,6 +20,7 @@ export type AssessoriaResumo =
       documentosEnviados: number;
       documentosAguardando: number;
       documentosRecusados: number;
+      termoStatus: TermoStatus | null;
       atualizadoEm: string | null;
     };
 
@@ -89,14 +92,30 @@ export async function atualizarProcessoAssessoriaAdmin(
     protocoloPortal?: string | null;
     cadastroValidade?: string | null;
     documentos?: { codigo: string; status: "aprovado" | "recusado" | "enviado"; observacao?: string }[];
+    termoModelo?: { arquivoUrl: string; arquivoNome?: string | null };
+    termoAvaliacao?: { status: "aprovado" | "recusado"; observacao?: string };
   },
 ) {
-  return parse<AssessoriaPainel>(
+  return parse<AssessoriaPainel & { emailTermo?: { enviado?: boolean; simulado?: boolean; motivo?: string } }>(
     await apiFetch(`/api/assessoria/${portal}/${clienteId}`, {
       method: "PATCH",
       body: JSON.stringify(campos),
     }),
   );
+}
+
+/** Equipe anexa o termo gerado pelo portal; o cliente é avisado por e-mail para assinar. */
+export async function enviarModeloTermoAdmin(portal: AssessoriaPortal, clienteId: number, arquivo: File) {
+  const upload = await uploadStorageFile(arquivo, `clientes/${clienteId}/${portal}`);
+  if (!upload.ok || !(upload.fullUrl || upload.url)) {
+    return { ok: false as const, error: upload.error || "Falha no upload do arquivo" };
+  }
+  return atualizarProcessoAssessoriaAdmin(portal, clienteId, {
+    termoModelo: {
+      arquivoUrl: (upload.fullUrl || upload.url)!,
+      arquivoNome: upload.originalName || arquivo.name,
+    },
+  });
 }
 
 export type ServicoEmail = "caufesp" | "bll" | "licitacoes_e" | "pncp";
@@ -116,10 +135,13 @@ export async function previewEmailAtivacao(clienteId: number, servico: ServicoEm
   );
 }
 
-/** Quantidade de itens aguardando a equipe (conferência de documentos e pedidos de apoio). */
+/** Quantidade de itens aguardando a equipe (conferência de documentos, termo assinado e pedidos de apoio). */
 export function pendenciasEquipe(s: ServicosCliente) {
   const assessoria = (r: AssessoriaResumo) =>
-    r.existe && r.status === "conferencia_cadbrasil" ? Math.max(1, r.documentosAguardando) : 0;
+    !r.existe
+      ? 0
+      : (r.status === "conferencia_cadbrasil" ? Math.max(1, r.documentosAguardando) : 0) +
+        (r.termoStatus === "assinado" ? 1 : 0);
   const apoios = s.licitacoesE.acompanhamentos.filter((a) => a.apoioSolicitadoEm).length;
   return assessoria(s.caufesp) + assessoria(s.bll) + apoios;
 }
