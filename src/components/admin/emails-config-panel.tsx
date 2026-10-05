@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import {
   CheckCircle2,
+  Eye,
+  EyeOff,
   Loader2,
   Mail,
   Save,
@@ -46,6 +48,40 @@ function Field({ label, children, hint }: { label: string; children: React.React
       <Label className="text-xs font-medium">{label}</Label>
       {children}
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+function SecretInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [visivel, setVisivel] = useState(false);
+  const mascarado = value === EMAIL_SECRET_MASK;
+  return (
+    <div className="relative">
+      <Input
+        type={visivel ? "text" : "password"}
+        autoComplete="off"
+        spellCheck={false}
+        className="pr-10 font-mono text-xs"
+        placeholder={mascarado ? "Definida no .env do servidor" : placeholder}
+        value={mascarado ? "" : value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground hover:text-foreground"
+        onClick={() => setVisivel((v) => !v)}
+        aria-label={visivel ? "Ocultar" : "Mostrar"}
+      >
+        {visivel ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
     </div>
   );
 }
@@ -250,16 +286,17 @@ export function EmailsConfigPanel({ onSaved }: Props) {
             <Field
               label="API Key"
               hint={
-                settings.smtp_api_key === EMAIL_SECRET_MASK
-                  ? "Chave já cadastrada — deixe em branco para manter."
-                  : "Armazenada em configuracoes_sistema."
+                emailStatus?.apiKeySource === "database"
+                  ? "Chave gravada no banco (configuracoes_sistema). Clique no olho para conferir."
+                  : settings.smtp_api_key === EMAIL_SECRET_MASK
+                    ? "Usando a chave do .env do servidor. Informe uma chave para gravar no banco."
+                    : "Será gravada em configuracoes_sistema ao salvar."
               }
             >
-              <Input
-                type="password"
-                placeholder={settings.smtp_api_key === EMAIL_SECRET_MASK ? "••••••••••••" : "Chave da API"}
-                value={settings.smtp_api_key === EMAIL_SECRET_MASK ? "" : settings.smtp_api_key}
-                onChange={(e) => patch("smtp_api_key", e.target.value)}
+              <SecretInput
+                value={settings.smtp_api_key}
+                onChange={(v) => patch("smtp_api_key", v)}
+                placeholder="Chave da API"
               />
             </Field>
             <Field label="E-mail remetente">
@@ -294,16 +331,11 @@ export function EmailsConfigPanel({ onSaved }: Props) {
               label="Senha"
               hint={
                 settings.smtp_senha === EMAIL_SECRET_MASK
-                  ? "Senha já cadastrada — deixe em branco para manter."
+                  ? "Usando a senha do .env do servidor. Informe uma senha para gravar no banco."
                   : undefined
               }
             >
-              <Input
-                type="password"
-                placeholder={settings.smtp_senha === EMAIL_SECRET_MASK ? "••••••••" : ""}
-                value={settings.smtp_senha === EMAIL_SECRET_MASK ? "" : settings.smtp_senha}
-                onChange={(e) => patch("smtp_senha", e.target.value)}
-              />
+              <SecretInput value={settings.smtp_senha} onChange={(v) => patch("smtp_senha", v)} />
             </Field>
             <Field label="E-mail remetente">
               <Input

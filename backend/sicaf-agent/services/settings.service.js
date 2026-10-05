@@ -119,9 +119,10 @@ async function getEmailSettings() {
   const apiKeySource = resolveEmailApiKeySource(raw, env, merged);
   const metodo = merged.smtp_metodo === 'smtp' ? 'smtp' : 'api';
 
+  // Tela restrita à equipe: devolve as chaves gravadas no banco para conferência; só o fallback do .env fica mascarado.
   return {
     ok: true,
-    settings: maskSecrets(merged),
+    settings: merged,
     templateCount,
     status: {
       configured:
@@ -148,6 +149,7 @@ async function updateSettings(updates) {
     let valor = updates[chave];
     if (valor === undefined || valor === null) continue;
     valor = String(valor);
+    if (SECRET_KEYS.has(chave)) valor = valor.trim();
 
     if (SECRET_KEYS.has(chave) && (!valor || valor === MASK)) continue;
 
