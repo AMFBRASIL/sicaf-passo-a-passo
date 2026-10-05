@@ -25,14 +25,14 @@ const TIMEOUT_ENVIO_MS = 30000;
  * O banco é o mesmo em dev e produção: por padrão o `next dev` local não dispara,
  * para uma máquina local (IP fora da allowlist do Mailgun) não consumir a fila.
  * CAPTACAO_FILA_ENABLED=true/false força o comportamento. CRON_CAPTACAO_ENABLED só controla o cron periódico.
- * Usa o NODE_ENV do processo (antes do override do backend/.env feito em config/index.js).
+ * NODE_ENV não serve: o backend/.env (carregado com override) e o PM2 podem defini-lo como development em produção.
+ * NEXT_PRIVATE_WORKER=1 só existe no processo filho do `next dev`.
  */
 function filaHabilitada() {
   const flag = String(process.env.CAPTACAO_FILA_ENABLED || '').toLowerCase();
   if (flag === 'true') return true;
   if (flag === 'false') return false;
-  const runtime = process.env.CADBRASIL_RUNTIME_NODE_ENV ?? process.env.NODE_ENV;
-  return runtime !== 'development';
+  return process.env.NEXT_PRIVATE_WORKER !== '1';
 }
 const JANELA_CONVERSAO_DIAS = 60;
 

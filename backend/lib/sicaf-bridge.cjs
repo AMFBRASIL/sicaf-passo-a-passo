@@ -62,8 +62,8 @@ const MODULES_SEM_CACHE_BUST = new Set([
 ]);
 
 function shouldBustCache(relativePath) {
-  const runtimeEnv = process.env.CADBRASIL_RUNTIME_NODE_ENV ?? process.env.NODE_ENV;
-  if (runtimeEnv !== "development") return false;
+  // NEXT_PRIVATE_WORKER=1 só existe no `next dev`; o NODE_ENV pode vir como development do .env em produção.
+  if (process.env.NEXT_PRIVATE_WORKER !== "1") return false;
   const normalized = String(relativePath || "").replace(/\\/g, "/");
   return !MODULES_SEM_CACHE_BUST.has(normalized);
 }
