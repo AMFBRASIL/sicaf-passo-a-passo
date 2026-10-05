@@ -18,6 +18,20 @@ const T_FORN = 'captacao_fornecedores';
 
 const WHATSAPP_NUMERO = (process.env.CADBRASIL_WHATSAPP_NUMERO || '551121220202').replace(/\D/g, '');
 const LOTE_PADRAO = Math.max(1, parseInt(process.env.CAPTACAO_LOTE || '30', 10) || 30);
+const INTERVALO_MS = Math.max(5, parseInt(process.env.CAPTACAO_INTERVALO_SEG || '20', 10) || 20) * 1000;
+const TIMEOUT_ENVIO_MS = 30000;
+
+/**
+ * O banco é o mesmo em dev e produção: por padrão só o servidor de produção dispara,
+ * para uma máquina local (com outra config de e-mail) não consumir a fila.
+ * CRON_CAPTACAO_ENABLED=true/false força o comportamento.
+ */
+function filaHabilitada() {
+  const flag = String(process.env.CRON_CAPTACAO_ENABLED || '').toLowerCase();
+  if (flag === 'true') return true;
+  if (flag === 'false') return false;
+  return process.env.NODE_ENV === 'production';
+}
 const JANELA_CONVERSAO_DIAS = 60;
 
 /* ------------------------------------------------------------------ */
@@ -2184,6 +2198,22 @@ async function alterarCampanha({ id, acao } = {}) {
       .where('id', camp.id)
       .update({ status: 'cancelada', concluida_em: db.fn.now(), updated_at: db.fn.now() });
     await db(T_ENVIOS).where({ campanha_id: camp.id, status: 'pendente' }).update({ status: 'cancelado' });
+  } else if (acao === 'reenviar_falhas') {
+    if (camp.status === 'cancelada') return { ok: false, error: 'Campanha cancelada' };
+    const n = await db(T_ENVIOS)
+      .where({ campanha_id: camp.id, status: 'falha' })
+      .update({ status: 'pendente', erro: null, lote_token: null, processando_em: null });
+    if (!n) return { ok: false, error: 'Nenhuma falha para reenviar' };
+    if (camp.status === 'concluida') {
+      await db(T_CAMPANHAS)
+        .where('id', camp.id)
+        .update({ status: 'enviando', concluida_em: null, ultimo_erro: null, updated_at: db.fn.now() });
+    } else {
+      await db(T_CAMPANHAS).where('id', camp.id).update({ ultimo_erro: null, updated_at: db.fn.now() });
+    }
+    setImmediate(() => processarFila().catch(() => {}));
+    cacheVisao = null;
+    return { ok: true, reenfileirados: n };
   } else {
     return { ok: false, error: 'Ação inválida' };
   }
@@ -2207,24 +2237,33 @@ async function logCampanha({ id } = {}) {
       .whereNot('status', 'pendente')
       .orderBy('id', 'desc')
       .limit(60)
-      .select('id', 'email', 'empresa', 'status', 'erro', 'enviado_em'),
+      .select('id', 'email', 'empresa', 'status', 'erro', 'enviado_em', 'processando_em'),
     db.raw(
-      `SELECT COUNT(*) AS n FROM ${T_ENVIOS}
+      `SELECT COUNT(*) AS n,
+         TIMESTAMPDIFF(SECOND, (SELECT MAX(COALESCE(enviado_em, processando_em)) FROM ${T_ENVIOS} WHERE campanha_id = ?), NOW()) AS parado_seg
+       FROM ${T_ENVIOS}
        WHERE campanha_id = ? AND status = 'enviado' AND enviado_em >= DATE_SUB(NOW(), INTERVAL 5 MINUTE)`,
-      [camp.id],
+      [camp.id, camp.id],
     ),
   ]);
+
+  const parado = ritmo?.parado_seg == null || Number(ritmo.parado_seg) > (INTERVALO_MS / 1000) * 3;
+  if (camp.status === 'enviando' && parado && metricas.pendentes > 0 && filaHabilitada()) {
+    setImmediate(() => processarFila().catch(() => {}));
+  }
+
   return {
     ok: true,
     campanha: metricas,
     porMinuto: Math.round((Number(ritmo?.n || 0) / 5) * 10) / 10,
+    filaNesteServidor: filaHabilitada(),
     itens: itens.map((i) => ({
       id: i.id,
       email: i.email,
       empresa: i.empresa,
       status: i.status,
       erro: i.erro,
-      enviadoEm: i.enviado_em,
+      enviadoEm: i.enviado_em || i.processando_em,
     })),
   };
 }
@@ -2555,8 +2594,48 @@ async function atualizarBaseFornecedoresSeVencida() {
 /* Fila de envio                                                       */
 /* ------------------------------------------------------------------ */
 
-let filaRodando = false;
+/** Momento em que a rodada atual começou (0 = livre). Trava velha é ignorada. */
+let filaRodandoDesde = 0;
+let proximaRodada = null;
 const precoCache = new Map();
+
+/** Erros de configuração do provedor: não adianta seguir tentando, pausa a campanha. */
+const ERRO_CONFIG_EMAIL = /\((401|403|404)\)|API Key|não configurad|não instalado|remetente inválido/i;
+
+function comTimeout(promessa, ms, mensagem) {
+  let timer;
+  return Promise.race([
+    promessa,
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve({ ok: false, error: mensagem }), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+async function concluirSeTerminou(db, campanhaId) {
+  const [[rest]] = await db.raw(
+    `SELECT COUNT(*) n FROM ${T_ENVIOS} WHERE campanha_id = ? AND status IN ('pendente','processando')`,
+    [campanhaId],
+  );
+  if (Number(rest.n)) return;
+  const n = await db(T_CAMPANHAS)
+    .where({ id: campanhaId, status: 'enviando' })
+    .update({ status: 'concluida', concluida_em: db.fn.now(), updated_at: db.fn.now() });
+  if (n) {
+    cacheVisao = null;
+    console.log(`${LOG_PREFIX} Campanha #${campanhaId} concluída`);
+  }
+}
+
+/** Encadeia a próxima rodada no próprio processo — a fila não depende só do cron. */
+function agendarProximaRodada(ms = INTERVALO_MS) {
+  if (proximaRodada || !filaHabilitada()) return;
+  proximaRodada = setTimeout(() => {
+    proximaRodada = null;
+    processarFila().catch(() => {});
+  }, ms);
+  if (typeof proximaRodada.unref === 'function') proximaRodada.unref();
+}
 
 async function precoCacheado(db, svc) {
   const c = precoCache.get(svc.id);
@@ -2567,11 +2646,15 @@ async function precoCacheado(db, svc) {
 }
 
 async function processarFila({ lote = LOTE_PADRAO } = {}) {
-  if (filaRodando) return { ok: true, ocupado: true };
+  if (!filaHabilitada()) return { ok: true, desativada: true };
+  if (filaRodandoDesde && Date.now() - filaRodandoDesde < 5 * 60000) return { ok: true, ocupado: true };
+  if (filaRodandoDesde) console.warn(`${LOG_PREFIX} Rodada anterior travada há mais de 5 min — liberando a fila`);
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
-  filaRodando = true;
+  const minhaRodada = Date.now();
+  filaRodandoDesde = minhaRodada;
   let enviados = 0;
+  let restante = false;
   try {
     await ensureTables(db);
     await processarRotinas(db);
@@ -2604,17 +2687,7 @@ async function processarFila({ lote = LOTE_PADRAO } = {}) {
       const itens = await db(T_ENVIOS).where({ campanha_id: camp.id, lote_token: token, status: 'processando' }).orderBy('id');
 
       if (!itens.length) {
-        const [[rest]] = await db.raw(
-          `SELECT COUNT(*) n FROM ${T_ENVIOS} WHERE campanha_id = ? AND status IN ('pendente','processando')`,
-          [camp.id],
-        );
-        if (!Number(rest.n)) {
-          await db(T_CAMPANHAS)
-            .where({ id: camp.id, status: 'enviando' })
-            .update({ status: 'concluida', concluida_em: db.fn.now(), updated_at: db.fn.now() });
-          cacheVisao = null;
-          console.log(`${LOG_PREFIX} Campanha #${camp.id} concluída`);
-        }
+        await concluirSeTerminou(db, camp.id);
         continue;
       }
 
@@ -2655,7 +2728,11 @@ async function processarFila({ lote = LOTE_PADRAO } = {}) {
 
         let res;
         try {
-          res = await emailService.send({ to: item.email, subject: email.subject, html: email.html, text: email.text });
+          res = await comTimeout(
+            emailService.send({ to: item.email, subject: email.subject, html: email.html, text: email.text }),
+            TIMEOUT_ENVIO_MS,
+            'O provedor de e-mail não respondeu em 30s',
+          );
         } catch (e) {
           res = { ok: false, error: e.message };
         }
@@ -2664,19 +2741,39 @@ async function processarFila({ lote = LOTE_PADRAO } = {}) {
             .where('id', item.id)
             .update({ status: 'enviado', enviado_em: db.fn.now(), erro: null, lote_token: null });
         } else {
-          const msg = String(res?.error || 'Falha no envio').slice(0, 500);
+          const msg = String(res?.error || 'Falha no envio').slice(0, 450);
+          if (ERRO_CONFIG_EMAIL.test(msg)) {
+            await db(T_CAMPANHAS)
+              .where({ id: camp.id, status: 'enviando' })
+              .update({ status: 'pausada', ultimo_erro: `Pausada automaticamente: ${msg}`, updated_at: db.fn.now() });
+            await db(T_ENVIOS)
+              .where({ campanha_id: camp.id, lote_token: token, status: 'processando' })
+              .update({ status: 'pendente', lote_token: null, processando_em: null });
+            cacheVisao = null;
+            console.warn(`${LOG_PREFIX} Campanha #${camp.id} pausada por erro de configuração do e-mail: ${msg}`);
+            break;
+          }
           await db(T_ENVIOS).where('id', item.id).update({ status: 'falha', erro: msg, lote_token: null });
           await db(T_CAMPANHAS).where('id', camp.id).update({ ultimo_erro: msg });
         }
         enviados += 1;
       }
+      await concluirSeTerminou(db, camp.id);
     }
+
+    const [[pend]] = await db.raw(
+      `SELECT COUNT(*) AS n FROM ${T_ENVIOS} e INNER JOIN ${T_CAMPANHAS} k ON k.id = e.campanha_id
+       WHERE k.status = 'enviando' AND e.status IN ('pendente', 'processando')`,
+    );
+    restante = Number(pend?.n || 0) > 0;
     return { ok: true, enviados };
   } catch (e) {
     console.error(`${LOG_PREFIX} Erro na fila:`, e.message);
+    restante = true;
     return { ok: false, error: e.message, enviados };
   } finally {
-    filaRodando = false;
+    if (filaRodandoDesde === minhaRodada) filaRodandoDesde = 0;
+    if (restante) agendarProximaRodada();
   }
 }
 
@@ -2743,6 +2840,7 @@ module.exports = {
   agenda,
   atualizarBaseFornecedores,
   atualizarBaseFornecedoresSeVencida,
+  filaHabilitada,
   processarFila,
   registrarAbertura,
   registrarClique,

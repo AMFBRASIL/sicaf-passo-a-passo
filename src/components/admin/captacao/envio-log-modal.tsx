@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Ban, CheckCircle2, Clock, Loader2, Pause, Play, XCircle } from "lucide-react";
+import { Ban, CheckCircle2, Clock, Loader2, Pause, Play, RotateCcw, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,13 @@ import {
 } from "@/lib/admin-servicos-captacao-api";
 import { STATUS_CAMPANHA, dataHora, numero } from "./servicos-visual";
 
-type Log = { campanha: Campanha; porMinuto: number; itens: LogEnvio[] };
+type Log = {
+  campanha: Campanha;
+  porMinuto: number;
+  filaNesteServidor: boolean;
+  itens: LogEnvio[];
+};
+type Acao = "pausar" | "retomar" | "cancelar" | "reenviar_falhas";
 
 function hora(v: string | null) {
   if (!v) return "--:--:--";
@@ -50,7 +56,7 @@ export function EnvioLogModal({
 }) {
   const [log, setLog] = useState<Log | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [acao, setAcao] = useState<"pausar" | "retomar" | "cancelar" | null>(null);
+  const [acao, setAcao] = useState<Acao | null>(null);
   const requisicao = useRef(0);
   const statusAnterior = useRef<string | null>(null);
   const atualizarRef = useRef(onAtualizar);
@@ -66,7 +72,12 @@ export function EnvioLogModal({
       return;
     }
     setErro(null);
-    setLog({ campanha: res.campanha, porMinuto: res.porMinuto, itens: res.itens });
+    setLog({
+      campanha: res.campanha,
+      porMinuto: res.porMinuto,
+      filaNesteServidor: res.filaNesteServidor,
+      itens: res.itens,
+    });
     if (statusAnterior.current && statusAnterior.current !== res.campanha.status) {
       atualizarRef.current?.();
     }
@@ -87,7 +98,7 @@ export function EnvioLogModal({
     return () => window.clearInterval(t);
   }, [campanhaId, status, carregar]);
 
-  const executar = async (a: "pausar" | "retomar" | "cancelar") => {
+  const executar = async (a: Acao) => {
     if (!campanhaId) return;
     if (
       a === "cancelar" &&
@@ -104,6 +115,9 @@ export function EnvioLogModal({
       toast.error(res.error);
       return;
     }
+    if (a === "reenviar_falhas") {
+      toast.success(`${numero(res.reenfileirados || 0)} e-mails voltaram para a fila`);
+    }
     await carregar();
     atualizarRef.current?.();
   };
@@ -116,7 +130,7 @@ export function EnvioLogModal({
 
   return (
     <Dialog open={!!campanhaId} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-h-[92vh] max-w-2xl grid-cols-1 overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2 pr-6">
             Disparo da campanha #{campanhaId}
@@ -139,11 +153,11 @@ export function EnvioLogModal({
             {erro || <Loader2 className="h-5 w-5 animate-spin" />}
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <div className="space-y-1.5">
-              <div className="flex items-end justify-between">
+              <div className="flex items-end justify-between gap-3">
                 <span className="text-3xl font-bold tracking-tight">{progresso}%</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-right text-xs text-muted-foreground">
                   {numero(processados)} de {numero(c.total)} processados
                 </span>
               </div>
@@ -153,7 +167,9 @@ export function EnvioLogModal({
                 {c.status === "enviando" &&
                   (log.porMinuto
                     ? `Ritmo: ${numero(log.porMinuto)} e-mails/min${eta ? ` · termina em ${eta}` : ""}.`
-                    : "Enviando o primeiro lote…")}
+                    : processados
+                      ? "Aguardando o próximo lote da fila…"
+                      : "Enviando o primeiro lote…")}
                 {c.status === "pausada" && "Pausada — nada sai até você retomar."}
                 {c.status === "concluida" && `Concluída em ${dataHora(c.concluidaEm)}.`}
                 {c.status === "cancelada" && `Cancelada em ${dataHora(c.concluidaEm)}.`}
@@ -181,7 +197,7 @@ export function EnvioLogModal({
                   </span>
                 )}
               </div>
-              <div className="h-64 overflow-y-auto bg-slate-950 px-3 py-2 font-mono text-[12px] leading-relaxed text-slate-200">
+              <div className="h-64 overflow-y-auto overflow-x-hidden bg-slate-950 px-3 py-2 font-mono text-[12px] leading-relaxed text-slate-200">
                 {!log.itens.length ? (
                   <p className="flex items-center gap-2 text-slate-400">
                     <Clock className="h-3.5 w-3.5" />
@@ -194,16 +210,37 @@ export function EnvioLogModal({
                 )}
               </div>
             </div>
-            {c.ultimoErro && c.falhas > 0 && (
-              <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                Último erro: {c.ultimoErro}
+            {c.ultimoErro && (c.falhas > 0 || c.status === "pausada") && (
+              <p className="break-words rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {c.status === "pausada" ? c.ultimoErro : `Último erro: ${c.ultimoErro}`}
+              </p>
+            )}
+            {!log.filaNesteServidor && (c.status === "enviando" || c.status === "agendada") && (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Este servidor não dispara e-mails (ambiente de desenvolvimento). Os envios saem pelo
+                servidor de produção; o log acompanha o andamento normalmente.
               </p>
             )}
           </div>
         )}
 
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {!!c?.falhas && status !== "cancelada" && status !== "enviando" && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!!acao}
+                onClick={() => void executar("reenviar_falhas")}
+              >
+                {acao === "reenviar_falhas" ? (
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                )}
+                Reenviar {numero(c.falhas)} falhas
+              </Button>
+            )}
             {(status === "enviando" || status === "agendada") && (
               <Button
                 variant="outline"
@@ -286,7 +323,7 @@ function LinhaLog({ item }: { item: LogEnvio }) {
     <div className="flex items-start gap-2 py-0.5">
       <span className="shrink-0 text-slate-500">{hora(item.enviadoEm)}</span>
       {icone}
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 flex-1 break-all">
         <span className="text-slate-100">{item.email}</span>
         <span className="text-slate-500"> · {item.empresa}</span>
         <span

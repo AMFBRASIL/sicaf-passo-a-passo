@@ -173,9 +173,9 @@ export function CampanhasPanel({
               <Indicador label="Receita gerada" valor={moeda(c.receita)} />
             </div>
 
-            {c.ultimoErro && c.falhas > 0 && (
-              <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                Último erro: {c.ultimoErro}
+            {c.ultimoErro && (c.falhas > 0 || c.status === "pausada") && (
+              <p className="break-words rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {c.status === "pausada" ? c.ultimoErro : `Último erro: ${c.ultimoErro}`}
               </p>
             )}
           </Card>

@@ -81,6 +81,7 @@ async function _sendViaMailgunApi(cfg, opts, apiKeySource = 'unknown') {
         method: 'POST',
         headers: { Authorization: authHeader, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formBody,
+        signal: AbortSignal.timeout(20000),
       });
 
       const data = await response.json().catch(() => ({}));

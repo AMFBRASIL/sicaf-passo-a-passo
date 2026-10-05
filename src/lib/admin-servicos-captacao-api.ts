@@ -271,17 +271,26 @@ export function registrarContato(
   return acaoServico<object>(servico, { action: "contato", ...dados });
 }
 
-export async function alterarCampanha(id: number, acao: "pausar" | "retomar" | "cancelar") {
+export async function alterarCampanha(
+  id: number,
+  acao: "pausar" | "retomar" | "cancelar" | "reenviar_falhas",
+) {
   const res = await apiFetch(`/api/admin/servicos-captacao/campanhas/${id}`, {
     method: "POST",
     body: JSON.stringify({ acao }),
   });
-  return json<object>(res);
+  return json<{ reenfileirados?: number }>(res);
 }
 
 export async function fetchLogCampanha(id: number) {
   const res = await apiFetch(`/api/admin/servicos-captacao/campanhas/${id}`);
-  return json<{ campanha: Campanha; porMinuto: number; itens: LogEnvio[] }>(res);
+  return json<{
+    campanha: Campanha;
+    porMinuto: number;
+    /** false = este backend não processa a fila (dev); quem envia é a produção. */
+    filaNesteServidor: boolean;
+    itens: LogEnvio[];
+  }>(res);
 }
 
 export async function fetchAgendaServicos() {
