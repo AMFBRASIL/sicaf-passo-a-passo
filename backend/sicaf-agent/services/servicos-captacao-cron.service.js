@@ -2,7 +2,8 @@
  * Processa a fila de campanhas de captação (Admin → Serviços) em lotes e dispara as rotinas vencidas.
  * CAPTACAO_INTERVALO_SEG (padrão 20) e CAPTACAO_LOTE (padrão 30) controlam o ritmo.
  * A cópia da base de fornecedores é refeita uma vez por dia (verificada a cada hora).
- * Fora de produção fica desligado por padrão (o banco é compartilhado) — veja filaHabilitada().
+ * No `next dev` local fica desligado por padrão (o banco é compartilhado) — veja filaHabilitada().
+ * CRON_CAPTACAO_ENABLED=false desliga só o cron periódico (rotinas/agendadas); a fila em andamento continua.
  */
 const {
   processarFila,
@@ -27,10 +28,16 @@ function tickFornecedores() {
 
 function start() {
   if (!filaHabilitada()) {
-    console.log(`${LOG_PREFIX} Desativado neste ambiente (só roda em produção ou com CRON_CAPTACAO_ENABLED=true)`);
+    console.log(`${LOG_PREFIX} Desativado neste ambiente (next dev; use CAPTACAO_FILA_ENABLED=true para ligar)`);
     return;
   }
   if (_timer) return;
+  if ((process.env.CRON_CAPTACAO_ENABLED || 'true').toLowerCase() === 'false') {
+    // Sem o cron, rotinas e campanhas agendadas não disparam sozinhas; a fila em andamento segue encadeada.
+    setTimeout(tick, 15000);
+    console.log(`${LOG_PREFIX} Cron periódico desativado (CRON_CAPTACAO_ENABLED=false) — só retomando a fila em andamento`);
+    return;
+  }
   const seg = Math.max(5, parseInt(process.env.CAPTACAO_INTERVALO_SEG || '20', 10) || 20);
   _timer = setInterval(tick, seg * 1000);
   _timerForn = setInterval(tickFornecedores, 3600 * 1000);

@@ -22,15 +22,17 @@ const INTERVALO_MS = Math.max(5, parseInt(process.env.CAPTACAO_INTERVALO_SEG || 
 const TIMEOUT_ENVIO_MS = 30000;
 
 /**
- * O banco é o mesmo em dev e produção: por padrão só o servidor de produção dispara,
- * para uma máquina local (com outra config de e-mail) não consumir a fila.
- * CRON_CAPTACAO_ENABLED=true/false força o comportamento.
+ * O banco é o mesmo em dev e produção: por padrão o `next dev` local não dispara,
+ * para uma máquina local (IP fora da allowlist do Mailgun) não consumir a fila.
+ * CAPTACAO_FILA_ENABLED=true/false força o comportamento. CRON_CAPTACAO_ENABLED só controla o cron periódico.
+ * Usa o NODE_ENV do processo (antes do override do backend/.env feito em config/index.js).
  */
 function filaHabilitada() {
-  const flag = String(process.env.CRON_CAPTACAO_ENABLED || '').toLowerCase();
+  const flag = String(process.env.CAPTACAO_FILA_ENABLED || '').toLowerCase();
   if (flag === 'true') return true;
   if (flag === 'false') return false;
-  return process.env.NODE_ENV === 'production';
+  const runtime = process.env.CADBRASIL_RUNTIME_NODE_ENV ?? process.env.NODE_ENV;
+  return runtime !== 'development';
 }
 const JANELA_CONVERSAO_DIAS = 60;
 

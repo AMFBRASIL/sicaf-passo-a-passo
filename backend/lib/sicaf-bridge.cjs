@@ -62,7 +62,8 @@ const MODULES_SEM_CACHE_BUST = new Set([
 ]);
 
 function shouldBustCache(relativePath) {
-  if (process.env.NODE_ENV === "production") return false;
+  const runtimeEnv = process.env.CADBRASIL_RUNTIME_NODE_ENV ?? process.env.NODE_ENV;
+  if (runtimeEnv !== "development") return false;
   const normalized = String(relativePath || "").replace(/\\/g, "/");
   return !MODULES_SEM_CACHE_BUST.has(normalized);
 }

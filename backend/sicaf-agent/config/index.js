@@ -4,6 +4,11 @@
 const path = require("path");
 
 function loadEnvFile() {
+  // O override abaixo pode trocar o NODE_ENV (ex.: .env com NODE_ENV=development em produção);
+  // guarda o valor definido pelo `next start`/`next dev` antes disso.
+  if (process.env.CADBRASIL_RUNTIME_NODE_ENV === undefined) {
+    process.env.CADBRASIL_RUNTIME_NODE_ENV = process.env.NODE_ENV || "";
+  }
   // Na Vercel as variáveis vêm do painel — não há backend/.env no bundle.
   if (process.env.VERCEL) return;
   try {
