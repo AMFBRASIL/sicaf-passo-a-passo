@@ -57,6 +57,72 @@ function pagamentoPixGeradoUpdate(txid, locId, qrcodeText, qrcodeImage, gnRespon
   };
 }
 
+const STATUS_COBRANCA_SUBSTITUIVEL = ['aguardando', 'gerado', 'expirado', 'vencido', 'pendente', 'erro'];
+
+/**
+ * Ao regenerar boleto/PIX de manutenção, encerra cobranças anteriores da mesma competência
+ * para não incharem a fila de validação da Efí.
+ */
+async function marcarCobrancasManutencaoSubstituidas(db, boletoId, novoPagamentoId) {
+  if (!db || !boletoId || !novoPagamentoId) return 0;
+  try {
+    return await db(PAGAMENTOS_TABLE)
+      .where({ origem: 'manutencao', origem_id: boletoId })
+      .whereNull('deleted_at')
+      .whereNot('id', novoPagamentoId)
+      .whereIn('status', STATUS_COBRANCA_SUBSTITUIVEL)
+      .update({ status: 'expirado', updated_at: db.fn.now() });
+  } catch (e) {
+    console.warn('[Pagamentos] marcarCobrancasManutencaoSubstituidas:', e.message);
+    return 0;
+  }
+}
+
+/**
+ * Após confirmar pagamento de manutenção: marca a cobrança paga e cancela as irmãs abertas.
+ */
+async function sincronizarPagamentosDaManutencao(db, boletoId, { pagamentoId = null } = {}) {
+  if (!db || !boletoId) return;
+  const paidUpdate = { status: 'pago', data_pagamento: db.fn.now(), updated_at: db.fn.now() };
+  const cancelUpdate = { status: 'cancelado', updated_at: db.fn.now() };
+  const skipPaid = ['pago', 'cancelado', 'estornado', 'removido'];
+
+  try {
+    if (pagamentoId) {
+      await db(PAGAMENTOS_TABLE)
+        .where({ id: pagamentoId, origem: 'manutencao' })
+        .whereNotIn('status', skipPaid)
+        .update(paidUpdate);
+      await db(PAGAMENTOS_TABLE)
+        .where({ origem: 'manutencao', origem_id: boletoId })
+        .whereNull('deleted_at')
+        .whereNot('id', pagamentoId)
+        .whereNotIn('status', skipPaid)
+        .update(cancelUpdate);
+    } else {
+      const abertos = await db(PAGAMENTOS_TABLE)
+        .where({ origem: 'manutencao', origem_id: boletoId })
+        .whereNull('deleted_at')
+        .whereNotIn('status', skipPaid)
+        .orderBy('id', 'desc')
+        .select('id');
+      if (!abertos.length) return;
+      const keeper = abertos[0].id;
+      await db(PAGAMENTOS_TABLE).where('id', keeper).update(paidUpdate);
+      if (abertos.length > 1) {
+        await db(PAGAMENTOS_TABLE)
+          .whereIn(
+            'id',
+            abertos.slice(1).map((r) => r.id),
+          )
+          .update(cancelUpdate);
+      }
+    }
+  } catch (e) {
+    console.warn('[Pagamentos] sincronizarPagamentosDaManutencao:', e.message);
+  }
+}
+
 function mapPagamentoRowToApi(r) {
   return {
     id: r.id,
@@ -616,6 +682,8 @@ async function gerarBoletoManutencao(opts) {
       pagamentoBoletoGeradoUpdate(chargeId, barcode, barcodeLink, pdfLink, gnResponse),
     );
 
+    await marcarCobrancasManutencaoSubstituidas(db, opts.boletoId, pagamentoId);
+
     // Atualizar tabela de origem
     await db('manutencao_boletos').where('id', opts.boletoId).update({
       forma_pagamento: 'Boleto',
@@ -725,6 +793,8 @@ async function gerarPixManutencao(opts) {
     await db('pagamentos').where('id', pagamentoId).update(
       pagamentoPixGeradoUpdate(txid, locId, qrcodeText, qrcodeImage, gnResponse),
     );
+
+    await marcarCobrancasManutencaoSubstituidas(db, opts.boletoId, pagamentoId);
 
     // Atualizar tabela de origem
     const pixUpdate = {
@@ -1193,16 +1263,7 @@ async function autorizarPagamentoManutencao(boletoId, clienteIdEsperado, usuario
       data_pagamento: db.fn.now(),
     });
 
-    const pagamentos = await db('pagamentos')
-      .where({ origem: 'manutencao', origem_id: boletoId })
-      .select('id');
-
-    for (const p of pagamentos) {
-      await db('pagamentos').where('id', p.id).update({
-        status: 'pago',
-        data_pagamento: db.fn.now(),
-      });
-    }
+    await sincronizarPagamentosDaManutencao(db, boletoId);
 
     if (usuarioId) {
       try {
@@ -1263,6 +1324,7 @@ async function propagarPagamentoConfirmado(db, pgto) {
       status: 'Pago',
       data_pagamento: db.fn.now(),
     });
+    await sincronizarPagamentosDaManutencao(db, pgto.origem_id, { pagamentoId: pgto.id });
     try {
       const boleto = await db('manutencao_boletos').where('id', pgto.origem_id).first();
       if (boleto) {
@@ -1396,6 +1458,8 @@ module.exports = {
   // Manutenção
   gerarBoletoManutencao,
   gerarPixManutencao,
+  marcarCobrancasManutencaoSubstituidas,
+  sincronizarPagamentosDaManutencao,
   isBoletoManutencaoVencido,
   calcularAcrescimosBoletoVencido,
   gerarCobrancaPersonalizada,

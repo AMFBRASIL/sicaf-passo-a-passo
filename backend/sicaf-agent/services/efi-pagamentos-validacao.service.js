@@ -6,7 +6,11 @@ const gerencianetService = require('./gerencianet.service');
 
 const LOG_PREFIX = '[EfiPagamentos]';
 const STATUS_FINAL = new Set(['pago', 'cancelado', 'estornado', 'removido', 'expirado']);
-const LIMITE_CONSULTA = 80;
+/** Por rodada: evita estourar a API da Efí; rodízio por origem garante manutenção mesmo com fila SICAF grande. */
+const LIMITE_CONSULTA = Math.max(
+  80,
+  parseInt(process.env.EFI_VALIDACAO_LIMITE || '400', 10) || 400,
+);
 const DELAY_MS = 90;
 
 function sleep(ms) {
@@ -87,6 +91,14 @@ async function propagarLocal(db, pgto) {
       data_pagamento: db.fn.now(),
     });
     try {
+      const pagamentosService = require('./pagamentos.service');
+      await pagamentosService.sincronizarPagamentosDaManutencao(db, pgto.origem_id, {
+        pagamentoId: pgto.id,
+      });
+    } catch (e) {
+      console.error(`${LOG_PREFIX} sincronizar irmãs manutenção:`, e.message);
+    }
+    try {
       const boleto = await db('manutencao_boletos').where('id', pgto.origem_id).first();
       if (boleto) {
         const automacoes = require('./automacoes.service');
@@ -109,6 +121,81 @@ async function propagarLocal(db, pgto) {
       console.error(`${LOG_PREFIX} proposta:`, e.message);
     }
   }
+}
+
+const SELECT_PENDENTE = [
+  'p.id',
+  'p.cliente_id',
+  'p.origem',
+  'p.origem_id',
+  'p.tipo',
+  'p.valor',
+  'p.status',
+  'p.provider_txid',
+  'p.provider_charge_id',
+  'p.data_pagamento',
+  'p.created_at',
+];
+
+function queryPendentesAbertos(db) {
+  return db('pagamentos as p')
+    .leftJoin('clientes as c', 'c.id', 'p.cliente_id')
+    .whereNull('p.deleted_at')
+    .where(function () {
+      this.whereNotNull('p.provider_txid').orWhereNotNull('p.provider_charge_id');
+    })
+    .where(function () {
+      this.whereNotIn('p.status', Array.from(STATUS_FINAL)).orWhereNull('p.status');
+    })
+    .select(
+      ...SELECT_PENDENTE,
+      db.raw("COALESCE(c.razao_social, c.nome_fantasia, '') as cliente_nome"),
+      'c.documento as cliente_documento',
+    );
+}
+
+/**
+ * Rodízio por origem (mais antigas primeiro) para manutenção/SICAF não se bloquearem.
+ * Depois completa o restante do limite com as mais antigas restantes.
+ */
+async function selecionarPendentes(db, limite = LIMITE_CONSULTA) {
+  const origensRows = await db('pagamentos as p')
+    .whereNull('p.deleted_at')
+    .where(function () {
+      this.whereNotNull('p.provider_txid').orWhereNotNull('p.provider_charge_id');
+    })
+    .where(function () {
+      this.whereNotIn('p.status', Array.from(STATUS_FINAL)).orWhereNull('p.status');
+    })
+    .distinct('p.origem');
+  const origens = [...new Set(origensRows.map((r) => r.origem || null))];
+  const porOrigem = Math.max(25, Math.floor(limite / Math.max(origens.length, 1)));
+  const picked = [];
+  const ids = new Set();
+
+  for (const origem of origens) {
+    let q = queryPendentesAbertos(db).orderBy('p.created_at', 'asc').limit(porOrigem);
+    if (origem == null) q = q.whereNull('p.origem');
+    else q = q.andWhere('p.origem', origem);
+    for (const row of await q) {
+      if (ids.has(row.id)) continue;
+      ids.add(row.id);
+      picked.push(row);
+      if (picked.length >= limite) return picked;
+    }
+  }
+
+  if (picked.length < limite) {
+    let q = queryPendentesAbertos(db).orderBy('p.created_at', 'asc').limit(limite - picked.length);
+    if (ids.size) q = q.whereNotIn('p.id', Array.from(ids));
+    for (const row of await q) {
+      if (ids.has(row.id)) continue;
+      ids.add(row.id);
+      picked.push(row);
+    }
+  }
+
+  return picked;
 }
 
 async function runValidacaoPagamentosEfi({ log } = {}) {
@@ -148,34 +235,15 @@ async function runValidacaoPagamentosEfi({ log } = {}) {
     .orderBy('p.data_pagamento', 'desc')
     .limit(40);
 
-  const pendentes = await db('pagamentos as p')
-    .leftJoin('clientes as c', 'c.id', 'p.cliente_id')
-    .whereNull('p.deleted_at')
-    .where(function () {
-      this.whereNotNull('p.provider_txid').orWhereNotNull('p.provider_charge_id');
-    })
-    .where(function () {
-      this.whereNotIn('p.status', Array.from(STATUS_FINAL)).orWhereNull('p.status');
-    })
-    .select(
-      'p.id',
-      'p.cliente_id',
-      'p.origem',
-      'p.origem_id',
-      'p.tipo',
-      'p.valor',
-      'p.status',
-      'p.provider_txid',
-      'p.provider_charge_id',
-      'p.data_pagamento',
-      'p.created_at',
-      db.raw("COALESCE(c.razao_social, c.nome_fantasia, '') as cliente_nome"),
-      'c.documento as cliente_documento',
-    )
-    .orderBy('p.created_at', 'desc')
-    .limit(LIMITE_CONSULTA);
-
-  say(`Consultando ${pendentes.length} cobrança(s) aberta(s) na Efí`);
+  const pendentes = await selecionarPendentes(db, LIMITE_CONSULTA);
+  const porOrigem = {};
+  for (const row of pendentes) {
+    const o = row.origem || '—';
+    porOrigem[o] = (porOrigem[o] || 0) + 1;
+  }
+  say(
+    `Consultando ${pendentes.length} cobrança(s) aberta(s) na Efí (limite ${LIMITE_CONSULTA}; por origem: ${JSON.stringify(porOrigem)})`,
+  );
 
   const validados = [];
   const pendentesEfi = [];
