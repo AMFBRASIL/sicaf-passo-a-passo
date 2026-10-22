@@ -137,15 +137,33 @@ function formatCurrency(raw: number | string | null | undefined): string {
   });
 }
 
+/** Anos fora da faixa = erro de ingestão (ex.: 9202 → "21/01/9202"). */
+function isSaneLicitacaoDate(raw?: string | Date | null): boolean {
+  if (raw == null || raw === "") return false;
+  const d = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(d.getTime())) return false;
+  const year = d.getUTCFullYear();
+  return year >= 2000 && year <= 2100;
+}
+
 function formatDate(raw?: string | null): string {
   if (!raw) return "—";
   try {
     const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return raw;
-    return d.toLocaleDateString("pt-BR");
+    if (Number.isNaN(d.getTime()) || !isSaneLicitacaoDate(d)) return "—";
+    return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
   } catch {
-    return raw;
+    return "—";
   }
+}
+
+function formatPrazoLabel(prazo?: PrazoInfo | null): string {
+  if (!prazo) return "Sem prazo";
+  const days = prazo.days;
+  if (days != null && Number.isFinite(days) && Math.abs(days) > 730) {
+    return "Sem prazo";
+  }
+  return prazo.label || "Sem prazo";
 }
 
 export function computeMatchScore(item: ApiLicitacao): number {
@@ -264,8 +282,11 @@ export function mapApiToDisplay(item: ApiLicitacao): LicitacaoDisplay {
     valor: formatCurrency(item.valor_estimado),
     valorNum,
     abertura: formatDate(item.data_abertura),
-    prazo: item.prazo?.label || "Sem prazo",
-    diasRestantes: item.prazo?.days ?? 999,
+    prazo: formatPrazoLabel(item.prazo),
+    diasRestantes:
+      item.prazo?.days != null && Math.abs(item.prazo.days) <= 730
+        ? item.prazo.days
+        : 999,
     match: computeMatchScore(item),
     destaque: item.na_mira,
     segmento: item.esfera || item.modalidade || "—",

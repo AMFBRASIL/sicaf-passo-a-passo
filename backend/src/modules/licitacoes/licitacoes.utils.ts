@@ -15,23 +15,47 @@ export type PrazoInfo = {
   days: number | null;
 };
 
+/** Anos fora dessa faixa costumam ser erro de ingestão (ex.: 9202, 5026). */
+const ANO_MIN_VALIDO = 2000;
+const ANO_MAX_VALIDO = 2100;
+const DIAS_MAX_LABEL = 730;
+
+export function isSaneLicitacaoDate(d: Date | string | null | undefined): boolean {
+  if (d == null || d === "") return false;
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return false;
+  const year = date.getUTCFullYear();
+  return year >= ANO_MIN_VALIDO && year <= ANO_MAX_VALIDO;
+}
+
+export function parseSaneLicitacaoDate(
+  d: Date | string | null | undefined,
+): number | null {
+  if (!isSaneLicitacaoDate(d)) return null;
+  const t = new Date(d as Date | string).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
 export function deadlineInfo(lic: {
   data_abertura?: Date | string | null;
   data_encerramento?: Date | string | null;
 }): PrazoInfo {
   const now = Date.now();
-  const parse = (d: Date | string | null | undefined) => {
-    if (!d) return null;
-    const t = new Date(d).getTime();
-    return Number.isFinite(t) ? t : null;
-  };
-  const abertura = parse(lic.data_abertura);
-  const encerramento = parse(lic.data_encerramento);
-  const pick = encerramento || abertura;
+  const encerramento = parseSaneLicitacaoDate(lic.data_encerramento);
+  const abertura = parseSaneLicitacaoDate(lic.data_abertura);
+  // Prefere encerramento válido; se vier absurdo (ex. ano 9202), usa a abertura.
+  const pick = encerramento ?? abertura;
   if (!pick) return { label: "Sem prazo", urgency: "none", days: null };
+
   const diffMs = pick - now;
   const days = Math.ceil(diffMs / 86400000);
   if (diffMs < 0) return { label: "Prazo encerrado", urgency: "past", days };
+  if (days > DIAS_MAX_LABEL) {
+    const labelDate = new Date(pick).toLocaleDateString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+    });
+    return { label: `Abre/encerra em ${labelDate}`, urgency: "ok", days };
+  }
   if (days <= 1)
     return {
       label: days === 0 ? "Encerra hoje" : "Encerra amanhã",
