@@ -1,14 +1,16 @@
 /**
  * Agenda validação de pagamentos na Efí (Gerencianet).
+ * Suporta perfis: sicaf | manutencao | outros | todos.
  */
 const { getDb } = require('../database/connection');
 const processosService = require('./processos.service');
-const { runValidacaoPagamentosEfi } = require('./efi-pagamentos-validacao.service');
+const { runValidacaoPagamentosEfi, normalizePerfil } = require('./efi-pagamentos-validacao.service');
 
 const LOG_PREFIX = '[Cron:EfiPagamentos]';
 
 let _timer = null;
 let _running = false;
+let _runningPerfil = null;
 let _runCount = 0;
 let _lastRun = null;
 const _lastSlotKeys = new Map();
@@ -39,6 +41,13 @@ function isEnabled() {
   return (process.env.CRON_EFI_PAGAMENTOS_ENABLED || 'true').toLowerCase() !== 'false';
 }
 
+function processoIdForPerfil(perfil) {
+  const p = normalizePerfil(perfil);
+  if (p === 'manutencao') return processosService.PROCESSO_EFI_PAGAMENTOS_MANUTENCAO;
+  if (p === 'sicaf') return processosService.PROCESSO_EFI_PAGAMENTOS;
+  return processosService.PROCESSO_EFI_PAGAMENTOS;
+}
+
 function slotKeyForNow(schedule, date = new Date()) {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}-${schedule.id}`;
 }
@@ -60,9 +69,12 @@ function slimResult(result) {
   };
 }
 
-async function runSync(triggerType = 'cron', scheduleSlot = null) {
+async function runSync(triggerType = 'cron', scheduleSlot = null, perfil = 'sicaf') {
   if (_running) {
-    return { ok: false, error: 'Validação Efí já em execução' };
+    return {
+      ok: false,
+      error: `Validação Efí já em execução${_runningPerfil ? ` (${_runningPerfil})` : ''}`,
+    };
   }
 
   const db = getDb();
@@ -70,45 +82,81 @@ async function runSync(triggerType = 'cron', scheduleSlot = null) {
     return { ok: false, error: 'Banco de dados não disponível' };
   }
 
+  const perfilNorm = normalizePerfil(perfil);
   _running = true;
+  _runningPerfil = perfilNorm;
   _runCount += 1;
   const startedAt = new Date();
   let execId = null;
+  const processoId = processoIdForPerfil(perfilNorm);
 
   try {
-    execId = await processosService.startExecution(
-      db,
-      processosService.PROCESSO_EFI_PAGAMENTOS,
-      triggerType,
-      scheduleSlot,
-    );
-    log(`Iniciando validação (${triggerType}${scheduleSlot ? ` / ${scheduleSlot}` : ''})`);
+    execId = await processosService.startExecution(db, processoId, triggerType, scheduleSlot);
+    log(`Iniciando validação ${perfilNorm} (${triggerType}${scheduleSlot ? ` / ${scheduleSlot}` : ''})`);
 
     const result = await runValidacaoPagamentosEfi({
+      perfil: perfilNorm,
       log: (msg) => log(msg),
     });
 
     if (!result.ok) {
       await processosService.finishExecution(db, execId, 'error', result.error, result);
-      _lastRun = { startedAt, finishedAt: new Date(), error: result.error, triggerType, scheduleSlot };
+      _lastRun = {
+        startedAt,
+        finishedAt: new Date(),
+        error: result.error,
+        triggerType,
+        scheduleSlot,
+        perfil: perfilNorm,
+      };
       log('Erro na validação', result.error);
       return result;
     }
 
     await processosService.finishExecution(db, execId, 'success', result.message, slimResult(result));
-    _lastRun = { startedAt, finishedAt: new Date(), result, triggerType, scheduleSlot };
-    log('Validação concluída', { validadosAgora: result.validadosAgora });
+    _lastRun = { startedAt, finishedAt: new Date(), result, triggerType, scheduleSlot, perfil: perfilNorm };
+    log('Validação concluída', {
+      perfil: perfilNorm,
+      validadosAgora: result.validadosAgora,
+      consultados: result.consultados,
+    });
     return result;
   } catch (e) {
     if (execId) {
       await processosService.finishExecution(db, execId, 'error', e.message, null).catch(() => {});
     }
-    _lastRun = { startedAt, finishedAt: new Date(), error: e.message, triggerType, scheduleSlot };
+    _lastRun = {
+      startedAt,
+      finishedAt: new Date(),
+      error: e.message,
+      triggerType,
+      scheduleSlot,
+      perfil: perfilNorm,
+    };
     log('Exceção', e.message);
     return { ok: false, error: e.message };
   } finally {
     _running = false;
+    _runningPerfil = null;
   }
+}
+
+/**
+ * No cron: SICAF primeiro (prioridade anual), depois manutenção.
+ * Cada um gera execução própria no histórico.
+ */
+async function runSyncSequencial(triggerType = 'cron', scheduleSlot = null) {
+  const sicaf = await runSync(triggerType, scheduleSlot, 'sicaf');
+  if (_running) {
+    return { ok: false, error: 'Fila ocupada após SICAF', sicaf };
+  }
+  const manutencao = await runSync(triggerType, scheduleSlot, 'manutencao');
+  return {
+    ok: Boolean(sicaf?.ok || manutencao?.ok),
+    message: [sicaf?.message, manutencao?.message].filter(Boolean).join(' | '),
+    sicaf,
+    manutencao,
+  };
 }
 
 function tick() {
@@ -119,7 +167,7 @@ function tick() {
   const key = slotKeyForNow(slot);
   if (_lastSlotKeys.get(slot.id) === key) return;
   _lastSlotKeys.set(slot.id, key);
-  runSync('cron', slot.id).catch((err) => log('Erro no tick', err.message));
+  runSyncSequencial('cron', slot.id).catch((err) => log('Erro no tick', err.message));
 }
 
 function start() {
@@ -131,7 +179,7 @@ function start() {
   const scheduleStr = schedules
     .map((s) => `${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')} (${s.label})`)
     .join(', ');
-  log(`Iniciado — horários: ${scheduleStr}`);
+  log(`Iniciado — horários: ${scheduleStr} (SICAF → depois Manutenção)`);
   _timer = setInterval(tick, 60 * 1000);
   setTimeout(tick, 8000);
 }
@@ -147,6 +195,7 @@ function stop() {
 function getStatus() {
   return {
     running: _running,
+    runningPerfil: _runningPerfil,
     runCount: _runCount,
     lastRun: _lastRun,
     timerActive: !!_timer,
@@ -159,6 +208,7 @@ module.exports = {
   start,
   stop,
   runSync,
+  runSyncSequencial,
   getStatus,
   parseSchedule,
 };

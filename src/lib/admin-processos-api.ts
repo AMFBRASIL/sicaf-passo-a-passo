@@ -129,13 +129,22 @@ export async function runLicitacoesBoletim(): Promise<{
   return res.json();
 }
 
-export async function runEfiPagamentosValidacao(): Promise<{
+export async function runEfiPagamentosValidacao(
+  perfil: "sicaf" | "manutencao" | "outros" | "todos" = "sicaf",
+): Promise<{
   ok: boolean;
   message?: string;
   error?: string;
+  perfil?: string;
 }> {
-  const res = await apiFetch("/api/admin/processos/efi-pagamentos/run", {
+  const path =
+    perfil === "manutencao"
+      ? "/api/admin/processos/efi-pagamentos-manutencao/run"
+      : "/api/admin/processos/efi-pagamentos/run";
+  const res = await apiFetch(path, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ perfil }),
   });
   return res.json();
 }

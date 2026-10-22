@@ -5,6 +5,7 @@ const { getDb } = require('../database/connection');
 
 const PROCESSO_GOOGLE_ADS = 'google-ads-conversoes';
 const PROCESSO_EFI_PAGAMENTOS = 'efi-pagamentos';
+const PROCESSO_EFI_PAGAMENTOS_MANUTENCAO = 'efi-pagamentos-manutencao';
 const PROCESSO_LICITACOES_BOLETIM = 'licitacoes-boletim';
 
 const DEFAULT_SCHEDULES = [
@@ -154,11 +155,21 @@ function getProcessDefinitions() {
     },
     {
       id: PROCESSO_EFI_PAGAMENTOS,
-      name: 'Validar pagamentos Efí',
+      name: 'Validar SICAF na Efí (prioridade)',
       description:
-        'Consulta PIX e boletos em aberto na Efí Bank (Gerencianet), baixa os que já foram pagos e gera a conferência com os pagamentos já marcados no sistema.',
+        'Consulta na Efí as cobranças SICAF em aberto, priorizando a taxa anual (~R$ 985 / R$ 985,50). Baixa os pagos e atualiza taxas_sicaf. Mais rápido e separado da manutenção.',
       enabled: efiEnabled,
       schedules: efiSchedules.length ? efiSchedules : DEFAULT_SCHEDULES,
+      efiPerfil: 'sicaf',
+    },
+    {
+      id: PROCESSO_EFI_PAGAMENTOS_MANUTENCAO,
+      name: 'Validar manutenção na Efí',
+      description:
+        'Consulta na Efí os boletos/PIX de manutenção em aberto e baixa os pagos. Rode depois do SICAF ou quando precisar limpar a fila de mensalidades.',
+      enabled: efiEnabled,
+      schedules: efiSchedules.length ? efiSchedules : DEFAULT_SCHEDULES,
+      efiPerfil: 'manutencao',
     },
     {
       id: PROCESSO_LICITACOES_BOLETIM,
@@ -186,7 +197,7 @@ async function listProcessos() {
     const cronStatus =
       def.id === PROCESSO_GOOGLE_ADS
         ? googleAdsCron.getStatus()
-        : def.id === PROCESSO_EFI_PAGAMENTOS
+        : def.id === PROCESSO_EFI_PAGAMENTOS || def.id === PROCESSO_EFI_PAGAMENTOS_MANUTENCAO
           ? efiCron.getStatus()
           : def.id === PROCESSO_LICITACOES_BOLETIM
             ? boletimCron.getStatus()
@@ -205,6 +216,7 @@ async function listProcessos() {
 module.exports = {
   PROCESSO_GOOGLE_ADS,
   PROCESSO_EFI_PAGAMENTOS,
+  PROCESSO_EFI_PAGAMENTOS_MANUTENCAO,
   PROCESSO_LICITACOES_BOLETIM,
   getProcessDefinitions,
   parseScheduleEnv,

@@ -136,7 +136,7 @@ function historyToday(history: ProcessHistory[]) {
 }
 
 function isEfiProcess(id: string) {
-  return id === "efi-pagamentos";
+  return id === "efi-pagamentos" || id === "efi-pagamentos-manutencao";
 }
 
 function isGoogleAdsProcess(id: string) {
@@ -947,12 +947,14 @@ function ProcessosPage() {
     try {
       const res =
         processoId === "efi-pagamentos"
-          ? await runEfiPagamentosValidacao()
-          : processoId === "google-ads-conversoes"
-            ? await runGoogleAdsConversoesSync()
-            : processoId === "licitacoes-boletim"
-              ? await runLicitacoesBoletim()
-              : { ok: false, error: "Processo sem execução manual" };
+          ? await runEfiPagamentosValidacao("sicaf")
+          : processoId === "efi-pagamentos-manutencao"
+            ? await runEfiPagamentosValidacao("manutencao")
+            : processoId === "google-ads-conversoes"
+              ? await runGoogleAdsConversoesSync()
+              : processoId === "licitacoes-boletim"
+                ? await runLicitacoesBoletim()
+                : { ok: false, error: "Processo sem execução manual" };
       if (!res.ok) {
         toast.error(res.error || "Falha ao iniciar o processo");
         return;

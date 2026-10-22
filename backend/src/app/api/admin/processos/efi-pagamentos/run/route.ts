@@ -6,10 +6,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type EfiCronService = {
-  getStatus: () => { running: boolean };
+  getStatus: () => { running: boolean; runningPerfil?: string | null };
   runSync: (
     triggerType: string,
     scheduleSlot: string | null,
+    perfil?: string,
   ) => Promise<{ ok: boolean; error?: string; message?: string }>;
 };
 
@@ -18,12 +19,22 @@ export async function POST(request: Request) {
     await requireStaffAccess(request);
     const cron = await getSicafAgentModule<EfiCronService>("services/efi-pagamentos-cron.service");
 
+    let perfil = "sicaf";
+    try {
+      const body = await request.json();
+      if (body?.perfil) perfil = String(body.perfil);
+    } catch {
+      /* body opcional */
+    }
+    const urlPerfil = new URL(request.url).searchParams.get("perfil");
+    if (urlPerfil) perfil = urlPerfil;
+
     if (cron.getStatus().running) {
       return NextResponse.json({ ok: false, error: "Validação Efí já em execução" }, { status: 409 });
     }
 
     void cron
-      .runSync("manual", "manual")
+      .runSync("manual", "manual", perfil)
       .then((r) => {
         if (!r.ok) console.error("[ProcessosAPI] Validação Efí:", r.error);
         else console.log("[ProcessosAPI] Validação Efí OK:", r.message);
@@ -32,7 +43,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: "Validação de pagamentos na Efí iniciada em background",
+      message:
+        perfil === "manutencao"
+          ? "Validação de manutenção na Efí iniciada em background"
+          : "Validação SICAF na Efí iniciada em background (prioridade R$ 985)",
+      perfil,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao iniciar processo";
