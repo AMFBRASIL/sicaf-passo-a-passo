@@ -994,16 +994,16 @@ function DetalheDialog({
 
   return (
     <Dialog open={!!licitacao} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="h-[92vh] max-h-[92vh] w-[96vw] max-w-6xl overflow-hidden p-0 sm:rounded-2xl">
+      <DialogContent className="flex h-[min(92dvh,920px)] max-h-[92dvh] w-[96vw] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:rounded-2xl [&>button]:hidden">
         <DialogTitle className="sr-only">
           Detalhes da licitação — {licitacao.objeto}
         </DialogTitle>
         <DialogDescription className="sr-only">
           {licitacao.orgao} · {licitacao.modalidade} · Abertura {licitacao.abertura}
         </DialogDescription>
-        <div className="flex h-full flex-col md:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           {/* SIDEBAR ESQUERDA - WIZARD */}
-          <aside className="relative w-full overflow-hidden border-b md:w-72 md:shrink-0 md:border-b-0 md:border-r">
+          <aside className="relative max-h-[38dvh] w-full shrink-0 overflow-y-auto border-b md:max-h-none md:h-auto md:w-72 md:overflow-hidden md:border-b-0 md:border-r">
             {/* hero bg */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-[oklch(0.32_0.12_260)]" />
             <div
@@ -1097,7 +1097,7 @@ function DetalheDialog({
           </aside>
 
           {/* CONTEÚDO */}
-          <div className="relative flex flex-1 flex-col overflow-hidden">
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <button
               onClick={onClose}
               className="absolute right-4 top-4 z-10 hidden h-8 w-8 items-center justify-center rounded-full border bg-card text-muted-foreground transition hover:bg-muted md:flex"
@@ -1105,8 +1105,8 @@ function DetalheDialog({
               <X className="h-4 w-4" />
             </button>
 
-            <ScrollArea className="flex-1">
-              <div className="p-6 sm:p-8">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <div className="p-6 pb-8 sm:p-8">
                 {step === "resumo" && <StepResumo l={licitacao} />}
                 {step === "match" && <StepMatch l={licitacao} />}
                 {step === "documentos" && <StepDocumentos />}
@@ -1114,10 +1114,10 @@ function DetalheDialog({
                 {step === "ia" && <StepIA l={licitacao} />}
                 {step === "participar" && <StepParticipar l={licitacao} participando={participando} />}
               </div>
-            </ScrollArea>
+            </div>
 
-            {/* Footer navegação */}
-            <div className="flex items-center justify-between gap-3 border-t bg-muted/30 p-4">
+            {/* Footer navegação — sempre visível na base do modal */}
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:p-4">
               <Button
                 variant="ghost"
                 onClick={() => {
@@ -1130,7 +1130,7 @@ function DetalheDialog({
               </Button>
               {step === steps[steps.length - 1].id ? (
                 participando ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     <span className="inline-flex items-center gap-1.5 text-sm font-medium text-success">
                       <CheckCircle2 className="h-4 w-4" />
                       Participação confirmada
@@ -1148,7 +1148,11 @@ function DetalheDialog({
                     </Button>
                   </div>
                 ) : (
-                  <Button onClick={() => void confirmarParticipacao()} disabled={confirmando}>
+                  <Button
+                    className="min-w-0 shrink"
+                    onClick={() => void confirmarParticipacao()}
+                    disabled={confirmando}
+                  >
                     {confirmando ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
