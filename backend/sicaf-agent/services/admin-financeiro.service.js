@@ -1,5 +1,11 @@
 /**
  * Painel Financeiro Admin — KPIs, gráficos e movimentos com dados reais.
+ *
+ * Fonte de verdade da receita:
+ *  - Manutenção → manutencao_boletos (Pago)
+ *  - SICAF → taxas_sicaf (Pago)
+ *  - Demais (avulso, assessoria, módulos…) → pagamentos (origem ≠ sicaf/manutencao)
+ * Assim não somamos a mesma cobrança duas vezes (origem + ledger Efí).
  */
 const { getDb } = require('../database/connection');
 
@@ -83,11 +89,22 @@ function mapTipoMeio(tipo) {
   return 'Outro';
 }
 
+function mapFormaMeio(forma) {
+  const t = String(forma || '').toLowerCase();
+  if (t.includes('pix')) return 'PIX';
+  if (t.includes('cart')) return 'Cartão';
+  if (t.includes('boleto')) return 'Boleto';
+  if (t.includes('transf')) return 'Transferência';
+  return null;
+}
+
 function mapStatusUi(status, dataVencimento) {
   const s = String(status || '').toLowerCase();
   if (['pago', 'paga', 'aprovado', 'aprovada', 'paid', 'quitado'].includes(s)) return 'Recebido';
   if (['estornado', 'estornada', 'refunded'].includes(s)) return 'Estornado';
-  if (['cancelado', 'cancelada', 'expirado', 'erro'].includes(s)) return 'Vencido';
+  if (['cancelado', 'cancelada', 'cancelled', 'canceled'].includes(s)) return 'Estornado';
+  if (['expirado', 'expired', 'erro', 'removido'].includes(s)) return 'Vencido';
+  if (['atrasado', 'vencido', 'overdue'].includes(s)) return 'Vencido';
   if (dataVencimento) {
     const venc = new Date(dataVencimento);
     const hoje = new Date();
@@ -98,10 +115,11 @@ function mapStatusUi(status, dataVencimento) {
   return 'Aguardando';
 }
 
+/** Receita: boletos/taxas pagos. Exige data_pagamento quando existir; senão cai no created_at. */
 const RECEITA_MANUT_PAGO_WHERE =
   "(LOWER(TRIM(CAST(manutencao_boletos.status AS CHAR))) IN ('pago','aprovado') OR manutencao_boletos.status IN ('Pago','pago','Aprovado','aprovado'))";
 const RECEITA_MANUT_REF_DIA =
-  'DATE(COALESCE(manutencao_boletos.data_pagamento, manutencao_boletos.data_vencimento, manutencao_boletos.created_at))';
+  'DATE(COALESCE(manutencao_boletos.data_pagamento, manutencao_boletos.created_at))';
 
 const RECEITA_SICAF_PAGO_WHERE =
   "(LOWER(TRIM(CAST(taxas_sicaf.status AS CHAR))) IN ('pago','paga','aprovado','aprovada') OR taxas_sicaf.status IN ('Pago','Paga','pago','paga','Aprovado','Aprovada','aprovado','aprovada'))";
@@ -109,7 +127,12 @@ const RECEITA_SICAF_REF_DIA = 'DATE(COALESCE(taxas_sicaf.data_pagamento, taxas_s
 
 const PAGO_PAGAMENTOS_WHERE =
   "(LOWER(TRIM(CAST(p.status AS CHAR))) IN ('pago','paga','aprovado','aprovada','paid') OR p.status IN ('pago','Pago','paga','Paga'))";
-const REF_PAGAMENTO_DIA = 'DATE(COALESCE(p.data_pagamento, p.updated_at, p.created_at))';
+const REF_PAGAMENTO_DIA = 'DATE(COALESCE(p.data_pagamento, p.created_at))';
+
+/** Origens cobertas pelas tabelas de domínio — não somar de novo em pagamentos. */
+const ORIGENS_DOMINIO = ['sicaf', 'manutencao'];
+
+const STATUS_PENDENTE_PAGAMENTO = ['aguardando', 'gerado', 'pendente', 'vencido', 'atrasado'];
 
 async function safeQuery(fallback, fn) {
   try {
@@ -129,9 +152,69 @@ async function scalar(db, queryFn, key = 'total') {
   return row ? aggregateNumber(row, key) : 0;
 }
 
-async function loadPagamentosRows(db, limit = 80) {
-  const rows = [];
+function whereOrigensExtras(q) {
+  return q.where(function () {
+    this.whereNull('p.origem').orWhereNotIn('p.origem', ORIGENS_DOMINIO);
+  });
+}
 
+function whereDia(expr, modo) {
+  if (modo === 'hoje') return `${expr} = CURDATE()`;
+  if (modo === 'ontem') return `${expr} = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`;
+  if (modo === 'mes') {
+    return `${expr} >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND ${expr} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`;
+  }
+  if (modo === 'mes_anterior') {
+    return `${expr} >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND ${expr} < DATE_FORMAT(CURDATE(), '%Y-%m-01')`;
+  }
+  if (modo === '30d') return `${expr} >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`;
+  return '1=1';
+}
+
+async function receitaManut(db, modo) {
+  if (!(await hasTable(db, 'manutencao_boletos'))) return 0;
+  return scalar(db, () =>
+    db('manutencao_boletos')
+      .whereRaw(RECEITA_MANUT_PAGO_WHERE)
+      .whereRaw(whereDia(RECEITA_MANUT_REF_DIA, modo))
+      .sum({ total: 'valor' })
+      .first(),
+  );
+}
+
+async function receitaSicaf(db, modo) {
+  if (!(await hasTable(db, 'taxas_sicaf'))) return 0;
+  return scalar(db, () =>
+    db('taxas_sicaf')
+      .whereRaw(RECEITA_SICAF_PAGO_WHERE)
+      .whereRaw(whereDia(RECEITA_SICAF_REF_DIA, modo))
+      .sum({ total: 'valor' })
+      .first(),
+  );
+}
+
+async function receitaExtras(db, modo) {
+  if (!(await hasTable(db, 'pagamentos'))) return 0;
+  return scalar(db, () =>
+    whereOrigensExtras(
+      db('pagamentos as p').whereNull('p.deleted_at').whereRaw(PAGO_PAGAMENTOS_WHERE),
+    )
+      .whereRaw(whereDia(REF_PAGAMENTO_DIA, modo))
+      .sum({ total: 'p.valor' })
+      .first(),
+  );
+}
+
+async function receitaTotal(db, modo) {
+  const [m, s, e] = await Promise.all([
+    receitaManut(db, modo),
+    receitaSicaf(db, modo),
+    receitaExtras(db, modo),
+  ]);
+  return m + s + e;
+}
+
+async function loadPagamentosRows(db, limit = 80) {
   const mapRow = (p, clienteNome) => ({
     id: p.id,
     cliente: clienteNome || p.cliente_nome || 'Cliente não informado',
@@ -142,9 +225,15 @@ async function loadPagamentosRows(db, limit = 80) {
     data_pagamento: p.data_pagamento,
     data_vencimento: p.data_vencimento,
     created_at: p.created_at,
+    updated_at: p.updated_at || p.created_at,
     origem: p.origem,
+    origem_id: p.origem_id,
     descricao: p.descricao,
+    fonte: p._fonte || 'pagamentos',
   });
+
+  const rows = [];
+  const seen = new Set();
 
   if (await hasTable(db, 'pagamentos')) {
     const pg = await safeQuery([], () =>
@@ -155,6 +244,7 @@ async function loadPagamentosRows(db, limit = 80) {
           'p.id',
           'p.cliente_id',
           'p.origem',
+          'p.origem_id',
           'p.tipo',
           'p.valor',
           'p.descricao',
@@ -162,19 +252,23 @@ async function loadPagamentosRows(db, limit = 80) {
           'p.data_vencimento',
           'p.data_pagamento',
           'p.created_at',
+          'p.updated_at',
           'p.cliente_nome',
           'c.razao_social',
           'c.nome_fantasia',
         )
-        .orderBy('p.updated_at', 'desc')
+        .orderByRaw('COALESCE(p.data_pagamento, p.updated_at, p.created_at) DESC')
         .limit(limit),
     );
     for (const p of pg) {
-      rows.push(mapRow(p, p.razao_social || p.nome_fantasia));
+      const key = `p:${p.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(mapRow({ ...p, _fonte: 'pagamentos' }, p.razao_social || p.nome_fantasia));
     }
   }
 
-  if (rows.length === 0 && (await hasTable(db, 'pagamentos_gerencianet'))) {
+  if (await hasTable(db, 'pagamentos_gerencianet')) {
     const gn = await safeQuery([], () =>
       db('pagamentos_gerencianet as p')
         .leftJoin('clientes as c', 'c.id', 'p.cliente_id')
@@ -182,6 +276,7 @@ async function loadPagamentosRows(db, limit = 80) {
           'p.id',
           'p.cliente_id',
           'p.origem',
+          'p.origem_id',
           'p.tipo',
           'p.valor',
           'p.descricao',
@@ -192,172 +287,131 @@ async function loadPagamentosRows(db, limit = 80) {
           'c.razao_social',
           'c.nome_fantasia',
         )
-        .orderBy('p.created_at', 'desc')
+        .orderByRaw('COALESCE(p.data_pagamento, p.created_at) DESC')
         .limit(limit),
     );
     for (const p of gn) {
-      rows.push(mapRow({ ...p, cliente_nome: null }, p.razao_social || p.nome_fantasia));
+      const dedupeKey =
+        p.origem && p.origem_id
+          ? `${p.origem}:${p.origem_id}:${String(p.tipo || '').toLowerCase()}`
+          : `gn:${p.id}`;
+      if (seen.has(dedupeKey) || seen.has(`p:${p.id}`)) continue;
+      // Se já há linha em pagamentos para a mesma origem+id, ignora o legado.
+      if (
+        p.origem &&
+        p.origem_id &&
+        rows.some(
+          (r) =>
+            r.origem === p.origem &&
+            Number(r.origem_id) === Number(p.origem_id) &&
+            r.fonte === 'pagamentos',
+        )
+      ) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      rows.push(mapRow({ ...p, cliente_nome: null, _fonte: 'gn' }, p.razao_social || p.nome_fantasia));
     }
   }
 
-  return rows;
+  rows.sort((a, b) => {
+    const ta = new Date(a.data_pagamento || a.updated_at || a.created_at || 0).getTime();
+    const tb = new Date(b.data_pagamento || b.updated_at || b.created_at || 0).getTime();
+    return tb - ta;
+  });
+
+  return rows.slice(0, limit);
 }
 
 async function getAdminFinanceiro() {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
-  const [hasPagamentosTable, hasPagamentosGn, hasManutBoletos, hasTaxas, hasManutencoes, hasSicaf] =
-    await Promise.all([
-      hasTable(db, 'pagamentos'),
-      hasTable(db, 'pagamentos_gerencianet'),
-      hasTable(db, 'manutencao_boletos'),
-      hasTable(db, 'taxas_sicaf'),
-      hasTable(db, 'manutencoes'),
-      hasTable(db, 'sicaf_cadastros'),
-    ]);
-  const hasPagamentos = hasPagamentosTable || hasPagamentosGn;
+  const [hasManutBoletos, hasTaxas, hasManutencoes, hasSicaf, hasPagamentos] = await Promise.all([
+    hasTable(db, 'manutencao_boletos'),
+    hasTable(db, 'taxas_sicaf'),
+    hasTable(db, 'manutencoes'),
+    hasTable(db, 'sicaf_cadastros'),
+    hasTable(db, 'pagamentos'),
+  ]);
 
-  const receitaManutPagoWhere = (q) => q.whereRaw(RECEITA_MANUT_PAGO_WHERE);
-  const receitaSicafPagoWhere = (q) => q.whereRaw(RECEITA_SICAF_PAGO_WHERE);
+  const [
+    recebimentosHoje,
+    recebimentosOntem,
+    recebimentosMes,
+    recebimentosMesAnterior,
+  ] = await Promise.all([
+    receitaTotal(db, 'hoje'),
+    receitaTotal(db, 'ontem'),
+    receitaTotal(db, 'mes'),
+    receitaTotal(db, 'mes_anterior'),
+  ]);
 
-  const receitaManutHoje = hasManutBoletos
-    ? await scalar(db, () =>
-        receitaManutPagoWhere(db('manutencao_boletos'))
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} = CURDATE()`)
-          .sum({ total: 'valor' })
-          .first(),
-      )
-    : 0;
-  const receitaManutOntem = hasManutBoletos
-    ? await scalar(db, () =>
-        receitaManutPagoWhere(db('manutencao_boletos'))
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`)
-          .sum({ total: 'valor' })
-          .first(),
-      )
-    : 0;
-  const receitaManutMes = hasManutBoletos
-    ? await scalar(db, () =>
-        receitaManutPagoWhere(db('manutencao_boletos'))
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
-          .sum({ total: 'valor' })
-          .first(),
-      )
-    : 0;
-  const receitaManutMesAnterior = hasManutBoletos
-    ? await scalar(db, () =>
-        receitaManutPagoWhere(db('manutencao_boletos'))
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')`)
-          .whereRaw(`${RECEITA_MANUT_REF_DIA} < DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-          .sum({ total: 'valor' })
-          .first(),
-      )
-    : 0;
-
-  const receitaSicafHoje = hasTaxas
-    ? await scalar(db, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} = CURDATE()`)
-          .sum({ total: 'valor' })
-          .first(),
-      )
-    : 0;
-  const receitaSicafOntem = hasTaxas
-    ? await scalar(db, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} = DATE_SUB(CURDATE(), INTERVAL 1 DAY)`)
-          .sum({ total: 'valor' })
-          .first(),
-      )
-    : 0;
-  const receitaSicafMes = hasTaxas
-    ? await scalar(db, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
-          .sum({ total: 'valor' })
-          .first(),
-      )
-    : 0;
-  const receitaSicafMesAnterior = hasTaxas
-    ? await scalar(db, () =>
-        receitaSicafPagoWhere(db('taxas_sicaf'))
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')`)
-          .whereRaw(`${RECEITA_SICAF_REF_DIA} < DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-          .sum({ total: 'valor' })
-          .first(),
-      )
-    : 0;
-
-  let receitaPagHoje = 0;
-  let receitaPagMes = 0;
-  let receitaPagMesAnterior = 0;
-  if (await hasTable(db, 'pagamentos')) {
-    receitaPagHoje = await scalar(db, () =>
-      db('pagamentos as p')
-        .whereNull('p.deleted_at')
-        .whereRaw(PAGO_PAGAMENTOS_WHERE)
-        .whereRaw(`${REF_PAGAMENTO_DIA} = CURDATE()`)
-        .sum({ total: 'p.valor' })
-        .first(),
-    );
-    receitaPagMes = await scalar(db, () =>
-      db('pagamentos as p')
-        .whereNull('p.deleted_at')
-        .whereRaw(PAGO_PAGAMENTOS_WHERE)
-        .whereRaw(`${REF_PAGAMENTO_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-        .whereRaw(`${REF_PAGAMENTO_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
-        .sum({ total: 'p.valor' })
-        .first(),
-    );
-    receitaPagMesAnterior = await scalar(db, () =>
-      db('pagamentos as p')
-        .whereNull('p.deleted_at')
-        .whereRaw(PAGO_PAGAMENTOS_WHERE)
-        .whereRaw(`${REF_PAGAMENTO_DIA} >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')`)
-        .whereRaw(`${REF_PAGAMENTO_DIA} < DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-        .sum({ total: 'p.valor' })
-        .first(),
-    );
-  }
-
-  const recebimentosHoje = receitaManutHoje + receitaSicafHoje + receitaPagHoje;
-  const recebimentosOntem = receitaManutOntem + receitaSicafOntem;
-  const recebimentosMes = receitaManutMes + receitaSicafMes + receitaPagMes;
-  const recebimentosMesAnterior = receitaManutMesAnterior + receitaSicafMesAnterior + receitaPagMesAnterior;
-
+  // Inadimplência: só o que está realmente vencido (não todo Pendente do SICAF).
   const inadimplenciaManut = hasManutBoletos
     ? await scalar(db, () =>
-        db('manutencao_boletos').whereIn('status', ['Atrasado', 'Vencido', 'vencido', 'atrasado']).sum({ total: 'valor' }).first(),
+        db('manutencao_boletos')
+          .where(function () {
+            this.whereIn('status', ['Atrasado', 'Vencido', 'vencido', 'atrasado']).orWhere(function () {
+              this.whereIn('status', ['Pendente', 'pendente', 'Aguardando', 'aguardando']).andWhereRaw(
+                'data_vencimento IS NOT NULL AND DATE(data_vencimento) < CURDATE()',
+              );
+            });
+          })
+          .sum({ total: 'valor' })
+          .first(),
       )
     : 0;
-  const inadimplenciaSicaf = hasTaxas
+
+  const inadimplenciaSicafStatus = hasTaxas
     ? await scalar(db, () =>
-        db('taxas_sicaf').whereIn('status', ['Atrasado', 'Vencido', 'vencido', 'atrasado', 'Pendente', 'pendente']).sum({ total: 'valor' }).first(),
+        db('taxas_sicaf')
+          .whereIn('status', ['Atrasado', 'Vencido', 'vencido', 'atrasado'])
+          .sum({ total: 'valor' })
+          .first(),
       )
     : 0;
+
+  // taxas_sicaf não tem data_vencimento: usa cobranças abertas vencidas no ledger.
+  const inadimplenciaSicafLedger = hasPagamentos
+    ? await scalar(db, () =>
+        db('pagamentos as p')
+          .whereNull('p.deleted_at')
+          .where('p.origem', 'sicaf')
+          .whereIn('p.status', STATUS_PENDENTE_PAGAMENTO)
+          .whereRaw('p.data_vencimento IS NOT NULL AND DATE(p.data_vencimento) < CURDATE()')
+          .sum({ total: 'p.valor' })
+          .first(),
+      )
+    : 0;
+
+  const inadimplenciaSicaf = Math.max(inadimplenciaSicafStatus, inadimplenciaSicafLedger);
 
   const clientesInadimplentes = await scalar(db, async () => {
     const ids = new Set();
     if (hasManutBoletos) {
       const rows = await db('manutencao_boletos')
-        .whereIn('status', ['Atrasado', 'Vencido', 'vencido', 'atrasado'])
+        .where(function () {
+          this.whereIn('status', ['Atrasado', 'Vencido', 'vencido', 'atrasado']).orWhere(function () {
+            this.whereIn('status', ['Pendente', 'pendente', 'Aguardando', 'aguardando']).andWhereRaw(
+              'data_vencimento IS NOT NULL AND DATE(data_vencimento) < CURDATE()',
+            );
+          });
+        })
         .whereNotNull('cliente_id')
         .distinct('cliente_id');
       rows.forEach((r) => ids.add(r.cliente_id));
     }
     if (hasTaxas) {
       const rows = await db('taxas_sicaf')
-        .whereIn('status', ['Atrasado', 'Vencido', 'vencido', 'atrasado', 'Pendente', 'pendente'])
+        .whereIn('status', ['Atrasado', 'Vencido', 'vencido', 'atrasado'])
         .distinct('cliente_id');
       rows.forEach((r) => ids.add(r.cliente_id));
     }
-    if (await hasTable(db, 'pagamentos')) {
+    if (hasPagamentos) {
       const rows = await db('pagamentos')
         .whereNull('deleted_at')
-        .whereIn('status', ['aguardando', 'gerado', 'expirado'])
+        .whereIn('status', STATUS_PENDENTE_PAGAMENTO)
         .whereRaw('data_vencimento IS NOT NULL AND DATE(data_vencimento) < CURDATE()')
         .whereNotNull('cliente_id')
         .distinct('cliente_id');
@@ -412,7 +466,7 @@ async function getAdminFinanceiro() {
   const fatByDay = new Map();
   for (let d = 1; d <= diaAtual; d += 1) fatByDay.set(d, 0);
 
-  const addFat = (rows, refExpr) => {
+  const addFat = (rows) => {
     for (const row of rows) {
       const day = toNumber(row.dia);
       if (day >= 1 && day <= diaAtual) {
@@ -423,9 +477,9 @@ async function getAdminFinanceiro() {
 
   if (hasManutBoletos) {
     const rows = await safeQuery([], () =>
-      receitaManutPagoWhere(db('manutencao_boletos'))
-        .whereRaw(`${RECEITA_MANUT_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-        .whereRaw(`${RECEITA_MANUT_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
+      db('manutencao_boletos')
+        .whereRaw(RECEITA_MANUT_PAGO_WHERE)
+        .whereRaw(whereDia(RECEITA_MANUT_REF_DIA, 'mes'))
         .select(db.raw(`DAY(${RECEITA_MANUT_REF_DIA}) as dia`), db.raw('SUM(valor) as total'))
         .groupByRaw(`DAY(${RECEITA_MANUT_REF_DIA})`),
     );
@@ -433,21 +487,20 @@ async function getAdminFinanceiro() {
   }
   if (hasTaxas) {
     const rows = await safeQuery([], () =>
-      receitaSicafPagoWhere(db('taxas_sicaf'))
-        .whereRaw(`${RECEITA_SICAF_REF_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-        .whereRaw(`${RECEITA_SICAF_REF_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
+      db('taxas_sicaf')
+        .whereRaw(RECEITA_SICAF_PAGO_WHERE)
+        .whereRaw(whereDia(RECEITA_SICAF_REF_DIA, 'mes'))
         .select(db.raw(`DAY(${RECEITA_SICAF_REF_DIA}) as dia`), db.raw('SUM(valor) as total'))
         .groupByRaw(`DAY(${RECEITA_SICAF_REF_DIA})`),
     );
     addFat(rows);
   }
-  if (await hasTable(db, 'pagamentos')) {
+  if (hasPagamentos) {
     const rows = await safeQuery([], () =>
-      db('pagamentos as p')
-        .whereNull('p.deleted_at')
-        .whereRaw(PAGO_PAGAMENTOS_WHERE)
-        .whereRaw(`${REF_PAGAMENTO_DIA} >= DATE_FORMAT(CURDATE(), '%Y-%m-01')`)
-        .whereRaw(`${REF_PAGAMENTO_DIA} < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)`)
+      whereOrigensExtras(
+        db('pagamentos as p').whereNull('p.deleted_at').whereRaw(PAGO_PAGAMENTOS_WHERE),
+      )
+        .whereRaw(whereDia(REF_PAGAMENTO_DIA, 'mes'))
         .select(db.raw(`DAY(${REF_PAGAMENTO_DIA}) as dia`), db.raw('SUM(p.valor) as total'))
         .groupByRaw(`DAY(${REF_PAGAMENTO_DIA})`),
     );
@@ -459,33 +512,48 @@ async function getAdminFinanceiro() {
     serieMes.push({ d: label, v: Math.round((fatByDay.get(d) || 0) * 100) / 100 });
   }
 
+  // Mix por meio (30 dias) — mesmas fontes da receita.
   const mixRaw = { PIX: 0, Cartão: 0, Boleto: 0, Outro: 0 };
-  if (await hasTable(db, 'pagamentos')) {
+  const addMix = (meio, valor) => {
+    const key = !meio || meio === 'Transferência' || meio === 'Outro' ? 'Outro' : meio;
+    mixRaw[key] = (mixRaw[key] || 0) + toNumber(valor);
+  };
+
+  if (hasManutBoletos) {
     const mixRows = await safeQuery([], () =>
-      db('pagamentos as p')
-        .whereNull('p.deleted_at')
-        .whereRaw(PAGO_PAGAMENTOS_WHERE)
-        .whereRaw(`${REF_PAGAMENTO_DIA} >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`)
-        .select('p.tipo', db.raw('SUM(p.valor) as total'))
-        .groupBy('p.tipo'),
+      db('manutencao_boletos')
+        .whereRaw(RECEITA_MANUT_PAGO_WHERE)
+        .whereRaw(whereDia(RECEITA_MANUT_REF_DIA, '30d'))
+        .select('forma_pagamento', db.raw('SUM(valor) as total'))
+        .groupBy('forma_pagamento'),
     );
     for (const row of mixRows) {
-      const meio = mapTipoMeio(row.tipo);
-      const key = meio === 'Transferência' ? 'Outro' : meio;
-      mixRaw[key] = (mixRaw[key] || 0) + toNumber(row.total);
+      addMix(mapFormaMeio(row.forma_pagamento) || 'Boleto', row.total);
     }
-  } else if (await hasTable(db, 'pagamentos_gerencianet')) {
+  }
+  if (hasTaxas) {
     const mixRows = await safeQuery([], () =>
-      db('pagamentos_gerencianet as p')
-        .whereRaw("LOWER(TRIM(CAST(p.status AS CHAR))) IN ('pago','paga','aprovado','aprovada')")
-        .whereRaw('DATE(COALESCE(p.data_pagamento, p.created_at)) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)')
+      db('taxas_sicaf')
+        .whereRaw(RECEITA_SICAF_PAGO_WHERE)
+        .whereRaw(whereDia(RECEITA_SICAF_REF_DIA, '30d'))
+        .select('forma_pagamento', db.raw('SUM(valor) as total'))
+        .groupBy('forma_pagamento'),
+    );
+    for (const row of mixRows) {
+      addMix(mapFormaMeio(row.forma_pagamento) || 'Boleto', row.total);
+    }
+  }
+  if (hasPagamentos) {
+    const mixRows = await safeQuery([], () =>
+      whereOrigensExtras(
+        db('pagamentos as p').whereNull('p.deleted_at').whereRaw(PAGO_PAGAMENTOS_WHERE),
+      )
+        .whereRaw(whereDia(REF_PAGAMENTO_DIA, '30d'))
         .select('p.tipo', db.raw('SUM(p.valor) as total'))
         .groupBy('p.tipo'),
     );
     for (const row of mixRows) {
-      const meio = mapTipoMeio(row.tipo);
-      const key = meio === 'Transferência' ? 'Outro' : meio;
-      mixRaw[key] = (mixRaw[key] || 0) + toNumber(row.total);
+      addMix(mapTipoMeio(row.tipo), row.total);
     }
   }
 
@@ -500,8 +568,8 @@ async function getAdminFinanceiro() {
       color: mixCores[name] || '#94a3b8',
     }));
 
-  const pagRows = await loadPagamentosRows(db, 60);
-  const movimentos = pagRows.slice(0, 30).map((r) => ({
+  const pagRows = await loadPagamentosRows(db, 80);
+  const movimentos = pagRows.slice(0, 40).map((r) => ({
     id: r.id,
     cliente: r.cliente,
     meio: r.tipo,
@@ -522,7 +590,7 @@ async function getAdminFinanceiro() {
       recebimentosMesAnterior,
       changeMes: calcChangePercent(recebimentosMes, recebimentosMesAnterior),
       inadimplentes: clientesInadimplentes,
-      inadimplenciaValor: inadimplenciaManut + inadimplenciaSicaf,
+      inadimplenciaValor: Math.round((inadimplenciaManut + inadimplenciaSicaf) * 100) / 100,
       renovacoes30d,
       renovacoesDelta: renovacoes30d - renovacoes30dAnterior,
       cancelamentos30d,
@@ -539,13 +607,39 @@ async function listPagamentosPendentes() {
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
   const rows = [];
+  const seen = new Set();
+
+  const pushRow = (row) => {
+    if (seen.has(row.id)) return;
+    seen.add(row.id);
+    const vencido =
+      row.data_vencimento && new Date(row.data_vencimento) < new Date(new Date().toDateString());
+    rows.push({
+      id: row.id,
+      company: row.razao_social || row.nome_fantasia || 'Cliente não informado',
+      cnpj: row.documento || '',
+      type:
+        row.descricao ||
+        (row.origem === 'manutencao'
+          ? 'Manutenção'
+          : row.origem === 'sicaf'
+            ? 'Taxa SICAF'
+            : 'Pagamento'),
+      method: mapTipoMeio(row.tipo),
+      amountNumber: toNumber(row.valor),
+      dueDate: formatDateBR(row.data_vencimento),
+      generatedAt: formatDateBR(row.created_at),
+      status: vencido ? 'Vencido' : mapStatusUi(row.status, row.data_vencimento),
+      origem: row.origem || null,
+    });
+  };
 
   if (await hasTable(db, 'pagamentos')) {
     const pg = await safeQuery([], () =>
       db('pagamentos as p')
         .leftJoin('clientes as c', 'c.id', 'p.cliente_id')
         .whereNull('p.deleted_at')
-        .whereIn('p.status', ['aguardando', 'gerado'])
+        .whereIn('p.status', STATUS_PENDENTE_PAGAMENTO)
         .select(
           'p.id',
           'p.origem',
@@ -559,32 +653,30 @@ async function listPagamentosPendentes() {
           'c.nome_fantasia',
           'c.documento',
         )
-        .orderByRaw('CASE WHEN p.data_vencimento IS NOT NULL AND DATE(p.data_vencimento) < CURDATE() THEN 0 ELSE 1 END')
+        .orderByRaw(
+          'CASE WHEN p.data_vencimento IS NOT NULL AND DATE(p.data_vencimento) < CURDATE() THEN 0 ELSE 1 END',
+        )
         .orderBy('p.data_vencimento', 'asc')
         .orderBy('p.created_at', 'desc')
-        .limit(100),
+        .limit(150),
     );
-    for (const row of pg) {
-      const vencido = row.data_vencimento && new Date(row.data_vencimento) < new Date(new Date().toDateString());
-      rows.push({
-        id: row.id,
-        company: row.razao_social || row.nome_fantasia || 'Cliente não informado',
-        cnpj: row.documento || '',
-        type: row.descricao || (row.origem === 'manutencao' ? 'Manutenção SICAF' : 'Taxa SICAF'),
-        method: mapTipoMeio(row.tipo),
-        amountNumber: toNumber(row.valor),
-        dueDate: formatDateBR(row.data_vencimento),
-        generatedAt: formatDateBR(row.created_at),
-        status: vencido ? 'Vencido' : mapStatusUi(row.status, row.data_vencimento),
-      });
-    }
+    for (const row of pg) pushRow(row);
   }
 
-  if (rows.length === 0 && (await hasTable(db, 'pagamentos_gerencianet'))) {
+  if (await hasTable(db, 'pagamentos_gerencianet')) {
     const gn = await safeQuery([], () =>
       db('pagamentos_gerencianet as p')
         .leftJoin('clientes as c', 'c.id', 'p.cliente_id')
-        .whereNotIn('p.status', ['pago', 'Pago', 'Aprovado', 'aprovado', 'cancelado', 'Cancelado'])
+        .whereNotIn('p.status', [
+          'pago',
+          'Pago',
+          'Aprovado',
+          'aprovado',
+          'cancelado',
+          'Cancelado',
+          'estornado',
+          'expirado',
+        ])
         .select(
           'p.id',
           'p.origem',
@@ -599,22 +691,9 @@ async function listPagamentosPendentes() {
           'c.documento',
         )
         .orderBy('p.data_vencimento', 'asc')
-        .limit(100),
+        .limit(150),
     );
-    for (const row of gn) {
-      const vencido = row.data_vencimento && new Date(row.data_vencimento) < new Date(new Date().toDateString());
-      rows.push({
-        id: row.id,
-        company: row.razao_social || row.nome_fantasia || 'Cliente não informado',
-        cnpj: row.documento || '',
-        type: row.descricao || (row.origem === 'manutencao' ? 'Manutenção SICAF' : 'Taxa SICAF'),
-        method: mapTipoMeio(row.tipo),
-        amountNumber: toNumber(row.valor),
-        dueDate: formatDateBR(row.data_vencimento),
-        generatedAt: formatDateBR(row.created_at),
-        status: vencido ? 'Vencido' : mapStatusUi(row.status, row.data_vencimento),
-      });
-    }
+    for (const row of gn) pushRow(row);
   }
 
   return { ok: true, pagamentos: rows, total: rows.length };
