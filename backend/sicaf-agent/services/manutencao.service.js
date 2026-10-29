@@ -835,10 +835,170 @@ async function cancelarManutencao({ clienteId, usuarioId, motivo, jwtTipo }) {
   };
 }
 
+function buildLinkPagamentoPortalHtml({ cliente, payLink }) {
+  const nome = cliente.responsavel_nome || cliente.razao_social || 'Cliente';
+  const empresa = cliente.razao_social || cliente.nome_fantasia || 'sua empresa';
+  const cnpj = cliente.documento || '';
+  const docLabel = String(cnpj).replace(/\D/g, '').length === 11 ? 'CPF' : 'CNPJ';
+  const whatsappNumero = process.env.CADBRASIL_WHATSAPP_NUMERO || '551121220202';
+  const whatsappDisplay = process.env.CADBRASIL_WHATSAPP_DISPLAY || '(11) 2122-0202';
+  const whatsappUrl = `https://wa.me/${whatsappNumero}?text=${encodeURIComponent(
+    `Olá! Sou ${nome}, da empresa ${empresa}. Recebi o link de pagamentos CADBRASIL e preciso de ajuda.`,
+  )}`;
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Link de pagamentos CADBRASIL</title></head>
+<body style="margin:0;padding:24px;background:#f0f4f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b">
+  <div style="max-width:620px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,.08)">
+    <div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:36px 32px;text-align:center">
+      <p style="margin:0 0 8px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.7)">CADBRASIL · Oficial</p>
+      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;line-height:1.3">Seu link de pagamentos</h1>
+      <p style="margin:10px 0 0;color:rgba(255,255,255,.88);font-size:14px;line-height:1.5">
+        Taxa SICAF anual e mensalidades de manutenção em um só lugar
+      </p>
+    </div>
+    <div style="padding:32px">
+      <p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#475569">Olá, <strong>${escapeHtml(nome)}</strong>,</p>
+      <p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#475569">
+        Preparamos um <strong>link seguro</strong> para a empresa
+        <strong>${escapeHtml(empresa)}</strong> consultar e pagar todas as cobranças em aberto
+        (SICAF e manutenção), com boleto ou PIX.
+      </p>
+
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin:22px 0">
+        <table style="width:100%;border-collapse:collapse">
+          <tr>
+            <td style="padding:6px 0;font-size:13px;color:#64748b">Empresa</td>
+            <td style="padding:6px 0;font-size:14px;font-weight:600;text-align:right">${escapeHtml(empresa)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;font-size:13px;color:#64748b">${escapeHtml(docLabel)}</td>
+            <td style="padding:6px 0;font-size:14px;font-weight:600;text-align:right;font-family:monospace">${escapeHtml(cnpj)}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="background:#eff6ff;border-left:4px solid #2563eb;border-radius:8px;padding:16px 18px;margin:0 0 22px">
+        <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#1e40af">Como usar</p>
+        <ol style="margin:0;padding-left:18px;font-size:14px;line-height:1.75;color:#1e40af">
+          <li>Abra o link abaixo</li>
+          <li>Informe o ${escapeHtml(docLabel)} da empresa para liberar o acesso</li>
+          <li>Escolha a guia (SICAF ou manutenção) e pague com <strong>PIX</strong> ou <strong>boleto</strong></li>
+        </ol>
+      </div>
+
+      <div style="text-align:center;margin:8px 0 20px">
+        <a href="${escapeHtml(payLink)}" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff!important;padding:16px 32px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px">
+          Abrir meus pagamentos →
+        </a>
+      </div>
+      <p style="margin:0 0 24px;font-size:12px;line-height:1.6;color:#94a3b8;text-align:center;word-break:break-all">
+        ${escapeHtml(payLink)}
+      </p>
+
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:18px 20px;text-align:center">
+        <p style="margin:0 0 6px;font-size:14px;font-weight:700;color:#166534">Precisa de ajuda?</p>
+        <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#15803d">
+          WhatsApp <strong>${escapeHtml(whatsappDisplay)}</strong>
+        </p>
+        <a href="${escapeHtml(whatsappUrl)}" style="display:inline-block;background:#25d366;color:#fff!important;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px">Chamar no WhatsApp</a>
+      </div>
+    </div>
+    <div style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #f1f5f9">
+      <p style="margin:0;font-size:12px;color:#94a3b8"><strong>CADBRASIL</strong> · Portal seguro de pagamento · ${escapeHtml(new Date().toLocaleDateString('pt-BR'))}</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Envia por e-mail o link público /pay/c-{clienteId} (SICAF + manutenção).
+ * @param {{ clienteId: number, usuarioId: number, jwtTipo?: string, emailDestino?: string }} opts
+ */
+async function enviarLinkPagamentoPortal({ clienteId, usuarioId, jwtTipo, emailDestino }) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  const id = Number(clienteId);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false, error: 'clienteId inválido' };
+  }
+
+  const cliente = await assertClienteAcessivel(db, id, usuarioId, jwtTipo);
+  if (!cliente) return { ok: false, error: 'Cliente não encontrado ou sem permissão' };
+
+  const para = String(emailDestino || cliente.email || '').trim();
+  if (!para || !para.includes('@')) {
+    return { ok: false, error: 'Cliente sem e-mail cadastrado. Informe um destinatário.' };
+  }
+
+  const { getPublicPayBaseUrl } = require('../utils/pay-link.util');
+  const payLink = `${getPublicPayBaseUrl()}/pay/c-${id}`;
+  const empresa = cliente.razao_social || cliente.nome_fantasia || 'sua empresa';
+  const html = buildLinkPagamentoPortalHtml({ cliente, payLink });
+  const assunto = `Link de pagamentos CADBRASIL — ${empresa}`;
+  const texto = [
+    `Olá, ${cliente.responsavel_nome || empresa}.`,
+    '',
+    'Segue o link seguro para consultar e pagar todas as cobranças (SICAF e manutenção):',
+    payLink,
+    '',
+    'Ao abrir, informe o CNPJ/CPF da empresa para acessar.',
+    '',
+    'CADBRASIL',
+  ].join('\n');
+
+  const emailService = require('./email.service');
+  try {
+    const envio = await emailService.send({
+      to: para,
+      subject: assunto,
+      html,
+      text: texto,
+    });
+
+    if (!envio.ok && !envio.skipped) {
+      return { ok: false, error: envio.error || 'Falha ao enviar e-mail' };
+    }
+
+    if (usuarioId) {
+      try {
+        await db('historico_acoes').insert({
+          cliente_id: id,
+          usuario_id: usuarioId,
+          acao: `Link de pagamentos (/pay/c-${id}) enviado por e-mail para ${para}`,
+          entidade: 'clientes',
+          entidade_id: id,
+          created_at: db.fn.now(),
+        });
+      } catch (_) {}
+    }
+
+    return {
+      ok: true,
+      message: envio.skipped
+        ? `E-mail simulado (SMTP não configurado) para ${para}`
+        : `Link enviado para ${para}`,
+      payLink,
+      emailNotificacao: {
+        enviado: Boolean(envio.sent),
+        simulado: Boolean(envio.skipped),
+        para,
+      },
+    };
+  } catch (e) {
+    console.error('[Manutencao] enviarLinkPagamentoPortal:', e.message);
+    return { ok: false, error: e.message || 'Falha ao enviar e-mail' };
+  }
+}
+
 module.exports = {
   getManutencaoCliente,
   getBoletoManutencaoDetalhe,
   enviarComprovanteManutencao,
+  enviarLinkPagamentoPortal,
   ativarManutencao,
   renovarManutencao,
   isCicloManutencaoCompleto,

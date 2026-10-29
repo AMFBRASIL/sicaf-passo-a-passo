@@ -24,6 +24,7 @@ import {
   Link2,
   Copy,
   ExternalLink,
+  Mail,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -59,6 +60,7 @@ import {
   autorizarBoletoManutencao,
   calcParcelamentoManutencao,
   cancelarManutencao,
+  enviarLinkPagamentoPortal,
   fetchManutencaoCliente,
   fetchValorManutencaoMensal,
   fetchValoresManutencao,
@@ -826,7 +828,7 @@ function SucessoStep({ empresa, dia, onClose }: { empresa: EmpresaData; dia: num
       </div>
       {empresa.clienteId ? (
         <div className="w-full max-w-md text-left">
-          <PortalPayLinkCard clienteId={empresa.clienteId} />
+          <PortalPayLinkCard clienteId={empresa.clienteId} emailCliente={empresa.email} />
         </div>
       ) : null}
       <Button onClick={onClose} size="lg" className="gap-2">
@@ -838,11 +840,14 @@ function SucessoStep({ empresa, dia, onClose }: { empresa: EmpresaData; dia: num
 
 function PortalPayLinkCard({
   clienteId,
+  emailCliente,
   compact,
 }: {
   clienteId: number;
+  emailCliente?: string | null;
   compact?: boolean;
 }) {
+  const [enviando, setEnviando] = useState(false);
   const link = buildPortalPayLink(clienteId);
   if (!link) return null;
 
@@ -852,6 +857,21 @@ function PortalPayLinkCard({
       toast.success("Link de pagamento copiado!");
     } catch {
       toast.error("Não foi possível copiar o link.");
+    }
+  };
+
+  const enviarEmail = async () => {
+    setEnviando(true);
+    try {
+      const email = String(emailCliente || "").trim() || undefined;
+      const res = await enviarLinkPagamentoPortal(clienteId, email);
+      if (!res.ok) {
+        toast.error(res.error || "Não foi possível enviar o e-mail.");
+        return;
+      }
+      toast.success(res.message || "Link enviado por e-mail ao cliente.");
+    } finally {
+      setEnviando(false);
     }
   };
 
@@ -881,12 +901,30 @@ function PortalPayLinkCard({
             <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => void copiar()}>
               <Copy className="h-3.5 w-3.5" /> Copiar link
             </Button>
+            <Button
+              size="sm"
+              className="gap-1.5 h-8 bg-sky-600 hover:bg-sky-700"
+              disabled={enviando}
+              onClick={() => void enviarEmail()}
+            >
+              {enviando ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Mail className="h-3.5 w-3.5" />
+              )}
+              {enviando ? "Enviando..." : "Enviar e-mail"}
+            </Button>
             <Button size="sm" variant="ghost" className="gap-1.5 h-8" asChild>
               <a href={link} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-3.5 w-3.5" /> Abrir
               </a>
             </Button>
           </div>
+          {emailCliente ? (
+            <p className="mt-2 text-[11px] text-sky-900/60 dark:text-sky-200/60 truncate">
+              Destino: {emailCliente}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1139,7 +1177,7 @@ function GerenciarPanel({
             </p>
           </div>
           {empresa.clienteId ? (
-            <PortalPayLinkCard clienteId={empresa.clienteId} />
+            <PortalPayLinkCard clienteId={empresa.clienteId} emailCliente={empresa.email} />
           ) : null}
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
             <div className="flex items-start gap-3">
@@ -1169,7 +1207,11 @@ function GerenciarPanel({
       {step === "boletos" && (
         <div className="space-y-2">
           {empresa.clienteId ? (
-            <PortalPayLinkCard clienteId={empresa.clienteId} compact />
+            <PortalPayLinkCard
+              clienteId={empresa.clienteId}
+              emailCliente={empresa.email}
+              compact
+            />
           ) : null}
           {carregandoBoletos && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">

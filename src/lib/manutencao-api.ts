@@ -224,3 +224,18 @@ export async function cancelarManutencao(clienteId: number, motivo?: string) {
     boletosRemovidos?: number;
   }>;
 }
+
+/** Envia por e-mail o link público /pay/c-{clienteId} (SICAF + manutenção). */
+export async function enviarLinkPagamentoPortal(clienteId: number, emailDestino?: string) {
+  const res = await apiFetch(`/api/manutencao/${clienteId}/enviar-link-pagamento`, {
+    method: "POST",
+    body: JSON.stringify(emailDestino ? { emailDestino } : {}),
+  });
+  return res.json() as Promise<{
+    ok: boolean;
+    error?: string;
+    message?: string;
+    payLink?: string;
+    emailNotificacao?: { enviado?: boolean; simulado?: boolean; para?: string };
+  }>;
+}
