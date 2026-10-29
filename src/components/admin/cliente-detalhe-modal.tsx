@@ -1477,9 +1477,10 @@ function FinanceiroTab({
   const confirmarCancelamento = async (id: string, motivo: string) => {
     const fatura = faturas.find((f) => f.id === id);
     const pagamentoId = fatura?.pagamentoId ?? parsePagamentoIdFromFaturaId(id);
+    const taxaId = fatura?.taxaId ?? parseTaxaIdFromFaturaId(id);
     const clienteId = parseInt(cliente.id, 10);
 
-    if (!pagamentoId) {
+    if (!pagamentoId && !taxaId) {
       toast.error("Não foi possível identificar o pagamento desta fatura.");
       return;
     }
@@ -1487,15 +1488,12 @@ function FinanceiroTab({
       toast.error("Cliente inválido.");
       return;
     }
-    if (fatura?.forma === "PIX") {
-      toast.error("Cancelamento automático disponível apenas para boletos. PIX exige outro fluxo.");
-      return;
-    }
 
     setCancelando(true);
     try {
       const res = await cancelarBoletoAdmin({
-        pagamentoId,
+        pagamentoId: pagamentoId || undefined,
+        taxaId: taxaId || undefined,
         clienteId,
         motivo: motivo.trim(),
       });
@@ -1504,12 +1502,9 @@ function FinanceiroTab({
         return;
       }
 
-      toast.success(res.message || "Boleto cancelado na Gerencianet e no sistema");
-      setFaturas((prev) =>
-        prev.map((f) =>
-          f.id === id ? { ...f, status: "cancelado", motivoCancelamento: motivo.trim() } : f,
-        ),
-      );
+      toast.success(res.message || "Boleto cancelado na Efí Bank e removido do sistema");
+      // Some da listagem — cancelado não deve aparecer em lugar nenhum.
+      setFaturas((prev) => prev.filter((f) => f.id !== id));
       setCancelarOpen(false);
       setFaturaCancelId(null);
       onPagamentoAutorizado?.();

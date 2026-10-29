@@ -7,8 +7,13 @@ export const dynamic = "force-dynamic";
 
 type PagamentosService = {
   cancelarBoletoGerencianet: (
-    pagamentoId: number,
-    opts?: { clienteId?: number; usuarioId?: number; motivo?: string },
+    pagamentoId: number | null,
+    opts?: {
+      clienteId?: number;
+      taxaId?: number;
+      usuarioId?: number;
+      motivo?: string;
+    },
   ) => Promise<{ ok: boolean; error?: string; message?: string }>;
 };
 
@@ -16,12 +21,18 @@ export async function POST(request: Request) {
   try {
     const { usuarioId } = await requireStaffAccess(request);
     const body = await request.json();
-    const pagamentoId = parseInt(String(body.pagamentoId ?? ""), 10);
+    const pagamentoIdRaw = body.pagamentoId != null ? parseInt(String(body.pagamentoId), 10) : NaN;
+    const taxaIdRaw = body.taxaId != null ? parseInt(String(body.taxaId), 10) : NaN;
+    const pagamentoId = Number.isFinite(pagamentoIdRaw) && pagamentoIdRaw > 0 ? pagamentoIdRaw : null;
+    const taxaId = Number.isFinite(taxaIdRaw) && taxaIdRaw > 0 ? taxaIdRaw : undefined;
     const clienteId = body.clienteId != null ? parseInt(String(body.clienteId), 10) : undefined;
     const motivo = body.motivo ? String(body.motivo).trim() : undefined;
 
-    if (!Number.isFinite(pagamentoId) || pagamentoId <= 0) {
-      return NextResponse.json({ ok: false, error: "pagamentoId é obrigatório" }, { status: 400 });
+    if (!pagamentoId && !taxaId) {
+      return NextResponse.json(
+        { ok: false, error: "Informe pagamentoId ou taxaId para cancelar" },
+        { status: 400 },
+      );
     }
     if (clienteId != null && (!Number.isFinite(clienteId) || clienteId <= 0)) {
       return NextResponse.json({ ok: false, error: "clienteId inválido" }, { status: 400 });
@@ -30,6 +41,7 @@ export async function POST(request: Request) {
     const svc = await getSicafAgentModule<PagamentosService>("services/pagamentos.service");
     const result = await svc.cancelarBoletoGerencianet(pagamentoId, {
       clienteId,
+      taxaId,
       usuarioId,
       motivo,
     });

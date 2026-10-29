@@ -1071,24 +1071,111 @@ function isPagamentoCanceladoStatus(status) {
   return ['cancelado', 'cancelada', 'cancelled', 'canceled'].includes(s);
 }
 
+async function cancelarCobrancaNaEfi(chargeId) {
+  if (!chargeId) return { ok: true, skipped: true };
+  try {
+    await gerencianetService.cancelarCobranca(Number(chargeId));
+    return { ok: true };
+  } catch (e) {
+    const msg = e?.message || String(e);
+    const detail = e?.error_description || e?.nome || '';
+    const full = `${msg} ${detail}`.toLowerCase();
+    const jaCancelado =
+      full.includes('cancel') ||
+      full.includes('canceled') ||
+      full.includes('cancelad') ||
+      full.includes('already') ||
+      full.includes('inexist');
+    if (jaCancelado) return { ok: true, already: true };
+    return { ok: false, error: msg };
+  }
+}
+
 /**
- * Cancela boleto na Gerencianet (Efí) e atualiza pagamentos.
+ * Cancela boleto/cobrança na Efí e remove do sistema (não reaparece em listagens).
+ * Aceita pagamentoId e/ou taxaId (SICAF) / boletoId (manutenção via origem do pagamento).
  */
 async function cancelarBoletoGerencianet(pagamentoId, opts = {}) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
   try {
-    const pgto = await pagamentosQuery(db).where('id', pagamentoId).first();
-    if (!pgto) return { ok: false, error: 'Pagamento não encontrado' };
+    const clienteIdOpt =
+      opts.clienteId != null && Number.isFinite(Number(opts.clienteId))
+        ? Number(opts.clienteId)
+        : null;
+    const taxaIdOpt =
+      opts.taxaId != null && Number.isFinite(Number(opts.taxaId)) ? Number(opts.taxaId) : null;
+    const pagamentoIdNum =
+      pagamentoId != null && Number.isFinite(Number(pagamentoId)) && Number(pagamentoId) > 0
+        ? Number(pagamentoId)
+        : null;
 
-    if (opts.clienteId != null && Number(pgto.cliente_id) !== Number(opts.clienteId)) {
-      return { ok: false, error: 'Pagamento não pertence a este cliente' };
+    let pgto = null;
+    if (pagamentoIdNum) {
+      pgto = await pagamentosQuery(db).where('id', pagamentoIdNum).first();
+      // Soft-deleted ainda pode existir — buscar sem filtro para mensagem clara.
+      if (!pgto) {
+        const soft = await db(PAGAMENTOS_TABLE).where('id', pagamentoIdNum).first();
+        if (soft && soft.deleted_at) {
+          return { ok: false, error: 'Este boleto já está cancelado.' };
+        }
+      }
     }
 
-    const tipo = String(pgto.tipo || '').trim().toLowerCase();
-    if (tipo !== 'boleto') {
-      return { ok: false, error: 'Somente boletos podem ser cancelados por esta ação.' };
+    // Fallback: cancelar pela taxa SICAF (fatura #1588 sem #P…).
+    if (!pgto && taxaIdOpt) {
+      let taxaQ = db('taxas_sicaf').where('id', taxaIdOpt);
+      if (clienteIdOpt) taxaQ = taxaQ.andWhere('cliente_id', clienteIdOpt);
+      const taxa = await taxaQ.first();
+      if (!taxa) return { ok: false, error: 'Taxa SICAF não encontrada' };
+      if (isPagamentoPagoStatus(taxa.status)) {
+        return { ok: false, error: 'Não é possível cancelar uma taxa já paga.' };
+      }
+      if (isPagamentoCanceladoStatus(taxa.status)) {
+        return { ok: false, error: 'Esta cobrança já está cancelada.' };
+      }
+
+      pgto = await pagamentosQuery(db)
+        .where({ origem: 'sicaf', origem_id: taxaIdOpt })
+        .orderBy('created_at', 'desc')
+        .first();
+
+      // Sem pagamento gerado: só cancela a taxa no sistema.
+      if (!pgto) {
+        await db('taxas_sicaf').where('id', taxaIdOpt).update({
+          status: 'Cancelado',
+          codigo_barras: null,
+          forma_pagamento: null,
+        });
+        if (opts.usuarioId) {
+          try {
+            const motivoTxt = opts.motivo ? ` Motivo: ${String(opts.motivo).trim()}` : '';
+            await db('historico_acoes').insert({
+              cliente_id: taxa.cliente_id || null,
+              usuario_id: opts.usuarioId,
+              acao: `Cobrança SICAF cancelada e removida do portal (taxa #${taxaIdOpt}).${motivoTxt}`,
+              entidade: 'taxas_sicaf',
+              entidade_id: taxaIdOpt,
+              created_at: db.fn.now(),
+            });
+          } catch (_) {}
+        }
+        return {
+          ok: true,
+          message: 'Cobrança cancelada e removida do sistema.',
+          removido: true,
+          taxaId: taxaIdOpt,
+        };
+      }
+    }
+
+    if (!pgto) {
+      return { ok: false, error: 'Pagamento não encontrado' };
+    }
+
+    if (clienteIdOpt != null && Number(pgto.cliente_id) !== clienteIdOpt) {
+      return { ok: false, error: 'Pagamento não pertence a este cliente' };
     }
 
     if (isPagamentoPagoStatus(pgto.status)) {
@@ -1098,35 +1185,59 @@ async function cancelarBoletoGerencianet(pagamentoId, opts = {}) {
       return { ok: false, error: 'Este boleto já está cancelado.' };
     }
 
-    const chargeId = pgto.provider_charge_id;
-    if (!chargeId) {
-      return { ok: false, error: 'Boleto sem identificador na Gerencianet (charge_id).' };
+    const origem = String(pgto.origem || '').trim().toLowerCase();
+    const origemId = pgto.origem_id != null ? Number(pgto.origem_id) : null;
+    const clienteId = Number(pgto.cliente_id);
+
+    // Todas as cobranças abertas da mesma origem (boleto + PIX).
+    let relacionados = [pgto];
+    if (origem && origemId) {
+      const irmãos = await pagamentosQuery(db)
+        .where({ origem, origem_id: origemId, cliente_id: clienteId })
+        .whereNotIn('status', ['pago', 'cancelado', 'estornado', 'removido', 'erro']);
+      const byId = new Map(relacionados.map((p) => [Number(p.id), p]));
+      for (const p of irmãos) byId.set(Number(p.id), p);
+      relacionados = Array.from(byId.values());
     }
 
-    try {
-      await gerencianetService.cancelarCobranca(Number(chargeId));
-    } catch (e) {
-      const msg = e?.message || String(e);
-      const detail = e?.error_description || e?.nome || '';
-      const full = `${msg} ${detail}`.toLowerCase();
-      const jaCancelado =
-        full.includes('cancel') ||
-        full.includes('canceled') ||
-        full.includes('cancelad');
-      if (!jaCancelado) {
-        return { ok: false, error: `Falha ao cancelar na Gerencianet: ${msg}` };
+    const efiErros = [];
+    let canceladosEfi = 0;
+    for (const p of relacionados) {
+      const chargeId = p.provider_charge_id || p.gn_charge_id;
+      if (!chargeId) continue;
+      const tipo = String(p.tipo || '').toLowerCase();
+      // Efí cancelCharge cobre cobranças de boleto; PIX com charge_id também.
+      if (tipo && tipo !== 'boleto' && tipo !== 'pix') continue;
+      const resEfi = await cancelarCobrancaNaEfi(chargeId);
+      if (!resEfi.ok) {
+        efiErros.push(`#${p.id}: ${resEfi.error}`);
+      } else {
+        canceladosEfi += 1;
       }
     }
 
-    const origem = String(pgto.origem || '').trim().toLowerCase();
-    const origemId = pgto.origem_id;
+    // Se havia charge_id e TODOS falharam na Efí, não marca como cancelado localmente.
+    const tinhaCharge = relacionados.some((p) => p.provider_charge_id || p.gn_charge_id);
+    if (tinhaCharge && canceladosEfi === 0 && efiErros.length > 0) {
+      return {
+        ok: false,
+        error: `Falha ao cancelar na Efí Bank: ${efiErros[0]}`,
+      };
+    }
 
     await db.transaction(async (trx) => {
+      const ids = relacionados.map((p) => p.id);
+      await trx('pagamentos').whereIn('id', ids).update({
+        status: 'cancelado',
+        deleted_at: trx.fn.now(),
+        updated_at: trx.fn.now(),
+      });
+
       if (origem === 'sicaf' && origemId) {
         const taxa = await trx('taxas_sicaf').where('id', origemId).first();
         if (taxa && !isPagamentoPagoStatus(taxa.status)) {
           await trx('taxas_sicaf').where('id', origemId).update({
-            status: 'Pendente',
+            status: 'Cancelado',
             codigo_barras: null,
             forma_pagamento: null,
           });
@@ -1141,22 +1252,23 @@ async function cancelarBoletoGerencianet(pagamentoId, opts = {}) {
           });
         }
       }
-
-      await trx('pagamentos').where('id', pagamentoId).update({
-        status: 'cancelado',
-        deleted_at: trx.fn.now(),
-      });
     });
 
     if (opts.usuarioId) {
       try {
         const motivoTxt = opts.motivo ? ` Motivo: ${String(opts.motivo).trim()}` : '';
+        const charges = relacionados
+          .map((p) => p.provider_charge_id || p.gn_charge_id)
+          .filter(Boolean)
+          .join(', ');
         await db('historico_acoes').insert({
-          cliente_id: pgto.cliente_id || null,
+          cliente_id: clienteId || null,
           usuario_id: opts.usuarioId,
-          acao: `Boleto cancelado na Gerencianet e removido do portal (pagamento #${pagamentoId}, charge ${chargeId}).${motivoTxt}`,
+          acao: `Boleto cancelado na Efí e removido do sistema (pagamentos ${relacionados
+            .map((p) => `#${p.id}`)
+            .join(', ')}${charges ? `, charge ${charges}` : ''}).${motivoTxt}`,
           entidade: 'pagamentos',
-          entidade_id: pagamentoId,
+          entidade_id: relacionados[0].id,
           created_at: db.fn.now(),
         });
       } catch (_) {
@@ -1166,8 +1278,11 @@ async function cancelarBoletoGerencianet(pagamentoId, opts = {}) {
 
     return {
       ok: true,
-      message: 'Boleto cancelado na Gerencianet e removido do portal CadBrasil.',
+      message: 'Boleto cancelado na Efí Bank e removido do sistema.',
       removido: true,
+      cancelados: relacionados.length,
+      canceladosEfi,
+      taxaId: origem === 'sicaf' ? origemId : null,
     };
   } catch (e) {
     return { ok: false, error: e.message };

@@ -3129,6 +3129,11 @@ function mergePagamentoAssets(base, candidatos) {
   return merged;
 }
 
+function isCanceledTaxaOrPagamentoStatus(status) {
+  const s = normPayStatus(status);
+  return ['cancelado', 'cancelada', 'removido', 'estornado', 'erro'].includes(s);
+}
+
 function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
   const { descontoInfo } = require('./sicaf-desconto.service');
   const taxasById = Object.fromEntries(taxasSicaf.map((t) => [t.id, t]));
@@ -3147,7 +3152,12 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
     if (taxasComPagamento.has(p.origem_id)) continue;
     taxasComPagamento.add(p.origem_id);
     const t = taxasById[p.origem_id];
+    // Cobranças canceladas somem do financeiro / portal /pay.
+    if (isCanceledTaxaOrPagamentoStatus(t?.status) || isCanceledTaxaOrPagamentoStatus(p.status)) {
+      continue;
+    }
     const effectiveStatus = resolveFinanceStatus(t?.status, p.status);
+    if (isCanceledTaxaOrPagamentoStatus(effectiveStatus)) continue;
     const assets = mergePagamentoAssets(
       p,
       sicafPagamentos.filter((x) => x.origem_id === p.origem_id),
@@ -3175,7 +3185,10 @@ function buildSicafFinanceRows(taxasSicaf, allPagamentos, clienteId) {
   }
 
   for (const t of taxasSicaf) {
-    const hasPg = sicafPagamentos.some((p) => p.origem_id === t.id);
+    if (isCanceledTaxaOrPagamentoStatus(t.status)) continue;
+    const hasPg = sicafPagamentos.some(
+      (p) => p.origem_id === t.id && !isCanceledTaxaOrPagamentoStatus(p.status),
+    );
     if (hasPg) continue;
     rows.push({ ...mapFinanceRow({
       id: t.id,

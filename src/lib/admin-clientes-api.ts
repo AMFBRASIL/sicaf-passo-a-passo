@@ -466,6 +466,13 @@ export function mapFinanceiroToFaturas(fin: NonNullable<Awaited<ReturnType<typeo
     .map((f) => {
       const formaRaw = String(f.forma_pagamento ?? f.formaPagamento ?? "").toLowerCase();
       const forma: FaturaUi["forma"] = formaRaw.includes("pix") ? "PIX" : "Boleto";
+      const statusNorm = String(f.status || "").toLowerCase();
+      const status: FaturaUi["status"] =
+        f.pago || statusNorm === "pago"
+          ? "pago"
+          : statusNorm === "cancelado" || statusNorm === "cancelada" || statusNorm === "removido"
+            ? "cancelado"
+            : "aberto";
       return {
         id: f.pagamentoId ? `#P${f.pagamentoId}` : `#${f.id}`,
         taxaId: f.id,
@@ -475,16 +482,13 @@ export function mapFinanceiroToFaturas(fin: NonNullable<Awaited<ReturnType<typeo
         venc: formatDateBr(f.data_vencimento ?? f.dataVencimento),
         dataPago: formatDateBr(f.data_pagamento ?? f.dataPagamento),
         forma,
-        status: (f.pago || f.status === "pago" || f.status === "Pago"
-          ? "pago"
-          : f.status === "cancelado" || f.status === "Cancelado"
-            ? "cancelado"
-            : "aberto") as FaturaUi["status"],
+        status,
         pagamentoId: f.pagamentoId ?? undefined,
         anoReferencia: f.anoReferencia != null ? Number(f.anoReferencia) : undefined,
         desconto: f.desconto ?? null,
       };
     })
+    .filter((f) => f.status !== "cancelado")
     .sort((a, b) => {
       const ta = a.dataGeracao === "—" ? 0 : new Date(a.dataGeracao.split("/").reverse().join("-")).getTime();
       const tb = b.dataGeracao === "—" ? 0 : new Date(b.dataGeracao.split("/").reverse().join("-")).getTime();
@@ -595,7 +599,8 @@ export function avisoEmailAtivacao(
 }
 
 export async function cancelarBoletoAdmin(payload: {
-  pagamentoId: number;
+  pagamentoId?: number | null;
+  taxaId?: number | null;
   clienteId: number;
   motivo?: string;
 }) {
