@@ -1306,52 +1306,78 @@ async function enviarCobrancaTaxa({
     };
   }
 
-  const envio = await sendCobrancaTaxaEmail({
-    db,
-    cliente,
-    taxa,
-    mensagemCustom: mensagemCustom || null,
-  });
-  const emailDestino = envio.para || cliente.email || '';
+  const {
+    ensureClienteEmailExtrasColumns,
+    collectClienteEmails,
+  } = require('../utils/cliente-emails.util');
+  await ensureClienteEmailExtrasColumns(db);
+  // Recarrega cliente para pegar e-mails extras recém-criados na tabela.
+  const clienteFresh = (await db('clientes').where('id', cid).first()) || cliente;
+  const destinatarios = collectClienteEmails(clienteFresh);
+  if (!destinatarios.length) {
+    return { ok: false, error: 'Cliente sem e-mail cadastrado' };
+  }
 
-  const sucesso = envio.ok;
-  if (!skipHistoricoDuplicado) {
-    try {
-      const histPayload = {
-        taxa_sicaf_id: taxa.id || null,
-        pagamento_id: pagamentoIdResolved,
-        cliente_id: cid,
-        email_destino: emailDestino,
-        canal: canal || 'email',
-        mensagem: mensagemCustom ? String(mensagemCustom).slice(0, 5000) : null,
-        modelo: modelo || null,
-        disparo_massa_id: disparoMassaId || null,
-        regua_etapa_id: reguaEtapaId || null,
-        enviado_por: usuarioId || null,
-        sucesso: sucesso ? 1 : 0,
-        erro: sucesso ? null : String(envio.error || 'Falha no envio').slice(0, 2000),
-        enviado_em: new Date(),
-      };
-      await db('cobrancas_taxa_sicaf').insert(histPayload);
-    } catch (e) {
-      console.warn('[CobrancaTaxa] Falha ao registrar histórico:', e.message);
+  const envios = [];
+  for (const para of destinatarios) {
+    const envio = await sendCobrancaTaxaEmail({
+      db,
+      cliente: clienteFresh,
+      taxa,
+      mensagemCustom: mensagemCustom || null,
+      to: para,
+    });
+    envios.push({
+      para,
+      ok: Boolean(envio.ok),
+      error: envio.ok ? null : envio.error || 'Falha no envio',
+      simulado: Boolean(envio.simulado),
+    });
+
+    if (!skipHistoricoDuplicado) {
+      try {
+        await db('cobrancas_taxa_sicaf').insert({
+          taxa_sicaf_id: taxa.id || null,
+          pagamento_id: pagamentoIdResolved,
+          cliente_id: cid,
+          email_destino: para,
+          canal: canal || 'email',
+          mensagem: mensagemCustom ? String(mensagemCustom).slice(0, 5000) : null,
+          modelo: modelo || null,
+          disparo_massa_id: disparoMassaId || null,
+          regua_etapa_id: reguaEtapaId || null,
+          enviado_por: usuarioId || null,
+          sucesso: envio.ok ? 1 : 0,
+          erro: envio.ok ? null : String(envio.error || 'Falha no envio').slice(0, 2000),
+          enviado_em: new Date(),
+        });
+      } catch (e) {
+        console.warn('[CobrancaTaxa] Falha ao registrar histórico:', e.message);
+      }
     }
   }
 
+  const okCount = envios.filter((e) => e.ok).length;
+  const sucesso = okCount > 0;
+  const emailDestino = destinatarios.join(', ');
+
   try {
+    const falhas = envios.filter((e) => !e.ok).map((e) => e.error).filter(Boolean);
     const hasAudit = await db.schema.hasTable('auditoria_log');
     const detalhes = JSON.stringify({
       taxaId: taxa.id,
-      email: emailDestino,
-      assunto: envio.assunto,
+      emails: destinatarios,
+      envios,
       sucesso,
     });
+    const descOk = `Cobrança enviada para ${okCount}/${destinatarios.length} e-mail(s)`;
+    const descErro = `Falha cobrança: ${falhas[0] || 'nenhum e-mail enviado'}`;
     if (hasAudit) {
       await db('auditoria_log').insert({
         usuario_id: usuarioId || null,
         cliente_id: cid,
         acao: sucesso ? 'CUSTOM:cobranca_taxa_email' : 'CUSTOM:cobranca_taxa_email_erro',
-        descricao: sucesso ? 'Cobrança de taxa enviada por e-mail' : `Falha cobrança: ${envio.error || ''}`,
+        descricao: sucesso ? descOk : descErro,
         entidade: 'clientes',
         entidade_id: cid,
         dados_novos: detalhes,
@@ -1361,7 +1387,7 @@ async function enviarCobrancaTaxa({
       await db('historico_acoes').insert({
         cliente_id: cid,
         usuario_id: usuarioId || null,
-        acao: sucesso ? 'Cobrança de taxa enviada por e-mail' : `Falha na cobrança: ${envio.error || ''}`,
+        acao: sucesso ? descOk : descErro,
         entidade: taxa.id ? 'taxas_sicaf' : 'clientes',
         entidade_id: taxa.id || cid,
         created_at: new Date(),
@@ -1370,17 +1396,26 @@ async function enviarCobrancaTaxa({
   } catch (_) {}
 
   if (!sucesso) {
-    return { ok: false, error: envio.error || 'Falha ao enviar e-mail' };
+    const firstErr = envios.find((e) => !e.ok)?.error;
+    return {
+      ok: false,
+      error: firstErr || 'Falha ao enviar e-mail',
+      envios,
+      para: emailDestino,
+    };
   }
 
+  const algumSimulado = envios.some((e) => e.simulado);
   return {
     ok: true,
-    message: envio.simulado
-      ? 'Cobrança registrada (SMTP não configurado — modo simulação)'
-      : 'E-mail de cobrança enviado com sucesso',
-    simulado: Boolean(envio.simulado),
+    message: algumSimulado
+      ? `Cobrança registrada para ${okCount} e-mail(s) (SMTP em simulação)`
+      : okCount === destinatarios.length
+        ? `E-mail de cobrança enviado para ${okCount} destinatário(s)`
+        : `Enviado para ${okCount} de ${destinatarios.length} e-mail(s)`,
+    simulado: algumSimulado,
     para: emailDestino,
-    assunto: envio.assunto,
+    envios,
     ultimaCobrancaEm: new Date().toISOString(),
     ultimaCobrancaFormatada: formatDateTimeBr(new Date()),
   };

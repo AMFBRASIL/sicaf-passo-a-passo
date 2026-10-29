@@ -79,8 +79,9 @@ function derivePagamentoSicafResumo({
   if (vigente && validadeFmt) {
     const vencendoEmBreve = dias !== null && dias <= 30;
     if (temAberto) {
+      // Credencial ainda vale, mas há taxa/renovação em aberto → pode cobrar.
       return {
-        pagou: true,
+        pagou: false,
         pagamentoSicafStatus: vencendoEmBreve ? 'Vencendo' : 'Vigente',
         pagamentoSicafDetalhe: `Válido até ${validadeFmt} · renovação em aberto`,
       };
@@ -136,14 +137,28 @@ function derivePagamentoSicafResumo({
 }
 
 /**
- * Elegível para /admin/cobranca: só quem NÃO pagou ou está vencido.
- * Exclui vigente/em dia (mesmo com renovação em aberto) e SICAF cancelado.
+ * Elegível para /admin/cobranca (e-mail / WhatsApp / massa):
+ * - não pagou / pendente
+ * - SICAF vencido
+ * - SICAF vencendo ou vigente COM renovação/taxa em aberto
+ * Exclui "Em dia"/"Pago" sem pendência e SICAF cancelado/inativo.
  */
 function isClienteElegivelCobrancaSicaf(resumo) {
   if (!resumo) return false;
   const status = String(resumo.pagamentoSicafStatus || '').trim().toLowerCase();
   if (['cancelado', 'inativo'].includes(status)) return false;
-  if (resumo.pagamentoSicafStatus === 'Vencido') return true;
+  // Já quitado e sem cobrança a disparar
+  if (status === 'em dia' || status === 'pago') return false;
+  // Vencendo/vigente com renovação, vencido, pendente, sem vigência
+  if (
+    status === 'vencido' ||
+    status === 'vencendo' ||
+    status === 'vigente' ||
+    status === 'pendente' ||
+    status.startsWith('sem vig')
+  ) {
+    return true;
+  }
   if (resumo.pagou === false) return true;
   return false;
 }

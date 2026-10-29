@@ -55,6 +55,8 @@ const emptyForm = (): FormState => ({
   plano: "",
   responsavel: "",
   email: "",
+  emailFinanceiro: "",
+  emailAdicional: "",
   telefone: "",
   whatsapp: "",
   login: "",
@@ -76,6 +78,8 @@ function mapClienteToForm(cliente: ClienteDetalhe): FormState {
     plano: cliente.plano ?? "",
     responsavel: cliente.responsavel,
     email: cliente.email ?? "",
+    emailFinanceiro: "",
+    emailAdicional: "",
     telefone: cliente.telefone ?? "",
     whatsapp: cliente.celular ?? "",
     login: cliente.login ?? cliente.email ?? "",
@@ -116,6 +120,8 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
             plano: cliente.plano ?? "",
             responsavel: c.responsavel_nome || cliente.responsavel,
             email: c.email || c.responsavel_email || cliente.email || "",
+            emailFinanceiro: c.email_financeiro || "",
+            emailAdicional: c.email_adicional || "",
             telefone: c.telefone || c.responsavel_telefone || cliente.telefone || "",
             whatsapp: c.celular || cliente.celular || "",
             login: c.usuario_principal?.email || cliente.login || c.email || cliente.email || "",
@@ -279,9 +285,31 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
                     <Field label="Responsável *" className="col-span-2">
                       <Input value={data.responsavel} onChange={(e) => upd("responsavel", e.target.value)} />
                     </Field>
-                    <Field label="E-mail *" className="col-span-2">
+                    <Field label="E-mail principal *" className="col-span-2">
                       <Input type="email" value={data.email} onChange={(e) => upd("email", e.target.value)} />
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Usado no portal e como destino padrão de avisos.
+                      </p>
                     </Field>
+                    <Field label="E-mail financeiro">
+                      <Input
+                        type="email"
+                        value={data.emailFinanceiro || ""}
+                        onChange={(e) => upd("emailFinanceiro", e.target.value)}
+                        placeholder="financeiro@empresa.com.br"
+                      />
+                    </Field>
+                    <Field label="E-mail adicional">
+                      <Input
+                        type="email"
+                        value={data.emailAdicional || ""}
+                        onChange={(e) => upd("emailAdicional", e.target.value)}
+                        placeholder="socio@empresa.com.br"
+                      />
+                    </Field>
+                    <p className="col-span-2 text-[11px] text-muted-foreground -mt-1">
+                      Cobranças SICAF são enviadas para todos os e-mails preenchidos.
+                    </p>
                     <Field label="Telefone">
                       <Input value={data.telefone} onChange={(e) => upd("telefone", e.target.value)} />
                     </Field>
@@ -351,7 +379,9 @@ export function EditarClienteModal({ cliente, open, onOpenChange, onSalvar }: Pr
                       <InfoCard label="Cidade" value={data.cidade || "—"} />
                       <InfoCard label="Plano" value={data.plano || "—"} />
                       <InfoCard label="Responsável" value={data.responsavel} />
-                      <InfoCard label="E-mail" value={data.email} />
+                      <InfoCard label="E-mail principal" value={data.email} />
+                      <InfoCard label="E-mail financeiro" value={data.emailFinanceiro || "—"} />
+                      <InfoCard label="E-mail adicional" value={data.emailAdicional || "—"} />
                       <InfoCard label="Telefone" value={data.telefone || "—"} />
                       <InfoCard label="WhatsApp" value={data.whatsapp || "—"} />
                       <InfoCard label="Login" value={data.login} />

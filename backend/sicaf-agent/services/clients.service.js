@@ -435,6 +435,9 @@ async function getClientById(id) {
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
   try {
+    const { ensureClienteEmailExtrasColumns } = require('../utils/cliente-emails.util');
+    await ensureClienteEmailExtrasColumns(db);
+
     const client = await db('clientes').where('id', id).first();
     if (!client) return { ok: false, error: 'Cliente não encontrado' };
     const usuarioPrincipal = client.usuario_id
@@ -632,6 +635,8 @@ async function getClientById(id) {
         tipo_documento: client.tipo_documento,
         documento: client.documento,
         email: client.email,
+        email_financeiro: client.email_financeiro || null,
+        email_adicional: client.email_adicional || null,
         telefone: client.telefone,
         celular: client.celular,
         endereco: client.endereco,
@@ -2394,6 +2399,9 @@ async function updateClient(id, payload, usuarioId = null) {
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
   try {
+    const { ensureClienteEmailExtrasColumns } = require('../utils/cliente-emails.util');
+    await ensureClienteEmailExtrasColumns(db);
+
     const cliente = await db('clientes').where('id', id).first();
     if (!cliente) return { ok: false, error: 'Cliente não encontrado' };
 
@@ -2412,6 +2420,8 @@ async function updateClient(id, payload, usuarioId = null) {
     }
     if (payload.nome_fantasia !== undefined) updates.nome_fantasia = str(payload.nome_fantasia);
     if (payload.email !== undefined) updates.email = str(payload.email);
+    if (payload.email_financeiro !== undefined) updates.email_financeiro = str(payload.email_financeiro);
+    if (payload.email_adicional !== undefined) updates.email_adicional = str(payload.email_adicional);
     if (payload.telefone !== undefined) updates.telefone = str(payload.telefone);
     if (payload.celular !== undefined) updates.celular = str(payload.celular);
     if (payload.endereco !== undefined) updates.endereco = str(payload.endereco);

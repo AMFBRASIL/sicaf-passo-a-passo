@@ -248,6 +248,8 @@ export async function fetchAdminClienteDetalhe(clienteId: number) {
       razao_social: string;
       documento: string;
       email?: string;
+      email_financeiro?: string | null;
+      email_adicional?: string | null;
       telefone?: string;
       cidade?: string;
       estado?: string;
@@ -1211,6 +1213,10 @@ export type EditarClientePayload = {
   cidade: string;
   responsavel: string;
   email: string;
+  /** E-mail do financeiro (recebe cobranças junto com o principal). */
+  emailFinanceiro?: string;
+  /** E-mail adicional (sócio, contador, etc.). */
+  emailAdicional?: string;
   telefone: string;
   whatsapp: string;
   login: string;
@@ -1226,6 +1232,8 @@ export function buildAtualizarClientePayload(data: EditarClientePayload): Record
     cidade: data.cidade.trim(),
     responsavel: data.responsavel.trim(),
     email: data.email.trim(),
+    emailFinanceiro: String(data.emailFinanceiro || "").trim(),
+    emailAdicional: String(data.emailAdicional || "").trim(),
     telefone: data.telefone.trim(),
     whatsapp: data.whatsapp.trim(),
     forcarTroca: data.forcarTroca,

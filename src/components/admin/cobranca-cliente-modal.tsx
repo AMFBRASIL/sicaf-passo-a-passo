@@ -21,6 +21,7 @@ import {
   X,
   Clock,
   DollarSign,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -33,6 +34,16 @@ import {
 } from "@/lib/cobranca-api";
 import { validarPagamentoAdmin } from "@/lib/admin-clientes-api";
 import { buildWhatsAppClienteUrl } from "@/lib/whatsapp-suporte";
+
+type LogLinha = {
+  id: string;
+  text: string;
+  status: "info" | "pending" | "ok" | "error";
+};
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const sevBadge: Record<SeveridadeCobranca, { label: string; cls: string }> = {
   leve: { label: "Leve", cls: "bg-amber-100 text-amber-700 border-amber-200" },
@@ -67,6 +78,8 @@ export function CobrancaClienteModal({
   const [loadingHist, setLoadingHist] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [validando, setValidando] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const [logLines, setLogLines] = useState<LogLinha[]>([]);
   const isOpen = open ?? !!cliente;
 
   useEffect(() => {
@@ -103,12 +116,26 @@ export function CobrancaClienteModal({
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   };
 
+  const pushLog = (line: Omit<LogLinha, "id">) => {
+    setLogLines((prev) => [...prev, { ...line, id: `${Date.now()}-${prev.length}` }]);
+  };
+
   const enviarEmail = async () => {
     if (!cliente.email) {
-      toast.error("Cliente sem e-mail cadastrado");
+      toast.error("Cliente sem e-mail cadastrado. Inclua e-mails em Editar cliente.");
       return;
     }
+
+    setLogOpen(true);
+    setLogLines([
+      {
+        id: "start",
+        text: "Preparando envio para todos os e-mails cadastrados…",
+        status: "info",
+      },
+    ]);
     setEnviando(true);
+
     const res = await enviarCobrancaCliente({
       clienteId: cliente.clienteId,
       taxaId: cliente.taxaId,
@@ -116,14 +143,53 @@ export function CobrancaClienteModal({
       mensagem: mensagem.trim() || undefined,
     });
     setEnviando(false);
-    if (!res.ok) {
+
+    const envios = res.envios || [];
+    if (!envios.length) {
+      pushLog({
+        text: res.error || "Nenhum e-mail enviado.",
+        status: "error",
+      });
       toast.error(res.error || "Falha ao enviar cobrança");
+      await sleep(1800);
+      setLogOpen(false);
       return;
     }
-    toast.success(res.message || "E-mail de cobrança enviado");
-    onAtualizado?.();
-    const hist = await fetchCobrancaHistorico(cliente.clienteId);
-    if (hist.ok) setHistorico(hist.historico || []);
+
+    for (const envio of envios) {
+      pushLog({ text: `Enviando para ${envio.para}…`, status: "pending" });
+      await sleep(280);
+      pushLog({
+        text: envio.ok
+          ? envio.simulado
+            ? `Simulado para ${envio.para}`
+            : `Enviado para ${envio.para}`
+          : `Falha em ${envio.para}: ${envio.error || "erro"}`,
+        status: envio.ok ? "ok" : "error",
+      });
+      await sleep(220);
+    }
+
+    const okCount = envios.filter((e) => e.ok).length;
+    pushLog({
+      text:
+        okCount === envios.length
+          ? `Concluído — ${okCount} e-mail(s) enviado(s).`
+          : `Concluído — ${okCount} de ${envios.length} com sucesso.`,
+      status: okCount > 0 ? "ok" : "error",
+    });
+
+    if (res.ok) {
+      toast.success(res.message || "E-mail de cobrança enviado");
+      onAtualizado?.();
+      const hist = await fetchCobrancaHistorico(cliente.clienteId);
+      if (hist.ok) setHistorico(hist.historico || []);
+    } else {
+      toast.error(res.error || "Falha parcial no envio");
+    }
+
+    await sleep(1400);
+    setLogOpen(false);
   };
 
   const marcarPago = async () => {
@@ -153,6 +219,7 @@ export function CobrancaClienteModal({
   };
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-5xl p-0 overflow-hidden gap-0 sm:rounded-2xl border-0 max-h-[92vh] flex flex-col [&>button:last-child]:hidden">
         <div className="border-b bg-gradient-to-r from-rose-50 via-white to-white px-6 py-5">
@@ -264,6 +331,9 @@ export function CobrancaClienteModal({
                     E-mail de cobrança
                   </Button>
                 </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  O e-mail vai para o principal e também para financeiro/adicional cadastrados em Editar cliente.
+                </p>
                 {!cliente.telefone && (
                   <p className="mt-2 text-[11px] text-amber-700">
                     Sem telefone cadastrado — WhatsApp indisponível para este cliente.
@@ -360,6 +430,56 @@ export function CobrancaClienteModal({
         </div>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={logOpen} onOpenChange={(v) => !enviando && setLogOpen(v)}>
+      <DialogContent className="max-w-md gap-0 p-0 overflow-hidden z-[80]">
+        <div className="border-b px-5 py-4">
+          <DialogTitle className="text-base font-semibold flex items-center gap-2">
+            {enviando ? (
+              <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+            ) : (
+              <Mail className="h-4 w-4 text-sky-600" />
+            )}
+            Enviando cobrança por e-mail
+          </DialogTitle>
+          <DialogDescription className="text-xs mt-1">
+            Log do disparo para todos os destinatários cadastrados.
+          </DialogDescription>
+        </div>
+        <div className="max-h-72 overflow-y-auto px-5 py-4 space-y-2 bg-slate-50/80">
+          {logLines.map((l) => (
+            <div
+              key={l.id}
+              className="flex items-start gap-2 rounded-md border bg-white px-3 py-2 text-sm"
+            >
+              {l.status === "pending" || l.status === "info" ? (
+                <Loader2
+                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+                    l.status === "pending" ? "animate-spin text-sky-600" : "text-slate-400"
+                  }`}
+                />
+              ) : l.status === "ok" ? (
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              ) : (
+                <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-600" />
+              )}
+              <span
+                className={
+                  l.status === "error"
+                    ? "text-rose-700"
+                    : l.status === "ok"
+                      ? "text-emerald-800"
+                      : "text-slate-700"
+                }
+              >
+                {l.text}
+              </span>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

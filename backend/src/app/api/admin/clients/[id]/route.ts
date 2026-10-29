@@ -65,6 +65,8 @@ export async function PUT(
         razao_social: body.razao || body.razao_social,
         documento: body.cnpj || body.documento,
         email: body.email,
+        email_financeiro: body.emailFinanceiro ?? body.email_financeiro,
+        email_adicional: body.emailAdicional ?? body.email_adicional,
         telefone: body.telefone,
         celular: body.whatsapp || body.celular,
         cidade: body.cidade,

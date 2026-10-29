@@ -180,8 +180,8 @@ function buildCustomMessageHtml({ cliente, taxa, mensagem, linkPagamentoPublico 
 </body></html>`;
 }
 
-async function sendCobrancaTaxaEmail({ db, cliente, taxa, mensagemCustom }) {
-  const emailDestino = String(cliente?.email || '').trim();
+async function sendCobrancaTaxaEmail({ db, cliente, taxa, mensagemCustom, to }) {
+  const emailDestino = String(to || cliente?.email || '').trim();
   if (!emailDestino) {
     return { ok: false, error: 'Cliente sem e-mail cadastrado' };
   }

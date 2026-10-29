@@ -175,6 +175,13 @@ export async function fetchCobrancasPendentes(
   };
 }
 
+export type CobrancaEnvioItem = {
+  para: string;
+  ok: boolean;
+  error?: string | null;
+  simulado?: boolean;
+};
+
 export async function enviarCobrancaCliente(opts: {
   clienteId: number;
   taxaId?: number | null;
@@ -186,6 +193,7 @@ export async function enviarCobrancaCliente(opts: {
   message?: string;
   simulado?: boolean;
   para?: string;
+  envios?: CobrancaEnvioItem[];
   ultimaCobrancaFormatada?: string;
 }> {
   const res = await apiFetch("/api/admin/financeiro/cobrar", {
@@ -204,6 +212,7 @@ export async function enviarCobrancaCliente(opts: {
     message?: string;
     simulado?: boolean;
     para?: string;
+    envios?: CobrancaEnvioItem[];
     ultimaCobrancaFormatada?: string;
   };
 }
