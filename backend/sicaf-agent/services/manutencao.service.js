@@ -23,6 +23,38 @@ function formatDateOnlyLocal(dt) {
   return `${y}-${m}-${d}`;
 }
 
+/** Parse YYYY-MM-DD em Date local (evita shift UTC). */
+function parseDateOnlyLocal(value) {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  const raw = String(value).trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  const d = parseInt(m[3], 10);
+  if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+
+/** Próxima ocorrência do dia de vencimento a partir de "hoje" (não gera data passada). */
+function proximoVencimentoLocal(dueDay, fromDate = new Date()) {
+  const day = Math.max(1, Math.min(28, parseInt(String(dueDay), 10) || 10));
+  const base = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+  const dim = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+  let candidate = new Date(base.getFullYear(), base.getMonth(), Math.min(day, dim));
+  if (candidate < base) {
+    const next = new Date(base.getFullYear(), base.getMonth() + 1, 1);
+    const dim2 = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    candidate = new Date(next.getFullYear(), next.getMonth(), Math.min(day, dim2));
+  }
+  return candidate;
+}
+
 async function assertSicafVigenteParaManutencao(db, clienteId) {
   const sicaf = await db('sicaf_cadastros').where('cliente_id', clienteId).first();
   if (!sicaf) {
@@ -373,7 +405,14 @@ async function enviarComprovanteManutencao({ boletoId, usuarioId, jwtTipo, email
   }
 }
 
-async function ativarManutencao({ clienteId, usuarioId, diaVencimento, parcelamento, jwtTipo }) {
+async function ativarManutencao({
+  clienteId,
+  usuarioId,
+  diaVencimento,
+  parcelamento,
+  dataInicioCobranca,
+  jwtTipo,
+}) {
   const db = getDb();
   if (!db) return { ok: false, error: 'Banco de dados não disponível' };
 
@@ -396,9 +435,31 @@ async function ativarManutencao({ clienteId, usuarioId, diaVencimento, parcelame
 
   const valorMensal = await getValorMensal(db);
   const hoje = new Date();
-  const dataInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-  const dataFim = new Date(hoje.getFullYear() + 1, hoje.getMonth(), 0);
-  const diasRestantes = Math.ceil((dataFim - hoje) / (1000 * 60 * 60 * 24));
+  const hojeDia = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+
+  // Boleto 01 = início da cobrança escolhido (mês/ano), no dia de vencimento.
+  // Fallback: próxima ocorrência do dia a partir de hoje (nunca data passada).
+  let primeiroVenc = parseDateOnlyLocal(dataInicioCobranca);
+  if (primeiroVenc) {
+    const dim = new Date(primeiroVenc.getFullYear(), primeiroVenc.getMonth() + 1, 0).getDate();
+    primeiroVenc = new Date(
+      primeiroVenc.getFullYear(),
+      primeiroVenc.getMonth(),
+      Math.min(dueDay, dim),
+    );
+  }
+  if (!primeiroVenc || primeiroVenc < hojeDia) {
+    primeiroVenc = proximoVencimentoLocal(dueDay, hoje);
+  }
+
+  const startMes = primeiroVenc.getMonth() + 1;
+  const startAno = primeiroVenc.getFullYear();
+  const dataInicio = new Date(startAno, startMes - 1, 1);
+  const dataFim = new Date(startAno + 1, startMes - 1, 0);
+  const diasRestantes = Math.max(
+    0,
+    Math.ceil((dataFim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24)),
+  );
 
   const manutPayload = {
     titulo: 'Manutenção CADBRASIL',
@@ -438,8 +499,9 @@ async function ativarManutencao({ clienteId, usuarioId, diaVencimento, parcelame
 
   for (let i = 0; i < qtdParcelas; i++) {
     const monthOffset = i * intervaloMeses;
-    const mesRef = ((hoje.getMonth() + monthOffset) % 12) + 1;
-    const anoRef = hoje.getFullYear() + Math.floor((hoje.getMonth() + monthOffset) / 12);
+    const absolute = startMes - 1 + monthOffset;
+    const mesRef = (absolute % 12) + 1;
+    const anoRef = startAno + Math.floor(absolute / 12);
     const dia = Math.min(dueDay, new Date(anoRef, mesRef, 0).getDate());
     const dataVenc = new Date(anoRef, mesRef - 1, dia);
 
@@ -465,6 +527,7 @@ async function ativarManutencao({ clienteId, usuarioId, diaVencimento, parcelame
     ok: true,
     manutencaoId,
     diaVencimento: dueDay,
+    dataInicioCobranca: formatDateOnlyLocal(primeiroVenc),
     message: 'Manutenção ativada com sucesso!',
   };
 }

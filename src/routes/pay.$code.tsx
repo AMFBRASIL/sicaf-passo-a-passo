@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   fetchPublicPayGate,
+  gerarBoletoPublicPay,
   gerarPixPublicPay,
   verifyPublicPayAccess,
   type PublicPayGate,
@@ -349,12 +350,41 @@ function PayPage({
   const quitado = cobranca.quitado || (cobranca.guias.length > 0 && guiasAbertas.length === 0);
   const [selecionadas, setSelecionadas] = useState<string[]>([]);
   const [gerandoPix, setGerandoPix] = useState(false);
+  const [gerandoBoleto, setGerandoBoleto] = useState(false);
 
   useEffect(() => {
     const focus = cobranca.focusGuiaId;
     const abertas = cobranca.guias.filter((g) => g.status !== "pago").map((g) => g.id);
-    setSelecionadas(focus && abertas.includes(focus) ? [focus] : abertas);
+    // Seleciona só a guia do link (ou a próxima em aberto) — evita marcar 12x manutenção de uma vez.
+    if (focus && abertas.includes(focus)) {
+      setSelecionadas([focus]);
+    } else if (abertas.length) {
+      setSelecionadas([abertas[0]]);
+    } else {
+      setSelecionadas([]);
+    }
   }, [cobranca.focusGuiaId, cobranca.guias]);
+
+  const guiasPorGrupo = useMemo(() => {
+    const resolveKey = (g: PublicPayGuia) => {
+      if (g.tipoKey) return g.tipoKey;
+      const t = String(g.tipo || "").toLowerCase();
+      if (t.includes("sicaf")) return "sicaf";
+      if (t.includes("manut")) return "manutencao";
+      return "outros";
+    };
+    const groups: { key: string; title: string; items: PublicPayGuia[] }[] = [
+      { key: "sicaf", title: "Taxa SICAF (anual)", items: [] },
+      { key: "manutencao", title: "Manutenção mensal", items: [] },
+      { key: "outros", title: "Outras cobranças", items: [] },
+    ];
+    for (const g of cobranca.guias) {
+      const key = resolveKey(g);
+      const grupo = groups.find((x) => x.key === key) || groups[2];
+      grupo.items.push(g);
+    }
+    return groups.filter((g) => g.items.length > 0);
+  }, [cobranca.guias]);
 
   const [metodo, setMetodo] = useState<"pix" | "boleto">(() => {
     if (cobranca.pagamento.pixCopiaCola) return "pix";
@@ -406,6 +436,23 @@ function PayPage({
     onAtualizar(res as PublicPayPage);
     setMetodo("pix");
     toast.success("PIX gerado! Escaneie o QR Code ou copie o código.");
+  };
+
+  const gerarBoleto = async () => {
+    if (!documento) {
+      toast.error("Sessão expirada. Recarregue a página e informe o documento novamente.");
+      return;
+    }
+    setGerandoBoleto(true);
+    const res = await gerarBoletoPublicPay(code, documento, guiaParaPix);
+    setGerandoBoleto(false);
+    if (!res.ok || !res.guias) {
+      toast.error(res.error || "Não foi possível gerar o boleto agora. Fale com a equipe CADBRASIL.");
+      return;
+    }
+    onAtualizar(res as PublicPayPage);
+    setMetodo("boleto");
+    toast.success("Boleto gerado! Copie a linha digitável ou baixe o PDF.");
   };
 
   const copy = (txt: string, label: string) => {
@@ -502,39 +549,53 @@ function PayPage({
                   <Receipt className="h-4 w-4 text-slate-500" />
                   Guias de pagamento ({cobranca.guias.length})
                 </CardTitle>
+                {(cobranca.resumo.qtdManutencao || 0) > 0 && (
+                  <p className="text-xs font-normal text-slate-500">
+                    Inclui taxa anual SICAF e mensalidades de manutenção nesta mesma página.
+                  </p>
+                )}
               </CardHeader>
-              <CardContent className="pt-0">
-                <div className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
-                  {cobranca.guias.map((g) => {
-                    const checked = selecionadas.includes(g.id);
-                    const disabled = g.status === "pago";
-                    return (
-                      <label
-                        key={g.id}
-                        className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-slate-50 ${disabled ? "opacity-60" : ""}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={disabled}
-                          onChange={() => toggleGuia(g.id)}
-                          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-900">{g.tipo}</span>
-                            <span className="text-xs text-slate-500">· {g.descricao}</span>
-                            {statusBadge(g.status)}
-                          </div>
-                          <p className="mt-0.5 text-xs text-slate-500">
-                            Competência {g.competencia} · Vencimento {g.vencimento}
-                          </p>
-                        </div>
-                        <p className="text-sm font-semibold tabular-nums text-slate-900">{fmtBRL(g.valor)}</p>
-                      </label>
-                    );
-                  })}
-                </div>
+              <CardContent className="space-y-4 pt-0">
+                {guiasPorGrupo.map((grupo) => (
+                  <div key={grupo.key}>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      {grupo.title} ({grupo.items.length})
+                    </p>
+                    <div className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
+                      {grupo.items.map((g) => {
+                        const checked = selecionadas.includes(g.id);
+                        const disabled = g.status === "pago";
+                        return (
+                          <label
+                            key={g.id}
+                            className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-slate-50 ${disabled ? "opacity-60" : ""}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={disabled}
+                              onChange={() => toggleGuia(g.id)}
+                              className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-semibold text-slate-900">{g.tipo}</span>
+                                <span className="text-xs text-slate-500">· {g.descricao}</span>
+                                {statusBadge(g.status)}
+                              </div>
+                              <p className="mt-0.5 text-xs text-slate-500">
+                                Competência {g.competencia} · Vencimento {g.vencimento}
+                              </p>
+                            </div>
+                            <p className="text-sm font-semibold tabular-nums text-slate-900">
+                              {fmtBRL(g.valor)}
+                            </p>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
 
@@ -548,11 +609,7 @@ function PayPage({
                     <TabsTrigger value="pix" className="gap-2" disabled={!pixAtivo && !guiaParaPix}>
                       <QrCode className="h-4 w-4" /> PIX
                     </TabsTrigger>
-                    <TabsTrigger
-                      value="boleto"
-                      className="gap-2"
-                      disabled={!linhaDigitavel && !linkPdf && !linkBoleto}
-                    >
+                    <TabsTrigger value="boleto" className="gap-2" disabled={!guiaParaPix}>
                       <FileText className="h-4 w-4" /> Boleto
                     </TabsTrigger>
                   </TabsList>
@@ -602,30 +659,53 @@ function PayPage({
                   </TabsContent>
 
                   <TabsContent value="boleto" className="mt-4 space-y-3">
-                    {linhaDigitavel ? (
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                          Linha digitável
+                    {linhaDigitavel || linkPdf || linkBoleto ? (
+                      <>
+                        {linhaDigitavel ? (
+                          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                              Linha digitável
+                            </p>
+                            <p className="mt-1 font-mono text-sm text-slate-800">{linhaDigitavel}</p>
+                          </div>
+                        ) : null}
+                        <div className="flex flex-wrap gap-2">
+                          {linhaDigitavel && (
+                            <Button onClick={() => copy(linhaDigitavel, "Linha digitável")}>
+                              <Copy className="mr-2 h-4 w-4" /> Copiar código
+                            </Button>
+                          )}
+                          {(linkPdf || linkBoleto) && (
+                            <Button variant="outline" asChild>
+                              <a
+                                href={linkPdf || linkBoleto || "#"}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <Download className="mr-2 h-4 w-4" /> Baixar boleto
+                              </a>
+                            </Button>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-3 py-2">
+                        <p className="text-sm text-slate-600">
+                          Esta guia ainda não tem boleto emitido. Gere agora para pagar no banco —
+                          o PIX continua disponível na outra aba.
                         </p>
-                        <p className="mt-1 font-mono text-sm text-slate-800">{linhaDigitavel}</p>
+                        <Button
+                          onClick={() => void gerarBoleto()}
+                          disabled={gerandoBoleto || !guiaParaPix}
+                        >
+                          {gerandoBoleto ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <FileText className="mr-2 h-4 w-4" />
+                          )}
+                          {gerandoBoleto ? "Gerando boleto..." : "Gerar boleto"}
+                        </Button>
                       </div>
-                    ) : null}
-                    <div className="flex flex-wrap gap-2">
-                      {linhaDigitavel && (
-                        <Button onClick={() => copy(linhaDigitavel, "Linha digitável")}>
-                          <Copy className="mr-2 h-4 w-4" /> Copiar código
-                        </Button>
-                      )}
-                      {(linkPdf || linkBoleto) && (
-                        <Button variant="outline" asChild>
-                          <a href={linkPdf || linkBoleto || "#"} target="_blank" rel="noopener noreferrer">
-                            <Download className="mr-2 h-4 w-4" /> Baixar boleto
-                          </a>
-                        </Button>
-                      )}
-                    </div>
-                    {!linhaDigitavel && !linkPdf && !linkBoleto && (
-                      <p className="text-sm text-slate-500">Boleto ainda não disponível para esta cobrança.</p>
                     )}
                   </TabsContent>
                 </Tabs>

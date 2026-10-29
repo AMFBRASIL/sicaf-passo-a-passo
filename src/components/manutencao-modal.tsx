@@ -21,6 +21,9 @@ import {
   Trash2,
   AlertTriangle,
   RefreshCw,
+  Link2,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -72,6 +75,26 @@ import { PRECO_FALLBACK } from "@/lib/sicaf-precos";
 const DIAS = [1, 5, 10, 15, 20, 25];
 
 const PARCELAMENTO_OPCOES: ParcelamentoManutencao[] = ["avista", "6x", "12x"];
+
+/** Próxima data do dia de vencimento a partir de hoje (nunca no passado). */
+function proximoVencimentoDia(dia: number, from = new Date()): Date {
+  const day = Math.max(1, Math.min(28, dia));
+  const base = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const dim = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+  let candidate = new Date(base.getFullYear(), base.getMonth(), Math.min(day, dim));
+  if (candidate < base) {
+    const next = new Date(base.getFullYear(), base.getMonth() + 1, 1);
+    const dim2 = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    candidate = new Date(next.getFullYear(), next.getMonth(), Math.min(day, dim2));
+  }
+  return candidate;
+}
+
+function snapDataAoDia(date: Date, dia: number): Date {
+  const day = Math.max(1, Math.min(28, dia));
+  const dim = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return new Date(date.getFullYear(), date.getMonth(), Math.min(day, dim));
+}
 
 type Mode = "ativar" | "gerenciar";
 type Step = "plano" | "vencimento" | "confirmar" | "sucesso";
@@ -198,7 +221,11 @@ export function ManutencaoModal({
       return;
     }
     setAtivando(true);
-    const res = await ativarManutencao(empresa.clienteId, dia, parcelamento);
+    const inicio =
+      dataInicio != null
+        ? format(snapDataAoDia(dataInicio, dia), "yyyy-MM-dd")
+        : format(proximoVencimentoDia(dia), "yyyy-MM-dd");
+    const res = await ativarManutencao(empresa.clienteId, dia, parcelamento, inicio);
     setAtivando(false);
     if (!res.ok) {
       toast.error(res.error || "Erro ao ativar manutenção");
@@ -412,7 +439,11 @@ export function ManutencaoModal({
                   </Button>
                 )}
                 {step === "vencimento" && (
-                  <Button onClick={() => setStep("confirmar")} disabled={!dia} className="gap-2">
+                  <Button
+                    onClick={() => setStep("confirmar")}
+                    disabled={!dia || !dataInicio}
+                    className="gap-2"
+                  >
                     Continuar <ArrowRight className="h-4 w-4" />
                   </Button>
                 )}
@@ -584,6 +615,29 @@ function VencimentoStep({
   parcelamento: ParcelamentoManutencao;
 }) {
   const calc = calcParcelamentoManutencao(valorMensal, parcelamento, valorAnual);
+  const hoje = useMemo(() => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  }, []);
+
+  const handleEscolherDia = (d: number) => {
+    setDia(d);
+    setDataInicio(proximoVencimentoDia(d));
+  };
+
+  const handleEscolherInicio = (d: Date | undefined) => {
+    if (!d) {
+      setDataInicio(undefined);
+      return;
+    }
+    if (dia != null) {
+      const snapped = snapDataAoDia(d, dia);
+      setDataInicio(snapped < hoje ? proximoVencimentoDia(dia) : snapped);
+      return;
+    }
+    setDataInicio(d < hoje ? hoje : d);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -604,7 +658,7 @@ function VencimentoStep({
               <button
                 key={d}
                 type="button"
-                onClick={() => setDia(d)}
+                onClick={() => handleEscolherDia(d)}
                 className={cn(
                   "h-20 rounded-xl border-2 flex flex-col items-center justify-center transition",
                   active
@@ -636,7 +690,14 @@ function VencimentoStep({
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
-            <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} initialFocus className={cn("p-3 pointer-events-auto")} />
+            <Calendar
+              mode="single"
+              selected={dataInicio}
+              onSelect={handleEscolherInicio}
+              disabled={(date) => date < hoje}
+              initialFocus
+              className={cn("p-3 pointer-events-auto")}
+            />
           </PopoverContent>
         </Popover>
       </div>
@@ -763,11 +824,82 @@ function SucessoStep({ empresa, dia, onClose }: { empresa: EmpresaData; dia: num
           <strong className="text-foreground">{dia}</strong>.
         </p>
       </div>
+      {empresa.clienteId ? (
+        <div className="w-full max-w-md text-left">
+          <PortalPayLinkCard clienteId={empresa.clienteId} />
+        </div>
+      ) : null}
       <Button onClick={onClose} size="lg" className="gap-2">
         Concluir <ArrowRight className="h-4 w-4" />
       </Button>
     </div>
   );
+}
+
+function PortalPayLinkCard({
+  clienteId,
+  compact,
+}: {
+  clienteId: number;
+  compact?: boolean;
+}) {
+  const link = buildPortalPayLink(clienteId);
+  if (!link) return null;
+
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Link de pagamento copiado!");
+    } catch {
+      toast.error("Não foi possível copiar o link.");
+    }
+  };
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border border-sky-200 bg-sky-50/80 p-4 dark:border-sky-900/40 dark:bg-sky-950/20",
+        compact && "p-3",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-700 dark:text-sky-300">
+          <Link2 className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-sky-950 dark:text-sky-100">
+            Link para o cliente pagar
+          </p>
+          <p className={cn("text-xs text-sky-900/70 dark:text-sky-200/70 mt-0.5", compact && "hidden sm:block")}>
+            Mesma tela do SICAF anual (/pay/...), com acesso por CNPJ. Lista também as mensalidades de
+            manutenção.
+          </p>
+          <p className="mt-2 truncate rounded-md border border-sky-200/80 bg-white/80 px-2.5 py-1.5 font-mono text-[11px] text-sky-950 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100">
+            {link}
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => void copiar()}>
+              <Copy className="h-3.5 w-3.5" /> Copiar link
+            </Button>
+            <Button size="sm" variant="ghost" className="gap-1.5 h-8" asChild>
+              <a href={link} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" /> Abrir
+              </a>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildPortalPayLink(clienteId: number | null | undefined): string | null {
+  if (!clienteId) return null;
+  const base =
+    typeof window !== "undefined"
+      ? window.location.origin.replace(/\/$/, "")
+      : "https://fornecedor.cadbrasil.com.br";
+  return `${base}/pay/c-${clienteId}`;
 }
 
 function isBoletoPago(status: string) {
@@ -1006,6 +1138,9 @@ function GerenciarPanel({
               {pagos} de {boletos.length || 12} mensalidades pagas
             </p>
           </div>
+          {empresa.clienteId ? (
+            <PortalPayLinkCard clienteId={empresa.clienteId} />
+          ) : null}
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
             <div className="flex items-start gap-3">
               <div className="h-9 w-9 rounded-lg bg-destructive/10 text-destructive flex items-center justify-center shrink-0">
@@ -1033,6 +1168,9 @@ function GerenciarPanel({
 
       {step === "boletos" && (
         <div className="space-y-2">
+          {empresa.clienteId ? (
+            <PortalPayLinkCard clienteId={empresa.clienteId} compact />
+          ) : null}
           {carregandoBoletos && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Carregando boletos…

@@ -10,6 +10,7 @@ type ManutencaoService = {
     usuarioId: number;
     diaVencimento: number;
     parcelamento?: string;
+    dataInicioCobranca?: string;
     jwtTipo?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
 };
@@ -23,12 +24,19 @@ export async function POST(request: Request) {
     if (!Number.isFinite(clienteId) || !Number.isFinite(diaVencimento)) {
       return NextResponse.json({ ok: false, error: "clienteId e diaVencimento são obrigatórios" }, { status: 400 });
     }
+    const dataInicioRaw =
+      body.dataInicioCobranca ?? body.dataInicio ?? body.inicioCobranca ?? null;
+    const dataInicioCobranca =
+      typeof dataInicioRaw === "string" && /^\d{4}-\d{2}-\d{2}/.test(dataInicioRaw.trim())
+        ? dataInicioRaw.trim().slice(0, 10)
+        : undefined;
     const svc = await getSicafAgentModule<ManutencaoService>("services/manutencao.service");
     const result = await svc.ativarManutencao({
       clienteId,
       usuarioId,
       diaVencimento,
       parcelamento: body.parcelamento,
+      dataInicioCobranca,
       jwtTipo: tipo,
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 400 });

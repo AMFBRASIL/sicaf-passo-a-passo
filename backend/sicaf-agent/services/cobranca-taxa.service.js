@@ -359,6 +359,59 @@ async function gerarPixPublicPay(code, documentoInput, guiaId) {
   return buildPublicPayPagePayload(atualizado);
 }
 
+/**
+ * Gera boleto sob demanda na página pública (SICAF, manutenção ou avulso).
+ */
+async function gerarBoletoPublicPay(code, documentoInput, guiaId) {
+  const auth = await authenticatePublicPay(code, documentoInput);
+  if (!auth.ok) return auth;
+
+  const { ctx } = auth;
+  const alvo = resolveGuiaAlvoPublicPay(ctx, guiaId);
+  if (!alvo) {
+    return { ok: false, error: 'Nenhuma guia em aberto para gerar boleto.' };
+  }
+  if (alvo.barcode || alvo.linkPdf || alvo.linkBoletoBanco) {
+    return buildPublicPayPagePayload(ctx);
+  }
+
+  const pagamentosService = require('./pagamentos.service');
+  let result;
+
+  if (alvo.tipo === 'sicaf') {
+    result = await pagamentosService.gerarBoletoSicaf({
+      taxaId: alvo.id,
+      clienteId: ctx.clienteId,
+    });
+  } else if (alvo.tipo === 'manutencao') {
+    result = await pagamentosService.gerarBoletoManutencao({
+      boletoId: alvo.id,
+      clienteId: ctx.clienteId,
+    });
+  } else {
+    const base = alvo.pagamentoId
+      ? await ctx.db('pagamentos').where('id', alvo.pagamentoId).first()
+      : null;
+    result = await pagamentosService.gerarCobrancaPersonalizada({
+      clienteId: ctx.clienteId,
+      valor: alvo.valor,
+      formaPagamento: 'boleto',
+      descricao: alvo.descricao,
+      origem: base?.origem || 'personalizado',
+      origemId: base?.origem_id || alvo.id,
+    });
+  }
+
+  if (!result?.ok) {
+    console.error('[PublicPay] Falha ao gerar boleto:', result?.error);
+    return { ok: false, error: result?.error || 'Não foi possível gerar o boleto agora.' };
+  }
+
+  const atualizado = await resolvePublicPayContext(code);
+  if (!atualizado.ok) return atualizado;
+  return buildPublicPayPagePayload(atualizado);
+}
+
 function buildPublicPayPagePayload(ctx) {
   const { parsed, cliente, pendencias } = ctx;
   const guias = pendencias.map(mapPendenciaToGuia);
@@ -396,11 +449,16 @@ function buildPublicPayPagePayload(ctx) {
         formaPagamento: focusGuia?.formaPagamento || null,
       };
 
+  const portalCode = buildPayCode({ clienteId: ctx.clienteId });
+  const qtdSicaf = guias.filter((g) => g.tipoKey === 'sicaf').length;
+  const qtdManutencao = guias.filter((g) => g.tipoKey === 'manutencao').length;
+
   return {
     ok: true,
     quitado,
     codigo: parsed.code,
     payLink: `${getPublicPayBaseUrl()}/pay/${parsed.code}`,
+    portalLink: `${getPublicPayBaseUrl()}/pay/${portalCode}`,
     cliente: {
       nome: cliente.responsavel_nome || cliente.razao_social || 'Cliente',
       nomeMascarado: cliente.responsavel_nome
@@ -422,6 +480,8 @@ function buildPublicPayPagePayload(ctx) {
       totalGuias: guias.length,
       totalAberto: Math.round(totalAberto * 100) / 100,
       qtdVencidas: guiasAbertas.filter((g) => g.status === 'vencido').length,
+      qtdSicaf,
+      qtdManutencao,
     },
     pagamento,
     expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString(),
@@ -1416,6 +1476,7 @@ function mapPendenciaToGuia(item) {
 
   return {
     id: `${item.tipo}-${item.id}`,
+    tipoKey: item.tipo || 'personalizado',
     tipo: mapGuiaTipoLabel(item.tipo),
     descricao: item.descricao || mapGuiaTipoLabel(item.tipo),
     competencia,
@@ -1426,6 +1487,7 @@ function mapPendenciaToGuia(item) {
     dataPagamento: item.dataPagamento ? formatDateBr(item.dataPagamento) : null,
     pagamentoId: item.pagamentoId || null,
     taxaId: item.tipo === 'sicaf' ? item.id : null,
+    boletoId: item.tipo === 'manutencao' ? item.id : null,
     formaPagamento: item.formaPagamento || null,
     pixCopiaCola: item.qrcodeText || null,
     pixQrImage: item.qrcodeImage || null,
@@ -1453,6 +1515,7 @@ module.exports = {
   verifyPublicPayAccess,
   getPublicPayPage,
   gerarPixPublicPay,
+  gerarBoletoPublicPay,
   buildPayLink,
   buildPayCode,
   parsePayCode,

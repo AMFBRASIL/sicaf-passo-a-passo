@@ -72,10 +72,16 @@ export async function ativarManutencao(
   clienteId: number,
   diaVencimento: number,
   parcelamento?: ParcelamentoManutencao | string,
+  dataInicioCobranca?: string,
 ) {
   const res = await apiFetch("/api/manutencao/ativar", {
     method: "POST",
-    body: JSON.stringify({ clienteId, diaVencimento, parcelamento }),
+    body: JSON.stringify({
+      clienteId,
+      diaVencimento,
+      parcelamento,
+      ...(dataInicioCobranca ? { dataInicioCobranca } : {}),
+    }),
   });
   return res.json() as Promise<{ ok: boolean; error?: string; message?: string }>;
 }
