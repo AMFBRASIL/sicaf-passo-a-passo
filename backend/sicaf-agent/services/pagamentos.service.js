@@ -1414,6 +1414,95 @@ async function autorizarPagamentoManutencao(boletoId, clienteIdEsperado, usuario
   }
 }
 
+/**
+ * Reverte boleto de manutenção de Pago → Pendente (correção administrativa).
+ * Também reabre pagamentos vinculados marcados como pagos.
+ */
+async function reverterPagamentoManutencao(boletoId, clienteIdEsperado, usuarioId, motivo) {
+  const db = getDb();
+  if (!db) return { ok: false, error: 'Banco de dados não disponível' };
+
+  try {
+    const row = await db('manutencao_boletos as mb')
+      .join('manutencoes as m', 'mb.manutencao_id', 'm.id')
+      .where('mb.id', boletoId)
+      .select(
+        'mb.id',
+        'mb.status',
+        'mb.data_pagamento',
+        'mb.manutencao_id',
+        'm.cliente_id',
+      )
+      .first();
+
+    if (!row) return { ok: false, error: 'Boleto de manutenção não encontrado' };
+
+    if (clienteIdEsperado != null && Number(clienteIdEsperado) > 0) {
+      if (Number(row.cliente_id) !== Number(clienteIdEsperado)) {
+        return { ok: false, error: 'Boleto não pertence a este cliente' };
+      }
+    }
+
+    const statusAtual = String(row.status || '').trim().toLowerCase();
+    const pago =
+      ['pago', 'paga', 'aprovado', 'aprovada', 'paid', 'quitado', 'liberado', 'liberada'].includes(
+        statusAtual,
+      ) || Boolean(row.data_pagamento);
+
+    if (!pago) {
+      return { ok: false, error: 'Este boleto já está em aberto — nada a reverter.' };
+    }
+
+    await db.transaction(async (trx) => {
+      // forma_pagamento é ENUM NOT NULL (ex.: Boleto/PIX) — não alterar na reversão
+      await trx('manutencao_boletos').where('id', boletoId).update({
+        status: 'Pendente',
+        data_pagamento: null,
+      });
+
+      const pagosVinculados = await trx(PAGAMENTOS_TABLE)
+        .where({ origem: 'manutencao', origem_id: boletoId })
+        .whereNull('deleted_at')
+        .whereIn('status', ['pago', 'Pago', 'aprovado', 'Aprovado', 'paid']);
+
+      for (const pg of pagosVinculados) {
+        const temCobranca = Boolean(pg.provider_charge_id || pg.barcode || pg.link_boleto || pg.link_pdf);
+        await trx(PAGAMENTOS_TABLE).where('id', pg.id).update({
+          status: temCobranca ? 'gerado' : 'pendente',
+          data_pagamento: null,
+          updated_at: trx.fn.now(),
+        });
+      }
+    });
+
+    if (usuarioId) {
+      try {
+        const motivoTxt = motivo ? ` Motivo: ${String(motivo).trim()}` : '';
+        await db('historico_acoes').insert({
+          cliente_id: row.cliente_id || null,
+          usuario_id: usuarioId,
+          acao: `Pagamento do boleto de manutenção #${boletoId} revertido para aberto (admin).${motivoTxt}`,
+          entidade: 'manutencao_boletos',
+          entidade_id: boletoId,
+          created_at: db.fn.now(),
+        });
+      } catch (_) {}
+    }
+
+    console.log(
+      `[Pagamentos] Manutenção boleto ${boletoId} revertido para aberto (cliente ${row.cliente_id})`,
+    );
+
+    return {
+      ok: true,
+      message: 'Boleto revertido para aberto. Pode gerar cobrança ou autorizar novamente.',
+    };
+  } catch (e) {
+    console.error('[Pagamentos] Erro reverterPagamentoManutencao:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // SINCRONIZAÇÃO DE STATUS COM O PROVEDOR
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1579,6 +1668,7 @@ module.exports = {
   calcularAcrescimosBoletoVencido,
   gerarCobrancaPersonalizada,
   autorizarPagamentoManutencao,
+  reverterPagamentoManutencao,
 
   // Consultas
   listarPagamentos,

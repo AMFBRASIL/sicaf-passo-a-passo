@@ -25,6 +25,8 @@ import {
   Copy,
   ExternalLink,
   Mail,
+  Undo2,
+  Settings2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -66,6 +68,7 @@ import {
   fetchValoresManutencao,
   fmtBrl,
   renovarManutencao,
+  reverterBoletoManutencao,
   type ManutencaoBoleto,
   type ParcelamentoManutencao,
 } from "@/lib/manutencao-api";
@@ -942,7 +945,7 @@ function buildPortalPayLink(clienteId: number | null | undefined): string | null
 
 function isBoletoPago(status: string) {
   const s = String(status || "").trim().toLowerCase();
-  return s === "pago" || s === "paid";
+  return ["pago", "paga", "paid", "aprovado", "aprovada", "quitado", "liberado", "liberada"].includes(s);
 }
 
 function mapBoletoUiStatus(b: ManutencaoBoleto): "pago" | "aberto" | "futuro" {
@@ -1013,6 +1016,8 @@ function GerenciarPanel({
   const [cancelando, setCancelando] = useState(false);
   const [pagBoleto, setPagBoleto] = useState<{ data: Date; boletoId?: number; valor: number } | null>(null);
   const [comprovanteBoleto, setComprovanteBoleto] = useState<BoletoUi | null>(null);
+  const [reverterBoleto, setReverterBoleto] = useState<BoletoUi | null>(null);
+  const [revertendo, setRevertendo] = useState(false);
   const [renovarOpen, setRenovarOpen] = useState(false);
   const [renovarDia, setRenovarDia] = useState(dia);
   const [renovarParcelamento, setRenovarParcelamento] = useState<ParcelamentoManutencao>("12x");
@@ -1058,6 +1063,23 @@ function GerenciarPanel({
       return;
     }
     toast.success(res.message || "Pagamento autorizado com sucesso.");
+    await carregarBoletos();
+  };
+
+  const handleReverterPagamento = async () => {
+    if (!reverterBoleto || !empresa.clienteId) {
+      toast.error("Empresa sem identificador. Recarregue a página.");
+      return;
+    }
+    setRevertendo(true);
+    const res = await reverterBoletoManutencao(reverterBoleto.id, empresa.clienteId);
+    setRevertendo(false);
+    if (!res.ok) {
+      toast.error(res.error || "Falha ao reverter pagamento.");
+      return;
+    }
+    toast.success(res.message || "Boleto revertido para aberto.");
+    setReverterBoleto(null);
     await carregarBoletos();
   };
 
@@ -1252,16 +1274,26 @@ function GerenciarPanel({
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                     {b.status === "pago" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5"
-                        onClick={() => setComprovanteBoleto(b)}
-                      >
-                        <Download className="h-3.5 w-3.5" /> Comprovante
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5"
+                          onClick={() => setComprovanteBoleto(b)}
+                        >
+                          <Download className="h-3.5 w-3.5" /> Comprovante
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 border-amber-200 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
+                          onClick={() => setReverterBoleto(b)}
+                        >
+                          <Settings2 className="h-3.5 w-3.5" /> Gerenciar
+                        </Button>
+                      </>
                     )}
                     {podeAutorizar && (
                       <>
@@ -1379,6 +1411,61 @@ function GerenciarPanel({
                 </>
               ) : (
                 "Confirmar cancelamento"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!reverterBoleto}
+        onOpenChange={(v) => {
+          if (!v && !revertendo) setReverterBoleto(null);
+        }}
+      >
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Gerenciar boleto pago</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  Este boleto está marcado como <strong className="text-foreground">pago</strong>
+                  {reverterBoleto
+                    ? ` (${format(reverterBoleto.data, "MMM/yyyy", { locale: ptBR })})`
+                    : ""}
+                  . Use esta opção se o pagamento foi marcado por engano.
+                </p>
+                <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                  <p className="text-xs font-medium flex items-center gap-1.5">
+                    <Undo2 className="h-3.5 w-3.5 shrink-0" />
+                    Reverter para aberto
+                  </p>
+                  <p className="text-xs mt-1 opacity-90">
+                    O status volta para pendente, a data de pagamento é limpa e o boleto volta a
+                    aparecer para Autorizar / Gerar Boleto.
+                  </p>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={revertendo}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={revertendo}
+              className="bg-amber-600 text-white hover:bg-amber-700"
+              onClick={(e) => {
+                e.preventDefault();
+                void handleReverterPagamento();
+              }}
+            >
+              {revertendo ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Revertendo…
+                </>
+              ) : (
+                <>
+                  <Undo2 className="h-4 w-4 mr-1.5" /> Reverter para aberto
+                </>
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

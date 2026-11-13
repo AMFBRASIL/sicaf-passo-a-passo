@@ -176,6 +176,19 @@ export async function autorizarBoletoManutencao(boletoId: number, clienteId: num
   return res.json() as Promise<{ ok: boolean; error?: string; message?: string }>;
 }
 
+/** Reverte boleto de manutenção de pago → aberto (correção administrativa). */
+export async function reverterBoletoManutencao(
+  boletoId: number,
+  clienteId: number,
+  motivo?: string,
+) {
+  const res = await apiFetch(`/api/manutencao/boletos/${boletoId}/reverter-pagamento`, {
+    method: "POST",
+    body: JSON.stringify({ clienteId, motivo: motivo || undefined }),
+  });
+  return res.json() as Promise<{ ok: boolean; error?: string; message?: string }>;
+}
+
 export type PagamentoManutencaoGerado = {
   ok: boolean;
   error?: string;
