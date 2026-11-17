@@ -25,6 +25,7 @@ import {
   MonitorUp,
   Gavel,
   Layers,
+  Receipt,
 } from "lucide-react";
 
 export type AdminMenuCategory = "Operação" | "Atendimento" | "Inteligência" | "Gestão" | "CRM";
@@ -42,6 +43,7 @@ export const ADMIN_MENU_MANIFEST: AdminMenuItem[] = [
   { paginaId: "dashboard", title: "Dashboard Executivo", url: "/admin", category: "Operação", icon: LayoutDashboard },
   { paginaId: "clients", title: "Gestão de Clientes", url: "/admin/clientes", category: "Operação", icon: Users },
   { paginaId: "financeiro", title: "Financeiro", url: "/admin/financeiro", category: "Operação", icon: DollarSign },
+  { paginaId: "fiscal", title: "Fiscal", url: "/admin/fiscal", category: "Operação", icon: Receipt },
   { paginaId: "cobranca", title: "Cobrança", url: "/admin/cobranca", category: "Operação", icon: HandCoins },
   { paginaId: "cobranca", title: "Cancelamentos", url: "/admin/cancelamentos", category: "Operação", icon: Ban },
   { paginaId: "sicaf", title: "Gestão SICAF", url: "/admin/sicaf", category: "Operação", icon: FileCheck2 },

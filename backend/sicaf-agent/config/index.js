@@ -70,6 +70,15 @@ const config = {
     autoCleanup: process.env.CERT_AUTO_CLEANUP === "true",
   },
 
+  /** NFS-e Nacional (Emissor Público / SEFIN). Service: services/nfse.service */
+  nfse: {
+    enabled: process.env.NFSE_ENABLED !== "false",
+    ambiente: process.env.NFSE_AMBIENTE || "producaorestrita",
+    certPfxPath: process.env.NFSE_CERT_PFX_PATH || process.env.CERT_PFX_PATH || "",
+    certPfxPassword: process.env.NFSE_CERT_PFX_PASSWORD || process.env.CERT_PFX_PASSWORD || "",
+    certPfxBase64: process.env.NFSE_CERT_PFX_BASE64 || "",
+  },
+
   storage: {
     provider: (process.env.STORAGE_PROVIDER || "local").toLowerCase(),
     localPath: process.env.STORAGE_LOCAL_PATH || "uploads",

@@ -11,6 +11,7 @@ const ADMIN_PANEL_MANIFEST = [
   { paginaId: 'dashboard', paginaNome: 'Dashboard Executivo', categoria: 'Operação', rota: '/admin' },
   { paginaId: 'clients', paginaNome: 'Gestão de Clientes', categoria: 'Operação', rota: '/admin/clientes' },
   { paginaId: 'financeiro', paginaNome: 'Financeiro', categoria: 'Operação', rota: '/admin/financeiro' },
+  { paginaId: 'fiscal', paginaNome: 'Fiscal', categoria: 'Operação', rota: '/admin/fiscal' },
   { paginaId: 'cobranca', paginaNome: 'Cobrança', categoria: 'Operação', rota: '/admin/cobranca' },
   { paginaId: 'sicaf', paginaNome: 'Gestão SICAF', categoria: 'Operação', rota: '/admin/sicaf' },
   { paginaId: 'documents', paginaNome: 'Documentos', categoria: 'Operação', rota: '/admin/documentos' },

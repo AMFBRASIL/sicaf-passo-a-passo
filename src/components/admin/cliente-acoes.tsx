@@ -167,7 +167,15 @@ const ACOES: {
   },
 ];
 
-export function AcoesTab({ cliente, clienteId }: { cliente: ClienteDetalhe; clienteId?: number }) {
+export function AcoesTab({
+  cliente,
+  clienteId,
+  historicoEventos = [],
+}: {
+  cliente: ClienteDetalhe;
+  clienteId?: number;
+  historicoEventos?: { d: string; t: string }[];
+}) {
   const [aberta, setAberta] = useState<AcaoKey | null>(null);
 
   return (
@@ -233,7 +241,12 @@ export function AcoesTab({ cliente, clienteId }: { cliente: ClienteDetalhe; clie
         clienteId={clienteId}
       />
       <RelatorioModal open={aberta === "relatorio"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
-      <HistoricoModal open={aberta === "historico"} onOpenChange={(v) => !v && setAberta(null)} cliente={cliente} />
+      <HistoricoModal
+        open={aberta === "historico"}
+        onOpenChange={(v) => !v && setAberta(null)}
+        cliente={cliente}
+        eventos={historicoEventos}
+      />
       <NotasModal
         open={aberta === "notas"}
         onOpenChange={(v) => !v && setAberta(null)}
@@ -1247,30 +1260,39 @@ function NotasModal({
 }
 
 /* ---------- HISTÓRICO ---------- */
-function HistoricoModal({ open, onOpenChange, cliente }: { open: boolean; onOpenChange: (v: boolean) => void; cliente: ClienteDetalhe }) {
-  const eventos = [
-    { quando: "Hoje, 14:22", quem: "Sistema", oque: "SICAF atualizado via IA" },
-    { quando: "Ontem, 09:10", quem: "Ana (atendimento)", oque: "Ligação registrada — 7min" },
-    { quando: "05/06/2026", quem: "Cliente", oque: "Acessou o portal" },
-    { quando: "01/06/2026", quem: "Sistema", oque: "Fatura gerada — R$ 690,00" },
-    { quando: "22/05/2026", quem: "Carlos (admin)", oque: "Cadastro atualizado" },
-  ];
+function HistoricoModal({
+  open,
+  onOpenChange,
+  cliente,
+  eventos = [],
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  cliente: ClienteDetalhe;
+  eventos?: { d: string; t: string }[];
+}) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Clock className="h-5 w-5 text-slate-600" /> Histórico de atividades</DialogTitle>
-          <DialogDescription>Atividades, acessos e registros de {cliente.razao}.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-slate-600" /> Histórico de atividades
+          </DialogTitle>
+          <DialogDescription>Linha do tempo de {cliente.razao}.</DialogDescription>
         </DialogHeader>
-        <div className="relative pl-5 space-y-3">
+        <div className="relative max-h-[50vh] overflow-y-auto pl-5 space-y-3">
           <span className="absolute left-1.5 top-1 bottom-1 w-px bg-border" />
-          {eventos.map((e, i) => (
-            <div key={i} className="relative">
-              <span className="absolute -left-[14px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
-              <p className="text-xs text-muted-foreground">{e.quando} · <span className="font-medium text-foreground">{e.quem}</span></p>
-              <p className="text-sm">{e.oque}</p>
-            </div>
-          ))}
+          {eventos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>
+          ) : (
+            eventos.map((e, i) => (
+              <div key={i} className="relative">
+                <span className="absolute -left-[14px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
+                <p className="text-xs text-muted-foreground">{e.d}</p>
+                <p className="text-sm">{e.t}</p>
+              </div>
+            ))
+          )}
         </div>
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)}>Fechar</Button>

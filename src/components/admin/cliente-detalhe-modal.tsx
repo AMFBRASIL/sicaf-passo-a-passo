@@ -47,11 +47,14 @@ import {
   RotateCcw,
   Tag,
   Briefcase,
+  Receipt,
 } from "lucide-react";
 import { ServicosClienteModal } from "./servicos-cliente-modal";
 import { fetchServicosCliente, pendenciasEquipe } from "@/lib/admin-servicos-api";
 import { AcoesTab } from "./cliente-acoes";
 import { SituacaoTab } from "./cliente-situacao-tab";
+import { FiscalTab } from "./cliente-fiscal-tab";
+import { ClienteDadosDetalheModal } from "./cliente-dados-detalhe-modal";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   atualizarAdminCliente,
@@ -76,6 +79,7 @@ import {
   mapTicketsToUi,
   mergeDetalheFromApi,
   calcCompletudeSicafUi,
+  type ClienteDetalheCompleto,
   type DocumentoUi,
   type DocumentosPainelUi,
   type FaturaUi,
@@ -158,7 +162,7 @@ const STEPS = [
   { key: "financeiro", label: "Financeiro", desc: "Faturas e MRR", icon: DollarSign },
   { key: "documentos", label: "Documentos", desc: "Certidões e contratos", icon: FolderOpen },
   { key: "suporte", label: "Suporte", desc: "Tickets e SLA", icon: Ticket },
-  { key: "historico", label: "Histórico", desc: "Linha do tempo", icon: History },
+  { key: "fiscal", label: "Fiscal", desc: "NFS-e dos pagamentos", icon: Receipt },
   { key: "situacao", label: "Situação", desc: "Status manual do SICAF", icon: ShieldCheck },
   { key: "acoes", label: "Ações", desc: "Funcionalidades do cliente", icon: LayoutGrid },
 ] as const;
@@ -189,6 +193,8 @@ export function ClienteDetalheModal({
   const [documentosPainel, setDocumentosPainel] = useState<DocumentosPainelUi | null>(null);
   const [tickets, setTickets] = useState<ReturnType<typeof mapTicketsToUi>>([]);
   const [historico, setHistorico] = useState<HistoricoUi[]>([]);
+  const [clienteCompleto, setClienteCompleto] = useState<ClienteDetalheCompleto | null>(null);
+  const [dadosDetalheOpen, setDadosDetalheOpen] = useState(false);
   const [servicosOpen, setServicosOpen] = useState(false);
   const [servicosPendencias, setServicosPendencias] = useState(0);
 
@@ -209,6 +215,7 @@ export function ClienteDetalheModal({
     if (det.ok && det.client) {
       const merged = mergeDetalheFromApi(baseCliente, det.client);
       setDetalhe(merged);
+      setClienteCompleto(det.client);
       setHistorico(mapHistoricoFromApi(det.client.historico, det.client.loginLogs));
     }
 
@@ -457,6 +464,7 @@ export function ClienteDetalheModal({
                     faturas={faturas}
                     cancelado={cnpjInativo}
                     onReativar={() => setReativarOpen(true)}
+                    onDetalhesDados={() => setDadosDetalheOpen(true)}
                   />
                 )}
                 {step === "sicaf" && (
@@ -474,7 +482,7 @@ export function ClienteDetalheModal({
                   <DocumentosTab painel={documentosPainel} clienteId={parseInt(exibicao.id, 10)} />
                 )}
                 {step === "suporte" && <SuporteTab cliente={exibicao} tickets={tickets} />}
-                {step === "historico" && <HistoricoTab eventos={historico} />}
+                {step === "fiscal" && <FiscalTab clienteId={parseInt(exibicao.id, 10)} />}
                 {step === "situacao" && (
                   <SituacaoTab
                     cliente={exibicao}
@@ -482,7 +490,13 @@ export function ClienteDetalheModal({
                     onUpdated={atualizarPainel}
                   />
                 )}
-                {step === "acoes" && <AcoesTab cliente={exibicao} clienteId={parseInt(exibicao.id, 10)} />}
+                {step === "acoes" && (
+                  <AcoesTab
+                    cliente={exibicao}
+                    clienteId={parseInt(exibicao.id, 10)}
+                    historicoEventos={historico}
+                  />
+                )}
               </div>
             </ScrollArea>
 
@@ -732,6 +746,12 @@ export function ClienteDetalheModal({
           inscricaoMunicipal: "",
           ramoAtividade: "",
         } as unknown as EmpresaData}
+      />
+
+      <ClienteDadosDetalheModal
+        open={dadosDetalheOpen}
+        onOpenChange={setDadosDetalheOpen}
+        dados={clienteCompleto}
       />
     </Dialog>
   );
@@ -985,12 +1005,14 @@ function ResumoTab({
   faturas = [],
   cancelado = false,
   onReativar,
+  onDetalhesDados,
 }: {
   cliente: ClienteDetalhe;
   completude: number;
   faturas?: FaturaUi[];
   cancelado?: boolean;
   onReativar?: () => void;
+  onDetalhesDados?: () => void;
 }) {
   const sicafNiveis = deriveSicafNiveisCard(cliente, completude);
   const pagamentoSicaf = derivePagamentoSicafCard(cliente, faturas);
@@ -1117,7 +1139,19 @@ function ResumoTab({
       </Card>
 
       <Card className="p-4">
-        <h3 className="text-sm font-semibold">Contato & Plano</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Contato & Plano</h3>
+          {onDetalhesDados && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 text-[11px]"
+              onClick={onDetalhesDados}
+            >
+              <FileCheck2 className="h-3 w-3" /> Detalhes dados
+            </Button>
+          )}
+        </div>
         <div className="mt-3 space-y-2.5 text-sm">
           <InfoLine icon={Phone} label="Telefone" value={cliente.telefone ?? "(61) 99999-0000"} />
           <InfoLine icon={Mail} label="E-mail" value={cliente.email ?? "contato@cliente.com.br"} />

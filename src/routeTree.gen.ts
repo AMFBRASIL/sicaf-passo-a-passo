@@ -63,6 +63,7 @@ import { Route as AdminLicitacoesRouteImport } from './routes/admin.licitacoes'
 import { Route as AdminIaRouteImport } from './routes/admin.ia'
 import { Route as AdminGoogleAdsRouteImport } from './routes/admin.google-ads'
 import { Route as AdminFunilRouteImport } from './routes/admin.funil'
+import { Route as AdminFiscalRouteImport } from './routes/admin.fiscal'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin.financeiro'
 import { Route as AdminEquipeRouteImport } from './routes/admin.equipe'
 import { Route as AdminEmailMarketingRouteImport } from './routes/admin.email-marketing'
@@ -353,6 +354,11 @@ const AdminFunilRoute = AdminFunilRouteImport.update({
   path: '/funil',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminFiscalRoute = AdminFiscalRouteImport.update({
+  id: '/fiscal',
+  path: '/fiscal',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminFinanceiroRoute = AdminFinanceiroRouteImport.update({
   id: '/financeiro',
   path: '/financeiro',
@@ -503,6 +509,7 @@ export interface FileRoutesByFullPath {
   '/admin/email-marketing': typeof AdminEmailMarketingRoute
   '/admin/equipe': typeof AdminEquipeRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/fiscal': typeof AdminFiscalRoute
   '/admin/funil': typeof AdminFunilRoute
   '/admin/google-ads': typeof AdminGoogleAdsRoute
   '/admin/ia': typeof AdminIaRoute
@@ -576,6 +583,7 @@ export interface FileRoutesByTo {
   '/admin/email-marketing': typeof AdminEmailMarketingRoute
   '/admin/equipe': typeof AdminEquipeRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/fiscal': typeof AdminFiscalRoute
   '/admin/funil': typeof AdminFunilRoute
   '/admin/google-ads': typeof AdminGoogleAdsRoute
   '/admin/ia': typeof AdminIaRoute
@@ -650,6 +658,7 @@ export interface FileRoutesById {
   '/admin/email-marketing': typeof AdminEmailMarketingRoute
   '/admin/equipe': typeof AdminEquipeRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/fiscal': typeof AdminFiscalRoute
   '/admin/funil': typeof AdminFunilRoute
   '/admin/google-ads': typeof AdminGoogleAdsRoute
   '/admin/ia': typeof AdminIaRoute
@@ -727,6 +736,7 @@ export interface FileRouteTypes {
     | '/admin/email-marketing'
     | '/admin/equipe'
     | '/admin/financeiro'
+    | '/admin/fiscal'
     | '/admin/funil'
     | '/admin/google-ads'
     | '/admin/ia'
@@ -800,6 +810,7 @@ export interface FileRouteTypes {
     | '/admin/email-marketing'
     | '/admin/equipe'
     | '/admin/financeiro'
+    | '/admin/fiscal'
     | '/admin/funil'
     | '/admin/google-ads'
     | '/admin/ia'
@@ -873,6 +884,7 @@ export interface FileRouteTypes {
     | '/admin/email-marketing'
     | '/admin/equipe'
     | '/admin/financeiro'
+    | '/admin/fiscal'
     | '/admin/funil'
     | '/admin/google-ads'
     | '/admin/ia'
@@ -1318,6 +1330,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminFunilRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/fiscal': {
+      id: '/admin/fiscal'
+      path: '/fiscal'
+      fullPath: '/admin/fiscal'
+      preLoaderRoute: typeof AdminFiscalRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/financeiro': {
       id: '/admin/financeiro'
       path: '/financeiro'
@@ -1498,6 +1517,7 @@ interface AdminRouteChildren {
   AdminEmailMarketingRoute: typeof AdminEmailMarketingRoute
   AdminEquipeRoute: typeof AdminEquipeRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRoute
+  AdminFiscalRoute: typeof AdminFiscalRoute
   AdminFunilRoute: typeof AdminFunilRoute
   AdminGoogleAdsRoute: typeof AdminGoogleAdsRoute
   AdminIaRoute: typeof AdminIaRoute
@@ -1528,6 +1548,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminEmailMarketingRoute: AdminEmailMarketingRoute,
   AdminEquipeRoute: AdminEquipeRoute,
   AdminFinanceiroRoute: AdminFinanceiroRoute,
+  AdminFiscalRoute: AdminFiscalRoute,
   AdminFunilRoute: AdminFunilRoute,
   AdminGoogleAdsRoute: AdminGoogleAdsRoute,
   AdminIaRoute: AdminIaRoute,

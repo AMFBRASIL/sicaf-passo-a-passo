@@ -239,47 +239,57 @@ export async function fetchAdminClientes(opts: {
   }>;
 }
 
+export type ClienteDetalheCompleto = {
+  id: number;
+  razao_social: string;
+  nome_fantasia?: string | null;
+  documento: string;
+  email?: string;
+  email_financeiro?: string | null;
+  email_adicional?: string | null;
+  telefone?: string;
+  celular?: string;
+  endereco?: string | null;
+  cidade?: string;
+  estado?: string;
+  cep?: string | null;
+  porte?: string | null;
+  ramo_atividade?: string | null;
+  responsavel_nome?: string;
+  responsavel_cpf?: string | null;
+  responsavel_email?: string | null;
+  responsavel_telefone?: string | null;
+  observacoes?: string;
+  status?: string;
+  created_at?: string;
+  usuario_principal?: {
+    id?: number;
+    nome?: string;
+    email?: string;
+    telefone?: string;
+    status?: string;
+  } | null;
+  sicaf?: {
+    id?: number;
+    status?: string;
+    data_validade?: string;
+    dias_validade?: number;
+    credenciamento_anual?: number;
+    manutencao_ativa?: number;
+  };
+  certidoes?: { tipo_nome?: string; data_validade?: string; status?: string; arquivo_url?: string }[];
+  historico?: { acao?: string; created_at?: string; usuario_nome?: string }[];
+  loginLogs?: { created_at?: string; ip?: string; navegador?: string }[];
+  niveisSicaf?: { level: string; status?: string }[];
+  niveisDetail?: Record<string, { status: string; observacao?: string }>;
+  contacts?: { nome?: string; cargo?: string; email?: string; telefone?: string; principal?: number }[];
+};
+
 export async function fetchAdminClienteDetalhe(clienteId: number) {
   const res = await apiFetch(`/api/admin/clients/${clienteId}`);
   return res.json() as Promise<{
     ok: boolean;
-    client?: {
-      id: number;
-      razao_social: string;
-      documento: string;
-      email?: string;
-      email_financeiro?: string | null;
-      email_adicional?: string | null;
-      telefone?: string;
-      cidade?: string;
-      estado?: string;
-      responsavel_nome?: string;
-      observacoes?: string;
-      celular?: string;
-      status?: string;
-      created_at?: string;
-      usuario_principal?: {
-        id?: number;
-        nome?: string;
-        email?: string;
-        telefone?: string;
-        status?: string;
-      } | null;
-      sicaf?: {
-        id?: number;
-        status?: string;
-        data_validade?: string;
-        dias_validade?: number;
-        credenciamento_anual?: number;
-        manutencao_ativa?: number;
-      };
-      certidoes?: { tipo_nome?: string; data_validade?: string; status?: string; arquivo_url?: string }[];
-      historico?: { acao?: string; created_at?: string; usuario_nome?: string }[];
-      loginLogs?: { created_at?: string; ip?: string; navegador?: string }[];
-      niveisSicaf?: { level: string; status?: string }[];
-      niveisDetail?: Record<string, { status: string; observacao?: string }>;
-      contacts?: { nome?: string; cargo?: string; email?: string; telefone?: string; principal?: number }[];
-    };
+    client?: ClienteDetalheCompleto;
     error?: string;
   }>;
 }
