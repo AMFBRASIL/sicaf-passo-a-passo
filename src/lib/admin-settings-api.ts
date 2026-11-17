@@ -377,3 +377,121 @@ export async function saveSicafSettings(settings: SicafSettings): Promise<string
   if (!data.ok) throw new Error(data.error || "Erro ao salvar configurações SICAF");
   return data.message || "Configurações SICAF salvas";
 }
+
+export type NfseSettings = {
+  nfse_enabled: string;
+  nfse_ambiente: string;
+  nfse_cert_pfx_path: string;
+  nfse_cert_pfx_password: string;
+  nfse_cert_pfx_base64: string;
+  nfse_prestador_cnpj: string;
+  nfse_c_mun_emi: string;
+  nfse_serie: string;
+  nfse_im_prestador: string;
+  nfse_incluir_im: string;
+  nfse_prestador_email: string;
+  nfse_prestador_fone: string;
+  nfse_ctrib_nac: string;
+  nfse_ctrib_mun: string;
+  nfse_cnbs: string;
+  nfse_op_simp_nac: string;
+  nfse_reg_ap_trib_sn: string;
+  nfse_reg_esp_trib: string;
+  nfse_p_tot_trib_sn: string;
+  nfse_cst: string;
+  nfse_tp_ret_pis_cofins: string;
+  nfse_tomador_ibge_padrao: string;
+  nfse_sefin_url: string;
+  nfse_adn_contribuintes_url: string;
+  nfse_danfse_url: string;
+};
+
+export type NfseSettingsStatus = {
+  configured: boolean;
+  enabled: boolean;
+  ambiente: string;
+  configSource: "database" | "env" | string;
+  certificadoConfigurado: boolean;
+  certPathInformado: boolean;
+  certPathExiste: boolean;
+  prestadorCnpj: string;
+  cTribNac: string;
+};
+
+const EMPTY_NFSE: NfseSettings = {
+  nfse_enabled: "true",
+  nfse_ambiente: "producaorestrita",
+  nfse_cert_pfx_path: "",
+  nfse_cert_pfx_password: "",
+  nfse_cert_pfx_base64: "",
+  nfse_prestador_cnpj: "",
+  nfse_c_mun_emi: "3550308",
+  nfse_serie: "1",
+  nfse_im_prestador: "",
+  nfse_incluir_im: "false",
+  nfse_prestador_email: "",
+  nfse_prestador_fone: "",
+  nfse_ctrib_nac: "010501",
+  nfse_ctrib_mun: "001",
+  nfse_cnbs: "111032200",
+  nfse_op_simp_nac: "3",
+  nfse_reg_ap_trib_sn: "1",
+  nfse_reg_esp_trib: "0",
+  nfse_p_tot_trib_sn: "6",
+  nfse_cst: "00",
+  nfse_tp_ret_pis_cofins: "0",
+  nfse_tomador_ibge_padrao: "3550308",
+  nfse_sefin_url: "",
+  nfse_adn_contribuintes_url: "",
+  nfse_danfse_url: "",
+};
+
+export async function fetchNfseSettings(): Promise<{
+  settings: NfseSettings;
+  status: NfseSettingsStatus;
+}> {
+  const res = await apiFetch("/api/admin/settings/nfse");
+  const data = (await res.json()) as {
+    ok: boolean;
+    settings?: Partial<NfseSettings>;
+    status?: NfseSettingsStatus;
+    error?: string;
+  };
+  if (!data.ok) throw new Error(data.error || "Erro ao carregar configurações fiscais");
+  return {
+    settings: { ...EMPTY_NFSE, ...(data.settings || {}) },
+    status: data.status || {
+      configured: false,
+      enabled: true,
+      ambiente: "producaorestrita",
+      configSource: "env",
+      certificadoConfigurado: false,
+      certPathInformado: false,
+      certPathExiste: false,
+      prestadorCnpj: "",
+      cTribNac: "",
+    },
+  };
+}
+
+export async function saveNfseSettings(settings: NfseSettings): Promise<string> {
+  const res = await apiFetch("/api/admin/settings/nfse", {
+    method: "PUT",
+    body: JSON.stringify({ settings }),
+  });
+  const data = (await res.json()) as { ok: boolean; message?: string; error?: string };
+  if (!data.ok) throw new Error(data.error || "Erro ao salvar configurações fiscais");
+  return data.message || "Configurações fiscais salvas";
+}
+
+export async function testNfseSettings(): Promise<string> {
+  const res = await apiFetch("/api/admin/settings/nfse/test", { method: "POST" });
+  let data: { ok: boolean; message?: string; error?: string };
+  try {
+    data = (await res.json()) as { ok: boolean; message?: string; error?: string };
+  } catch {
+    throw new Error(res.status === 401 ? "Sessão expirada — faça login novamente" : `Falha no teste (HTTP ${res.status})`);
+  }
+  if (!data.ok) throw new Error(data.error || data.message || "Falha no teste NFS-e");
+  return data.message || "Conexão OK";
+}

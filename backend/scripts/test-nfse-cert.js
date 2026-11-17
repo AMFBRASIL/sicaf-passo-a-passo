@@ -69,7 +69,7 @@ function probeUrl(urlString, credentials) {
 (async () => {
   console.log('=== Teste NFS-e certificado local ===\n');
 
-  const status = nfse.getStatusConfig();
+  const status = await nfse.getStatusConfig();
   console.log('Config:', {
     enabled: status.enabled,
     ambiente: status.ambiente,

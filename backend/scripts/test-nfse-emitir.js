@@ -8,7 +8,7 @@ const nfse = require('../sicaf-agent/services/nfse.service');
 (async () => {
   console.log('=== Teste emissão NFS-e (dados do XML CadBrasil) ===\n');
 
-  const status = nfse.getStatusConfig();
+  const status = await nfse.getStatusConfig();
   console.log('Ambiente:', status.ambiente);
   console.log('SEFIN:', status.urls.sefin);
 

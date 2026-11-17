@@ -18,47 +18,62 @@ const forge = require('node-forge');
 
 const NFSE_TABLE = 'nfse_emissoes';
 
+/** Runtime cache (DB + .env) preenchido por refreshRuntime(). */
+let _rt = null;
+
+async function refreshRuntime(force = false) {
+  const cfg = require('./nfse-config.service');
+  _rt = await cfg.getNfseRuntime(force);
+  return _rt;
+}
+
 function getAmbiente() {
+  if (_rt) {
+    return require('./nfse-config.service').getAmbienteFromRuntime(_rt);
+  }
   const raw = String(process.env.NFSE_AMBIENTE || 'producaorestrita').toLowerCase().trim();
   if (raw === 'producao' || raw === 'prod' || raw === 'production') return 'producao';
   return 'producaorestrita';
 }
 
 function getBaseUrls(ambiente = getAmbiente()) {
+  const sefinOverride = (_rt?.nfse_sefin_url || process.env.NFSE_SEFIN_URL || '').trim();
+  const adnOverride = (_rt?.nfse_adn_contribuintes_url || process.env.NFSE_ADN_CONTRIBUINTES_URL || '').trim();
+  const danfseOverride = (_rt?.nfse_danfse_url || process.env.NFSE_DANFSE_URL || '').trim();
+
   if (ambiente === 'producao') {
     return {
       ambiente: 'producao',
-      sefin: (process.env.NFSE_SEFIN_URL || 'https://sefin.nfse.gov.br/SefinNacional').replace(/\/$/, ''),
-      adnContribuintes: (
-        process.env.NFSE_ADN_CONTRIBUINTES_URL || 'https://adn.nfse.gov.br/contribuintes'
-      ).replace(/\/$/, ''),
-      danfse: (process.env.NFSE_DANFSE_URL || 'https://adn.nfse.gov.br/danfse').replace(/\/$/, ''),
+      sefin: (sefinOverride || 'https://sefin.nfse.gov.br/SefinNacional').replace(/\/$/, ''),
+      adnContribuintes: (adnOverride || 'https://adn.nfse.gov.br/contribuintes').replace(/\/$/, ''),
+      danfse: (danfseOverride || 'https://adn.nfse.gov.br/danfse').replace(/\/$/, ''),
     };
   }
   return {
     ambiente: 'producaorestrita',
     sefin: (
-      process.env.NFSE_SEFIN_URL || 'https://sefin.producaorestrita.nfse.gov.br/API/SefinNacional'
+      sefinOverride || 'https://sefin.producaorestrita.nfse.gov.br/API/SefinNacional'
     ).replace(/\/$/, ''),
     adnContribuintes: (
-      process.env.NFSE_ADN_CONTRIBUINTES_URL ||
-      'https://adn.producaorestrita.nfse.gov.br/contribuintes'
+      adnOverride || 'https://adn.producaorestrita.nfse.gov.br/contribuintes'
     ).replace(/\/$/, ''),
-    danfse: (
-      process.env.NFSE_DANFSE_URL || 'https://adn.producaorestrita.nfse.gov.br/danfse'
-    ).replace(/\/$/, ''),
+    danfse: (danfseOverride || 'https://adn.producaorestrita.nfse.gov.br/danfse').replace(/\/$/, ''),
   };
 }
 
-function getStatusConfig() {
+async function getStatusConfig() {
+  const rt = await refreshRuntime();
   const urls = getBaseUrls();
-  const hasSystem =
-    Boolean(process.env.NFSE_CERT_PFX_PATH || process.env.NFSE_CERT_PFX_BASE64) ||
-    Boolean(process.env.CERT_PFX_PATH);
+  const hasSystem = Boolean(
+    (rt.nfse_cert_pfx_path && fs.existsSync(rt.nfse_cert_pfx_path)) ||
+      rt.nfse_cert_pfx_base64 ||
+      process.env.CERT_PFX_PATH,
+  );
   return {
     ok: true,
-    enabled: process.env.NFSE_ENABLED !== 'false',
+    enabled: rt.nfse_enabled !== 'false',
     ambiente: urls.ambiente,
+    configSource: rt._meta?.configSource || 'env',
     urls: {
       sefin: urls.sefin,
       adnContribuintes: urls.adnContribuintes,
@@ -481,8 +496,9 @@ function buildPedRegCancelamentoXml({
  */
 async function cancelar(opts = {}) {
   try {
-    if (process.env.NFSE_ENABLED === 'false') {
-      return { ok: false, error: 'Módulo NFS-e desabilitado (NFSE_ENABLED=false).' };
+    const rt = await refreshRuntime();
+    if (rt.nfse_enabled === 'false') {
+      return { ok: false, error: 'Módulo NFS-e desabilitado (nfse_enabled=false).' };
     }
 
     const chave = onlyDigits(opts.chaveAcesso || opts.chave || '');
@@ -493,6 +509,7 @@ async function cancelar(opts = {}) {
 
     const cnpjAutor =
       onlyDigits(opts.cnpjAutor) ||
+      onlyDigits(rt.nfse_prestador_cnpj) ||
       onlyDigits(process.env.NFSE_PRESTADOR_CNPJ) ||
       '52841613000155';
 
@@ -583,14 +600,19 @@ async function resolveCredentials(opts = {}) {
     };
   }
 
-  // Certificado do sistema / CadBrasil prestador
+  // Certificado do sistema / CadBrasil prestador (DB → .env)
+  const rt = await refreshRuntime();
   let pfxBuffer = null;
-  let passphrase = process.env.NFSE_CERT_PFX_PASSWORD || process.env.CERT_PFX_PASSWORD || '';
+  let passphrase =
+    rt.nfse_cert_pfx_password ||
+    process.env.NFSE_CERT_PFX_PASSWORD ||
+    process.env.CERT_PFX_PASSWORD ||
+    '';
 
-  if (process.env.NFSE_CERT_PFX_BASE64) {
-    pfxBuffer = Buffer.from(process.env.NFSE_CERT_PFX_BASE64, 'base64');
+  if (rt.nfse_cert_pfx_base64) {
+    pfxBuffer = Buffer.from(rt.nfse_cert_pfx_base64, 'base64');
   } else {
-    const pfxPath = process.env.NFSE_CERT_PFX_PATH || process.env.CERT_PFX_PATH || '';
+    const pfxPath = rt.nfse_cert_pfx_path || process.env.CERT_PFX_PATH || '';
     if (pfxPath && fs.existsSync(pfxPath)) {
       pfxBuffer = fs.readFileSync(pfxPath);
     }
@@ -600,7 +622,7 @@ async function resolveCredentials(opts = {}) {
     return {
       ok: false,
       error:
-        'Certificado NFS-e do sistema não configurado. Defina NFSE_CERT_PFX_PATH/NFSE_CERT_PFX_PASSWORD (ou CERT_PFX_*).',
+        'Certificado NFS-e do sistema não configurado. Configure em Admin → Configurações → Fiscal Config (ou NFSE_CERT_PFX_* no .env).',
     };
   }
 
@@ -722,8 +744,9 @@ async function persistEmissao(row) {
  */
 async function emitir(opts = {}) {
   try {
-    if (process.env.NFSE_ENABLED === 'false') {
-      return { ok: false, error: 'Módulo NFS-e desabilitado (NFSE_ENABLED=false).' };
+    const rt = await refreshRuntime();
+    if (rt.nfse_enabled === 'false') {
+      return { ok: false, error: 'Módulo NFS-e desabilitado (nfse_enabled=false).' };
     }
 
     const creds = await resolveCredentials(opts);
@@ -937,6 +960,7 @@ async function listarEmissoes(opts = {}) {
 
 module.exports = {
   // config
+  refreshRuntime,
   getAmbiente,
   getBaseUrls,
   getStatusConfig,

@@ -15,6 +15,7 @@ import {
   Bot,
   DollarSign,
   FileCheck2,
+  Receipt,
   Shield,
   Users,
   TrendingUp,
@@ -39,12 +40,14 @@ import { EmailsConfigPanel } from "@/components/admin/emails-config-panel";
 import { IaConfigPanel } from "@/components/admin/ia-config-panel";
 import { StorageConfigPanel } from "@/components/admin/storage-config-panel";
 import { SicafConfigPanel } from "@/components/admin/sicaf-config-panel";
+import { NfseConfigPanel } from "@/components/admin/nfse-config-panel";
 
 export type ConfigModuleKey =
   | "emails"
   | "whatsapp"
   | "ia"
   | "financeiro"
+  | "fiscal"
   | "sicaf"
   | "seguranca"
   | "usuarios"
@@ -63,6 +66,7 @@ const MODULE_META: Record<ConfigModuleKey, { icon: any; titulo: string; subtitul
   whatsapp: { icon: MessageCircle, titulo: "WhatsApp", subtitulo: "API oficial, webhooks e atendentes", tom: "emerald" },
   ia: { icon: Bot, titulo: "Inteligência Artificial", subtitulo: "Modelos, prompts e limites de uso", tom: "violet" },
   financeiro: { icon: DollarSign, titulo: "Financeiro", subtitulo: "Gateways de pagamento e regras", tom: "emerald" },
+  fiscal: { icon: Receipt, titulo: "Fiscal Config", subtitulo: "NFS-e Nacional, certificado e tributação", tom: "slate" },
   sicaf: { icon: FileCheck2, titulo: "SICAF", subtitulo: "Níveis obrigatórios e automações", tom: "amber" },
   seguranca: { icon: Shield, titulo: "Segurança", subtitulo: "2FA, sessões e políticas", tom: "rose" },
   usuarios: { icon: Users, titulo: "Usuários e Papéis", subtitulo: "RBAC e permissões granulares", tom: "blue" },
@@ -86,7 +90,14 @@ export function ConfiguracaoModal({ moduleKey, open, onOpenChange }: Props) {
   const Icon = meta.icon;
 
   const handleSave = () => {
-    if (moduleKey === "emails" || moduleKey === "ia" || moduleKey === "armazenamento" || moduleKey === "sicaf") return;
+    if (
+      moduleKey === "emails" ||
+      moduleKey === "ia" ||
+      moduleKey === "armazenamento" ||
+      moduleKey === "sicaf" ||
+      moduleKey === "fiscal"
+    )
+      return;
     toast.success(`Configurações de ${meta.titulo} salvas`, {
       description: "As alterações entram em vigor imediatamente.",
     });
@@ -121,6 +132,7 @@ export function ConfiguracaoModal({ moduleKey, open, onOpenChange }: Props) {
             {moduleKey === "whatsapp" && <WhatsAppBody />}
             {moduleKey === "ia" && <IaConfigPanel onSaved={() => onOpenChange(false)} />}
             {moduleKey === "financeiro" && <FinanceiroBody />}
+            {moduleKey === "fiscal" && <NfseConfigPanel onSaved={() => onOpenChange(false)} />}
             {moduleKey === "sicaf" && <SicafConfigPanel onSaved={() => onOpenChange(false)} />}
             {moduleKey === "seguranca" && <SegurancaBody />}
             {moduleKey === "usuarios" && <UsuariosBody />}
@@ -131,7 +143,11 @@ export function ConfiguracaoModal({ moduleKey, open, onOpenChange }: Props) {
         </ScrollArea>
 
         {/* Footer — e-mails tem botão próprio no painel */}
-        {moduleKey !== "emails" && moduleKey !== "ia" && moduleKey !== "armazenamento" && moduleKey !== "sicaf" && (
+        {moduleKey !== "emails" &&
+          moduleKey !== "ia" &&
+          moduleKey !== "armazenamento" &&
+          moduleKey !== "sicaf" &&
+          moduleKey !== "fiscal" && (
           <div className="flex items-center justify-between border-t bg-muted/30 px-6 py-3">
             <p className="text-xs text-muted-foreground">As alterações se aplicam a toda a plataforma.</p>
             <div className="flex gap-2">

@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type NfseService = {
-  getStatusConfig: () => Record<string, unknown>;
+  getStatusConfig: () => Promise<Record<string, unknown>>;
   listarEmissoes: (opts: Record<string, unknown>) => Promise<Record<string, unknown>>;
   emitir: (opts: Record<string, unknown>) => Promise<Record<string, unknown>>;
   consultarPorChave: (opts: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
     const svc = await getSicafAgentModule<NfseService>("services/nfse.service");
     if (url.searchParams.get("statusOnly") === "1") {
-      return NextResponse.json(svc.getStatusConfig());
+      return NextResponse.json(await svc.getStatusConfig());
     }
 
     const result = await svc.listarEmissoes({
@@ -30,7 +30,8 @@ export async function GET(request: Request) {
       limit,
       status: url.searchParams.get("status") || undefined,
     });
-    return NextResponse.json({ ...svc.getStatusConfig(), ...result });
+    const statusCfg = await svc.getStatusConfig();
+    return NextResponse.json({ ...statusCfg, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro ao listar NFS-e";
     const status =

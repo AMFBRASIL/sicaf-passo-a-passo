@@ -51,6 +51,8 @@ const SECRET_KEYS = new Set([
   'smtp_secret_key',
   'ia_api_key',
   'storage_s3_secret_access_key',
+  'nfse_cert_pfx_password',
+  'nfse_cert_pfx_base64',
 ]);
 const MASK = '__UNCHANGED__';
 
@@ -66,6 +68,7 @@ function detectCategoria(chave) {
   if (chave.startsWith('smtp_')) return 'email';
   if (chave.startsWith('ia_')) return 'ia';
   if (chave.startsWith('storage_')) return 'armazenamento';
+  if (chave.startsWith('nfse_')) return 'fiscal';
   if (chave.startsWith('notif_')) return 'notificacoes';
   if (chave.startsWith('empresa_')) return 'empresa';
   if (chave.startsWith('valor_')) return 'licitacoes';
@@ -187,6 +190,12 @@ async function updateSettings(updates) {
   if (keys.some((k) => k.startsWith('storage_'))) {
     try {
       storageService.invalidateCache();
+    } catch (_) {}
+  }
+  if (keys.some((k) => k.startsWith('nfse_'))) {
+    try {
+      const nfseConfig = require('./nfse-config.service');
+      nfseConfig.invalidateCache();
     } catch (_) {}
   }
 
@@ -378,6 +387,20 @@ async function updateSicafSettings(updates) {
   return sicafConfigService.updateSicafSettings(updates);
 }
 
+const nfseConfigService = require('./nfse-config.service');
+
+async function getNfseSettings() {
+  return nfseConfigService.getNfseSettings();
+}
+
+async function updateNfseSettings(updates) {
+  return nfseConfigService.updateNfseSettings(updates);
+}
+
+async function testNfseSettings() {
+  return nfseConfigService.testNfseSettings();
+}
+
 module.exports = {
   EMAIL_KEYS,
   IA_KEYS,
@@ -396,4 +419,7 @@ module.exports = {
   testStorageSettings,
   getSicafSettings,
   updateSicafSettings,
+  getNfseSettings,
+  updateNfseSettings,
+  testNfseSettings,
 };

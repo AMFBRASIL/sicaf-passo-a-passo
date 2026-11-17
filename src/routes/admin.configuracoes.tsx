@@ -3,13 +3,20 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCallback, useEffect, useState } from "react";
-import { fetchEmailSettings, fetchIaSettings, fetchSicafSettings, fetchStorageSettings } from "@/lib/admin-settings-api";
+import {
+  fetchEmailSettings,
+  fetchIaSettings,
+  fetchNfseSettings,
+  fetchSicafSettings,
+  fetchStorageSettings,
+} from "@/lib/admin-settings-api";
 import {
   Mail,
   MessageCircle,
   Bot,
   DollarSign,
   FileCheck2,
+  Receipt,
   Shield,
   Users,
   TrendingUp,
@@ -27,6 +34,7 @@ const cards: { key: ConfigModuleKey; icon: any; titulo: string; desc: string; ch
   { key: "whatsapp", icon: MessageCircle, titulo: "WhatsApp", desc: "API oficial, webhooks, atendentes", chip: "Conectado", tom: "emerald" },
   { key: "ia", icon: Bot, titulo: "IA", desc: "Modelo, prompts, limites de uso", chip: "Carregando…", tom: "violet" },
   { key: "financeiro", icon: DollarSign, titulo: "Financeiro", desc: "Gateway PIX, cartão, boleto, juros e multa", chip: "PIX + Asaas", tom: "emerald" },
+  { key: "fiscal", icon: Receipt, titulo: "Fiscal Config", desc: "NFS-e Nacional, certificado A1, tributação e URLs", chip: "Carregando…", tom: "slate" },
   { key: "sicaf", icon: FileCheck2, titulo: "SICAF", desc: "Valores, níveis obrigatórios, automações de vencimento", chip: "Níveis I–VI", tom: "amber" },
   { key: "seguranca", icon: Shield, titulo: "Segurança", desc: "2FA, sessões, política de senhas, IP allow-list", chip: "2FA opcional", tom: "rose" },
   { key: "usuarios", icon: Users, titulo: "Usuários e Papéis", desc: "Admin, Operador, Consulta — RBAC granular", chip: "8 ativos", tom: "blue" },
@@ -50,6 +58,7 @@ function ConfiguracoesPage() {
   const [iaChip, setIaChip] = useState("…");
   const [storageChip, setStorageChip] = useState("…");
   const [sicafChip, setSicafChip] = useState("…");
+  const [fiscalChip, setFiscalChip] = useState("…");
 
   const carregarChips = useCallback(async () => {
     try {
@@ -82,6 +91,15 @@ function ConfiguracoesPage() {
       setSicafChip(`${status.niveisAtivos} níveis${sicafFmt}`);
     } catch {
       setSicafChip("Configurar");
+    }
+    try {
+      const { status } = await fetchNfseSettings();
+      if (!status.enabled) setFiscalChip("Desligada");
+      else if (status.configured) {
+        setFiscalChip(status.ambiente === "producao" ? "Produção" : "Restrita");
+      } else setFiscalChip("Configurar");
+    } catch {
+      setFiscalChip("Configurar");
     }
   }, []);
 
@@ -120,7 +138,9 @@ function ConfiguracoesPage() {
                         ? storageChip
                         : c.key === "sicaf"
                           ? sicafChip
-                          : c.chip}
+                          : c.key === "fiscal"
+                            ? fiscalChip
+                            : c.chip}
                 </Badge>
               </div>
               <h3 className="mt-3 text-sm font-semibold">{c.titulo}</h3>

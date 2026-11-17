@@ -10,16 +10,18 @@ function onlyDigits(v) {
   return String(v || '').replace(/\D/g, '');
 }
 
-function getPrestadorDefaults() {
-  const cnpj =
-    onlyDigits(process.env.NFSE_PRESTADOR_CNPJ || process.env.NFSE_SP_CNPJ_PRESTADOR) ||
-    '52841613000155';
-  const cMun = onlyDigits(process.env.NFSE_C_MUN_EMI || '3550308') || '3550308';
-  const serie = String(process.env.NFSE_SERIE || '1').replace(/\D/g, '') || '1';
-  const im = String(process.env.NFSE_IM_PRESTADOR || '').trim() || undefined;
+async function getPrestadorDefaults() {
+  const cfg = require('./nfse-config.service');
+  const rt = await cfg.getNfseRuntime();
+  await nfse.refreshRuntime();
+
+  const cnpj = onlyDigits(rt.nfse_prestador_cnpj) || '52841613000155';
+  const cMun = onlyDigits(rt.nfse_c_mun_emi) || '3550308';
+  const serie = String(rt.nfse_serie || '1').replace(/\D/g, '') || '1';
+  const im = String(rt.nfse_im_prestador || '').trim() || undefined;
   // Em produção restrita a IM costuma gerar E0120 se CNC não tiver cadastro complementar
   const includeIm =
-    process.env.NFSE_INCLUIR_IM === 'true' ||
+    rt.nfse_incluir_im === 'true' ||
     (nfse.getAmbiente() === 'producao' && Boolean(im));
 
   return {
@@ -27,17 +29,18 @@ function getPrestadorDefaults() {
     cMun,
     serie,
     im: includeIm ? im || '000000078999987' : undefined,
-    email: process.env.NFSE_PRESTADOR_EMAIL || 'PROMAUTONE@GMAIL.COM',
-    fone: onlyDigits(process.env.NFSE_PRESTADOR_FONE || '1184401158') || undefined,
-    cTribNac: onlyDigits(process.env.NFSE_CTRIB_NAC || '010501') || '010501',
-    cTribMun: String(process.env.NFSE_CTRIB_MUN || '001'),
-    cNBS: onlyDigits(process.env.NFSE_CNBS || '111032200') || '111032200',
-    opSimpNac: String(process.env.NFSE_OP_SIMP_NAC || '3'),
-    regApTribSN: String(process.env.NFSE_REG_AP_TRIB_SN || '1'),
-    regEspTrib: String(process.env.NFSE_REG_ESP_TRIB || '0'),
-    pTotTribSN: Number(process.env.NFSE_P_TOT_TRIB_SN || 6),
-    CST: String(process.env.NFSE_CST || '00'),
-    tpRetPisCofins: String(process.env.NFSE_TP_RET_PIS_COFINS || '0'),
+    email: rt.nfse_prestador_email || 'PROMAUTONE@GMAIL.COM',
+    fone: onlyDigits(rt.nfse_prestador_fone) || undefined,
+    cTribNac: onlyDigits(rt.nfse_ctrib_nac) || '010501',
+    cTribMun: String(rt.nfse_ctrib_mun || '001'),
+    cNBS: onlyDigits(rt.nfse_cnbs) || '111032200',
+    opSimpNac: String(rt.nfse_op_simp_nac || '3'),
+    regApTribSN: String(rt.nfse_reg_ap_trib_sn || '1'),
+    regEspTrib: String(rt.nfse_reg_esp_trib || '0'),
+    pTotTribSN: Number(rt.nfse_p_tot_trib_sn || 6),
+    CST: String(rt.nfse_cst || '00'),
+    tpRetPisCofins: String(rt.nfse_tp_ret_pis_cofins || '0'),
+    tomadorIbgePadrao: onlyDigits(rt.nfse_tomador_ibge_padrao) || cMun,
   };
 }
 
@@ -79,6 +82,7 @@ function mapPaidItem(item, tipo, tipoLabel) {
 
 async function listarFiscalCliente(clienteId) {
   try {
+    await nfse.refreshRuntime();
     const { getDb } = require('../database/connection');
     const db = getDb();
     if (!db) return { ok: false, error: 'Banco indisponível' };
@@ -174,7 +178,7 @@ async function listarFiscalCliente(clienteId) {
       totalPendentes: itens.filter((i) => i.podeEmitir).length,
       itens,
       prestador: {
-        cnpj: getPrestadorDefaults().cnpj,
+        cnpj: (await getPrestadorDefaults()).cnpj,
         ambiente: nfse.getAmbiente(),
       },
     };
@@ -205,12 +209,12 @@ function parseEnderecoCliente(cliente) {
   return { xLgr, nro, xCpl, xBairro: xBairro || 'CENTRO' };
 }
 
-function buildDpsFromClientePagamento({ cliente, item, nDPS }) {
-  const prest = getPrestadorDefaults();
+async function buildDpsFromClientePagamento({ cliente, item, nDPS }) {
+  const prest = await getPrestadorDefaults();
   const cnpjTom = onlyDigits(cliente.documento || cliente.cnpj);
   const end = parseEnderecoCliente(cliente);
   const cMunTom =
-    onlyDigits(cliente.codigo_ibge || cliente.cMun || process.env.NFSE_TOMADOR_IBGE_PADRAO) ||
+    onlyDigits(cliente.codigo_ibge || cliente.cMun || prest.tomadorIbgePadrao) ||
     prest.cMun;
   const cep = onlyDigits(cliente.cep) || '01001000';
   const valor = Number(item.valor) || 0;
@@ -451,7 +455,7 @@ async function emitirFiscalPagamento(opts = {}) {
     const cliente = det.client;
 
     const nDPS = String(Date.now()).slice(-8);
-    const dps = buildDpsFromClientePagamento({ cliente, item, nDPS });
+    const dps = await buildDpsFromClientePagamento({ cliente, item, nDPS });
 
     const result = await nfse.emitir({
       useSystemCert: true,
@@ -655,6 +659,7 @@ async function obterArquivoEmissao(opts = {}) {
  */
 async function listarPainelAdmin(opts = {}) {
   try {
+    await nfse.refreshRuntime();
     const { getDb } = require('../database/connection');
     const db = getDb();
     if (!db) return { ok: false, error: 'Banco indisponível' };
