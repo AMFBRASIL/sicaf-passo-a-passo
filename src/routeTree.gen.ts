@@ -16,6 +16,7 @@ import { Route as SicafAssistantRouteImport } from './routes/sicaf-assistant'
 import { Route as SicafRouteImport } from './routes/sicaf'
 import { Route as ServicosIaRouteImport } from './routes/servicos-ia'
 import { Route as ServicosRouteImport } from './routes/servicos'
+import { Route as RelatorioRouteImport } from './routes/relatorio'
 import { Route as PropostasRouteImport } from './routes/propostas'
 import { Route as ProntidaoRouteImport } from './routes/prontidao'
 import { Route as PncpRouteImport } from './routes/pncp'
@@ -115,6 +116,11 @@ const ServicosIaRoute = ServicosIaRouteImport.update({
 const ServicosRoute = ServicosRouteImport.update({
   id: '/servicos',
   path: '/servicos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RelatorioRoute = RelatorioRouteImport.update({
+  id: '/relatorio',
+  path: '/relatorio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PropostasRoute = PropostasRouteImport.update({
@@ -474,6 +480,7 @@ export interface FileRoutesByFullPath {
   '/pncp': typeof PncpRoute
   '/prontidao': typeof ProntidaoRoute
   '/propostas': typeof PropostasRoute
+  '/relatorio': typeof RelatorioRoute
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
@@ -546,6 +553,7 @@ export interface FileRoutesByTo {
   '/pncp': typeof PncpRoute
   '/prontidao': typeof ProntidaoRoute
   '/propostas': typeof PropostasRoute
+  '/relatorio': typeof RelatorioRoute
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
@@ -619,6 +627,7 @@ export interface FileRoutesById {
   '/pncp': typeof PncpRoute
   '/prontidao': typeof ProntidaoRoute
   '/propostas': typeof PropostasRoute
+  '/relatorio': typeof RelatorioRoute
   '/servicos': typeof ServicosRoute
   '/servicos-ia': typeof ServicosIaRoute
   '/sicaf': typeof SicafRoute
@@ -695,6 +704,7 @@ export interface FileRouteTypes {
     | '/pncp'
     | '/prontidao'
     | '/propostas'
+    | '/relatorio'
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
@@ -767,6 +777,7 @@ export interface FileRouteTypes {
     | '/pncp'
     | '/prontidao'
     | '/propostas'
+    | '/relatorio'
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
@@ -839,6 +850,7 @@ export interface FileRouteTypes {
     | '/pncp'
     | '/prontidao'
     | '/propostas'
+    | '/relatorio'
     | '/servicos'
     | '/servicos-ia'
     | '/sicaf'
@@ -914,6 +926,7 @@ export interface RootRouteChildren {
   PncpRoute: typeof PncpRoute
   ProntidaoRoute: typeof ProntidaoRoute
   PropostasRoute: typeof PropostasRoute
+  RelatorioRoute: typeof RelatorioRoute
   ServicosRoute: typeof ServicosRoute
   ServicosIaRoute: typeof ServicosIaRoute
   SicafRoute: typeof SicafRoute
@@ -974,6 +987,13 @@ declare module '@tanstack/react-router' {
       path: '/servicos'
       fullPath: '/servicos'
       preLoaderRoute: typeof ServicosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/relatorio': {
+      id: '/relatorio'
+      path: '/relatorio'
+      fullPath: '/relatorio'
+      preLoaderRoute: typeof RelatorioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/propostas': {
@@ -1567,6 +1587,7 @@ const rootRouteChildren: RootRouteChildren = {
   PncpRoute: PncpRoute,
   ProntidaoRoute: ProntidaoRoute,
   PropostasRoute: PropostasRoute,
+  RelatorioRoute: RelatorioRoute,
   ServicosRoute: ServicosRoute,
   ServicosIaRoute: ServicosIaRoute,
   SicafRoute: SicafRoute,

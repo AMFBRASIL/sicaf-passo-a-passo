@@ -23,6 +23,7 @@ import {
   FolderOpen,
   Wallet,
   ChevronDown,
+  BarChart3,
 } from "lucide-react";
 import {
   Sidebar,
@@ -47,6 +48,7 @@ type NavItem = {
 
 const visaoGeral: NavItem[] = [
   { title: "Início", url: "/", icon: LayoutDashboard },
+  { title: "Relatório", url: "/relatorio", icon: BarChart3 },
 ];
 
 const sicafCadastro: NavItem[] = [

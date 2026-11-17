@@ -59,6 +59,7 @@ import {
   type LicitacoesFilterOptions,
 } from "@/lib/licitacoes-api";
 import { buildWhatsAppConsultorLicitacaoUrl } from "@/lib/whatsapp-suporte";
+import { registrarUsoPortal } from "@/lib/relatorio-api";
 
 export const Route = createFileRoute("/licitacoes")({
   head: () => ({
@@ -141,6 +142,10 @@ export function LicitacoesPage({ adminMode = false }: { adminMode?: boolean }) {
     d.setHours(d.getHours() - 24);
     return d.toISOString();
   }, [somenteNovas24h]);
+
+  useEffect(() => {
+    void registrarUsoPortal("licitacoes.page_view", { path: "/licitacoes" });
+  }, []);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQ(q.trim()), 350);
@@ -260,6 +265,15 @@ export function LicitacoesPage({ adminMode = false }: { adminMode?: boolean }) {
     setMiraCount((c) => (res.na_mira ? c + 1 : Math.max(0, c - 1)));
     void loadList();
     void loadStats();
+  };
+
+  const openDetalhe = (l: Licitacao) => {
+    setDetalhe(l);
+    void registrarUsoPortal("licitacoes.detalhe", {
+      path: "/licitacoes",
+      entidade: "licitacao",
+      entidadeId: l.idNum,
+    });
   };
 
   const handleParticipacaoConfirmada = (idNum: number) => {
@@ -651,7 +665,7 @@ export function LicitacoesPage({ adminMode = false }: { adminMode?: boolean }) {
                     >
                       <Heart className={`h-4 w-4 ${l.na_mira ? "fill-current" : ""}`} />
                     </Button>
-                    <Button size="sm" onClick={() => setDetalhe(l)}>
+                    <Button size="sm" onClick={() => openDetalhe(l)}>
                       Ver detalhes
                     </Button>
                   </div>

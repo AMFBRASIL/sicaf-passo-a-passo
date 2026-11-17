@@ -43,8 +43,10 @@ import { ComparadorSicaf, type SnapshotSicaf } from "@/components/comparador-sic
 import { GitCompareArrows } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { registrarUsoPortal } from "@/lib/relatorio-api";
 import { AssistenteSicafLaunchDialog } from "@/components/assistente-sicaf-launch-dialog";
 import { AssistenteOnboardingModal } from "@/components/assistente-onboarding-modal";
+import { AssistenteSituacaoGuiaModal } from "@/components/assistente-situacao-guia-modal";
 import {
   AssistenteAcessarSicafTour,
   hasIgnoredAssistenteTour,
@@ -59,6 +61,7 @@ import {
 import { probeCadBrasilExtension } from "@/lib/cadbrasil-extension";
 import {
   analisarSituacaoPdf,
+  nomeArquivoSugereSituacao,
   buildComparadorSnapshots,
   certidoesPorNivel,
   fetchAnaliseDetalhe,
@@ -103,7 +106,7 @@ export const Route = createFileRoute("/assistente")({
       {
         name: "description",
         content:
-          "Envie a Situação do Fornecedor, acompanhe pendências e instale o Assistente CADBRASIL.",
+          "Acesse o SICAF pelo botão verde, emita a Situação do Fornecedor e envie o PDF aqui para validar os níveis.",
       },
     ],
   }),
@@ -259,6 +262,11 @@ function AssistentePage() {
   const navigate = useNavigate();
   const { extensionInstalled, extensionChecking, extensionVersion, checkExtension } =
     useCadBrasilExtension();
+
+  useEffect(() => {
+    void registrarUsoPortal("assistente.page_view", { path: "/assistente" });
+  }, []);
+
   const [verificandoExtensao, setVerificandoExtensao] = useState(false);
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [progresso, setProgresso] = useState(0);
@@ -273,6 +281,10 @@ function AssistentePage() {
   const acessarSicafBtnRef = useRef<HTMLButtonElement>(null);
   const instalarExtensaoBtnRef = useRef<HTMLButtonElement>(null);
   const [selecionarEmpresaOpen, setSelecionarEmpresaOpen] = useState(false);
+  /** Upload liberado após o cliente confirmar que já emitiu o PDF no SICAF (ou se já tem histórico). */
+  const [uploadLiberado, setUploadLiberado] = useState(false);
+  const [guiaSituacaoOpen, setGuiaSituacaoOpen] = useState(false);
+  const [guiaSituacaoMsg, setGuiaSituacaoMsg] = useState<string | null>(null);
   const [totalEmpresas, setTotalEmpresas] = useState(0);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [empresaNome, setEmpresaNome] = useState<string | undefined>();
@@ -417,6 +429,15 @@ function AssistentePage() {
       if (!clienteId) toast.error("Selecione uma empresa (CNPJ) antes de enviar o PDF");
       return;
     }
+
+    if (!nomeArquivoSugereSituacao(f.name)) {
+      toast.message("Conferindo o PDF…", {
+        description:
+          'O nome não tem "situacao", mas se o conteúdo for a Situação do Fornecedor a análise segue normalmente.',
+        duration: 4500,
+      });
+    }
+
     setArquivo(f);
     setAnalisado(false);
     setAnalisando(true);
@@ -427,9 +448,21 @@ function AssistentePage() {
     setAnalisando(false);
 
     if (!res.ok) {
-      toast.error(res.error || "Falha na análise do PDF");
+      const naoESituacao = res.code === "NAO_E_SITUACAO" || res.sugerirAcessarSicaf;
       setArquivo(null);
       if (inputRef.current) inputRef.current.value = "";
+
+      if (naoESituacao) {
+        setGuiaSituacaoMsg(res.error || null);
+        setGuiaSituacaoOpen(true);
+        setUltimaMensagem(
+          'PDF inválido para esta etapa. Use "Acessar SICAF", emita a Situação no portal e envie somente esse documento.',
+        );
+        return;
+      }
+
+      toast.error(res.error || "Falha na análise do PDF");
+      setUltimaMensagem(res.error || null);
       return;
     }
 
@@ -488,6 +521,8 @@ function AssistentePage() {
   const temPendencias = pendenciasVisiveis.length > 0;
   const niveisAtivos = countNiveisValidadosUi(niveis);
   const todosNiveisValidados = todosNiveisValidadosUi(niveis);
+  const podeEnviarPdf =
+    uploadLiberado || !!arquivo || analisando || analisado || historico.length > 0;
 
   return (
     <div className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 sm:py-10">
@@ -506,7 +541,7 @@ function AssistentePage() {
               </span>
             </span>
           ) : (
-            "Envie sua Situação do Fornecedor e o assistente cuida do resto."
+            "1º Acesse o SICAF pelo botão verde · 2º Emita a Situação · 3º Envie o PDF aqui."
           )
         }
         action={
@@ -825,14 +860,76 @@ function AssistentePage() {
             </CardContent>
           </Card>
 
+          {/* Passo a passo — evita upload antes de acessar o SICAF */}
+          <Card className="mt-6 border-emerald-200/70 bg-gradient-to-br from-emerald-50/90 via-background to-sky-50/40 shadow-soft dark:border-emerald-900/40 dark:from-emerald-950/30 dark:to-slate-950">
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                    Ordem correta — não pule etapas
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    O PDF só deve ser enviado <strong className="text-foreground">depois</strong> de
+                    emitir a Situação do Fornecedor no portal SICAF.
+                  </p>
+                </div>
+                <div className="grid flex-1 gap-2 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTourOpen(false);
+                      setLaunchOpen(true);
+                    }}
+                    className="flex items-start gap-2.5 rounded-xl border border-emerald-300/70 bg-accent-green px-3 py-2.5 text-left text-accent-green-foreground shadow-sm transition hover:brightness-105"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-black">
+                      1
+                    </span>
+                    <span>
+                      <span className="block text-xs font-bold leading-tight">Acessar SICAF</span>
+                      <span className="mt-0.5 block text-[11px] leading-snug opacity-90">
+                        Clique aqui (botão verde) e faça o processo no Compras.gov.br
+                      </span>
+                    </span>
+                  </button>
+                  <div className="flex items-start gap-2.5 rounded-xl border bg-card/80 px-3 py-2.5">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-black text-muted-foreground">
+                      2
+                    </span>
+                    <span>
+                      <span className="block text-xs font-bold leading-tight">Emitir Situação</span>
+                      <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                        No SICAF, gere o PDF da Situação do Fornecedor e salve no computador
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2.5 rounded-xl border bg-card/80 px-3 py-2.5">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-black text-muted-foreground">
+                      3
+                    </span>
+                    <span>
+                      <span className="block text-xs font-bold leading-tight">Enviar PDF aqui</span>
+                      <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                        Só então anexe abaixo — não use certidões ou outros documentos
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="mt-6 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-            {/* Upload Situação do Fornecedor */}
-            <Card className="shadow-soft">
+            {/* Upload Situação do Fornecedor — etapa 3 */}
+            <Card id="assistente-upload-etapa3" className="shadow-soft scroll-mt-24">
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <CardTitle className="flex items-center gap-2 text-base">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[11px] font-black text-muted-foreground">
+                      3
+                    </span>
                     <FileText className="h-4 w-4 text-primary" />
-                    Situação do Fornecedor (PDF)
+                    Enviar Situação do Fornecedor (PDF)
                   </CardTitle>
                   {analisado && (
                     <Button variant="ghost" size="sm" onClick={limpar} className="h-7 gap-1 text-xs">
@@ -841,10 +938,48 @@ function AssistentePage() {
                     </Button>
                   )}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Etapa final: anexe apenas o PDF da Situação emitido no Compras.gov.br (não é área
+                  para certidões, contratos ou outros arquivos).
+                </p>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {!arquivo && (
+                  {!podeEnviarPdf && !arquivo && (
+                    <div className="rounded-2xl border border-dashed border-emerald-300/60 bg-emerald-50/40 px-4 py-8 text-center dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-green text-accent-green-foreground shadow-soft">
+                        <Bot className="h-6 w-6" />
+                      </div>
+                      <p className="mt-3 text-base font-bold">Antes de enviar o PDF</p>
+                      <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground leading-relaxed">
+                        Clique em <strong className="text-foreground">Acessar SICAF</strong>, conclua
+                        o processo no portal e emita a Situação do Fornecedor. Quando o arquivo
+                        estiver salvo no computador, libere o envio abaixo.
+                      </p>
+                      <div className="mt-4 flex flex-col items-center justify-center gap-2 sm:flex-row">
+                        <Button
+                          className={cn(SICAF_BUTTON_CLASS, "gap-1.5")}
+                          onClick={() => {
+                            setTourOpen(false);
+                            setLaunchOpen(true);
+                          }}
+                        >
+                          <Bot className="h-4 w-4" />
+                          Acessar SICAF agora
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="gap-1.5"
+                          onClick={() => setUploadLiberado(true)}
+                        >
+                          <Upload className="h-4 w-4" />
+                          Já emiti o PDF — enviar agora
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {podeEnviarPdf && !arquivo && (
                     <label
                       htmlFor="sf-pdf"
                       className="group relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border-2 border-dashed border-primary/30 bg-gradient-to-br from-primary/5 to-accent/20 px-4 py-10 text-center transition hover:border-primary hover:from-primary/10"
@@ -853,9 +988,9 @@ function AssistentePage() {
                         <Upload className="h-6 w-6" />
                       </div>
                       <div>
-                        <p className="text-base font-bold">Arraste o PDF ou clique aqui</p>
+                        <p className="text-base font-bold">Arraste o PDF da Situação ou clique aqui</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Situação do Fornecedor emitida pelo Compras.gov.br · até 10 MB
+                          Somente Situação do Fornecedor (Compras.gov.br) · até 10 MB
                         </p>
                       </div>
                       <input
@@ -952,7 +1087,7 @@ function AssistentePage() {
                     </div>
                   ) : historico.length === 0 ? (
                     <p className="mt-3 rounded-xl border border-dashed py-8 text-center text-sm text-muted-foreground">
-                      Nenhuma análise registrada ainda. Envie o primeiro PDF acima.
+                      Nenhuma análise ainda. Acesse o SICAF, emita a Situação e envie o PDF na etapa 3.
                     </p>
                   ) : (
                     <ul className="mt-3 space-y-2">
@@ -1019,12 +1154,12 @@ function AssistentePage() {
                     <p className="text-sm font-medium text-muted-foreground">
                       {analisado || historico.length > 0
                         ? "Nenhuma pendência na última análise"
-                        : "Envie a Situação do Fornecedor"}
+                        : "Comece pelo botão verde Acessar SICAF"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {analisado || historico.length > 0
                         ? "Seu cadastro SICAF está em ordem segundo a IA."
-                        : "As pendências aparecem aqui após a análise."}
+                        : "Depois de emitir e enviar a Situação, as pendências aparecem aqui."}
                     </p>
                   </div>
                 ) : (
@@ -1251,7 +1386,23 @@ function AssistentePage() {
       <AssistenteOnboardingModal
         open={onboardingOpen}
         onOpenChange={setOnboardingOpen}
-        onComecar={() => inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+        onComecar={() => {
+          acessarSicafBtnRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          window.setTimeout(() => {
+            setTourOpen(false);
+            setLaunchOpen(true);
+          }, 350);
+        }}
+      />
+
+      <AssistenteSituacaoGuiaModal
+        open={guiaSituacaoOpen}
+        onOpenChange={setGuiaSituacaoOpen}
+        mensagem={guiaSituacaoMsg}
+        onAcessarSicaf={() => {
+          setTourOpen(false);
+          setLaunchOpen(true);
+        }}
       />
 
       <AssistenteAcessarSicafTour

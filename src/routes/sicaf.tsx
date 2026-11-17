@@ -71,6 +71,7 @@ import {
   markSicafTourIgnored,
 } from "@/components/assistente-acessar-sicaf-tour";
 import { cn } from "@/lib/utils";
+import { registrarUsoPortal } from "@/lib/relatorio-api";
 
 const searchSchema = z.object({
   cnpj: z.string().optional(),
@@ -700,6 +701,10 @@ function SicafPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const total = passosBase.length;
   const { extensionInstalled } = useCadBrasilExtension();
+
+  useEffect(() => {
+    void registrarUsoPortal("sicaf.page_view", { path: "/sicaf" });
+  }, []);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);

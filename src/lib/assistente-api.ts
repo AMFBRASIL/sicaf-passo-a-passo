@@ -235,6 +235,8 @@ export async function fetchAnaliseDetalhe(clienteId: number, analiseId: number) 
 export type AnalisarSituacaoResult = {
   ok: boolean;
   error?: string;
+  code?: string;
+  sugerirAcessarSicaf?: boolean;
   message?: string;
   analise?: SicafAnaliseJson;
   analiseId?: number | null;
@@ -244,6 +246,15 @@ export type AnalisarSituacaoResult = {
   certidoesInserted?: number;
   certidoesUpdated?: number;
 };
+
+/** Nome do arquivo costuma trazer "situacao" (com ou sem acento). */
+export function nomeArquivoSugereSituacao(fileName: string): boolean {
+  const n = String(fileName || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /situac/.test(n);
+}
 
 export async function analisarSituacaoPdf(
   clienteId: number,
@@ -265,7 +276,12 @@ export async function analisarSituacaoPdf(
   onProgress?.(100);
 
   if (!data.ok) {
-    return { ok: false, error: data.error || "Erro ao analisar PDF" };
+    return {
+      ok: false,
+      error: data.error || "Erro ao analisar PDF",
+      code: typeof data.code === "string" ? data.code : undefined,
+      sugerirAcessarSicaf: Boolean(data.sugerirAcessarSicaf) || data.code === "NAO_E_SITUACAO",
+    };
   }
 
   return {

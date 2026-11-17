@@ -5,6 +5,7 @@ import {
   MousePointerClick,
   Sparkles,
   Upload,
+  ChevronRight,
 } from "lucide-react";
 import {
   Dialog,
@@ -17,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 /** Incremente a versão ao mudar o conteúdo do tutorial (exibe de novo para quem já viu). */
-const STORAGE_KEY = "cadbrasil-assistente-onboarding-v2";
+const STORAGE_KEY = "cadbrasil-assistente-onboarding-v3";
 
 const PASSOS = [
   {
@@ -139,9 +140,10 @@ export function AssistenteOnboardingModal({ open, onOpenChange, onComecar }: Pro
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Lembrar depois
           </Button>
-          <Button className="gap-2" onClick={confirmar}>
-            <Upload className="h-4 w-4" />
-            Entendi, vamos começar
+          <Button className="gap-2 bg-accent-green text-accent-green-foreground hover:bg-accent-green/90" onClick={confirmar}>
+            <Bot className="h-4 w-4" />
+            Entendi — Acessar SICAF
+            <ChevronRight className="h-4 w-4" />
           </Button>
         </DialogFooter>
       </DialogContent>

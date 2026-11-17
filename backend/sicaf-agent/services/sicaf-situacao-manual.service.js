@@ -22,6 +22,87 @@ async function readPdfText(fileBuffer, pdfParse) {
   return extractPdfText(fileBuffer);
 }
 
+function normalizeDocText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+const MSG_NAO_E_SITUACAO =
+  'Este PDF não é a Situação do Fornecedor (nome e conteúdo sem indicação de Situação). No Assistente, clique em "Acessar SICAF", emita a Situação no portal Compras.gov.br e envie aqui somente esse PDF.';
+
+/**
+ * Analisa NOME e CONTEÚDO:
+ * - nome sem "situacao" + conteúdo É situacao → PASSA
+ * - nome sem "situacao" + conteúdo NÃO é → NÃO PASSA
+ * - nome e conteúdo sem situacao → NÃO PASSA
+ * - nome com "situacao" + conteúdo NÃO é → NÃO PASSA (só o nome não basta)
+ *
+ * Trecho típico do PDF oficial SICAF:
+ * "Declaração / Declaramos para os fins exigidos na legislação, conforme
+ * documentação registrada no SICAF, que a situação do fornecedor no momento é a seguinte"
+ */
+function validarDocumentoSituacaoFornecedor(fileName, extractedText) {
+  const nameNorm = normalizeDocText(fileName || '');
+  // PDF costuma quebrar linha no meio da frase — compacta espaços
+  const textNorm = normalizeDocText(extractedText || '').replace(/\s+/g, ' ').trim();
+
+  const nomeTemSituacao = /situac/.test(nameNorm);
+
+  // Assinatura forte do PDF oficial da Situação do Fornecedor
+  const hasDeclaracaoOficial =
+    /declaramos para os fins exigidos na legislacao/.test(textNorm) &&
+    /documentacao registrada no sicaf/.test(textNorm) &&
+    /situacao do fornecedor no momento/.test(textNorm);
+
+  const hasDeclaracaoCurta =
+    /\bdeclaracao\b/.test(textNorm) &&
+    /situacao do fornecedor/.test(textNorm) &&
+    /registrad[ao] no sicaf/.test(textNorm);
+
+  const hasTitulo =
+    /situacao do fornecedor/.test(textNorm) ||
+    /situacao\s+cadastral\s+do\s+fornecedor/.test(textNorm);
+  const hasSituacaoEFornecedor =
+    /situacao/.test(textNorm) &&
+    /fornecedor/.test(textNorm) &&
+    (/nivel\s*[ivx1-6]/.test(textNorm) ||
+      /compras\.gov/.test(textNorm) ||
+      /sistema de cadastramento/.test(textNorm) ||
+      /sicaf/.test(textNorm));
+
+  // Exige a declaração oficial (forte) OU título + contexto SICAF
+  const conteudoTemSituacao =
+    hasDeclaracaoOficial ||
+    hasDeclaracaoCurta ||
+    (hasTitulo && hasSituacaoEFornecedor);
+
+  // Nome não é situacao, mas o conteúdo é → pode passar
+  if (conteudoTemSituacao) {
+    return {
+      ok: true,
+      nomeTemSituacao,
+      conteudoTemSituacao: true,
+      nameHint: nomeTemSituacao,
+      contentOk: true,
+      hasDeclaracaoOficial,
+    };
+  }
+
+  // Nem nome nem conteúdo (ou só o nome) → não passa
+  return {
+    ok: false,
+    code: 'NAO_E_SITUACAO',
+    nomeTemSituacao,
+    conteudoTemSituacao: false,
+    nameHint: nomeTemSituacao,
+    contentOk: false,
+    hasDeclaracaoOficial: false,
+    error: MSG_NAO_E_SITUACAO,
+  };
+}
+
 function buildResultPayload(result, jsonData) {
   const niveisResumo = [];
   if (result.sicafStatus?.niveis) {
@@ -153,6 +234,16 @@ async function processarPdfBufferForCliente({
     extractedText = await readPdfText(fileBuffer, pdfParse);
   } catch (pdfErr) {
     return { ok: false, error: 'Erro ao ler PDF: ' + pdfErr.message };
+  }
+
+  const checkSituacao = validarDocumentoSituacaoFornecedor(fileName, extractedText);
+  if (!checkSituacao.ok) {
+    return {
+      ok: false,
+      code: checkSituacao.code,
+      error: checkSituacao.error,
+      sugerirAcessarSicaf: true,
+    };
   }
 
   try {
@@ -309,6 +400,19 @@ async function runAnaliseProblemaCore({
     return {
       ok: false,
       error: 'Não foi possível extrair texto do PDF. O arquivo pode ser imagem escaneada sem OCR.',
+    };
+  }
+
+  const checkSituacao = validarDocumentoSituacaoFornecedor(fileName, extractedText);
+  if (!checkSituacao.ok) {
+    console.warn(
+      `[SicafAnalise] PDF rejeitado (não é Situação) — arquivo: ${fileName || '?'} | nameHint=${checkSituacao.nameHint}`,
+    );
+    return {
+      ok: false,
+      code: checkSituacao.code,
+      error: checkSituacao.error,
+      sugerirAcessarSicaf: true,
     };
   }
 
@@ -490,6 +594,16 @@ async function analisarProblemaPdfForUsuario({
     };
   }
 
+  const checkSituacaoUsuario = validarDocumentoSituacaoFornecedor(fileName, extractedText);
+  if (!checkSituacaoUsuario.ok) {
+    return {
+      ok: false,
+      code: checkSituacaoUsuario.code,
+      error: checkSituacaoUsuario.error,
+      sugerirAcessarSicaf: true,
+    };
+  }
+
   if (!(await iaService.isReady())) {
     return { ok: false, error: 'Serviço de IA não configurado. Configure em Admin → Configurações → IA.' };
   }
@@ -539,4 +653,5 @@ module.exports = {
   processarTextoExtracao,
   analisarProblemaPdfForCliente,
   analisarProblemaPdfForUsuario,
+  validarDocumentoSituacaoFornecedor,
 };
