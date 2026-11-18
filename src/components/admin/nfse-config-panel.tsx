@@ -267,16 +267,16 @@ export function NfseConfigPanel({ onSaved }: Props) {
 
       <Section title="Tributação do serviço" desc="Códigos usados por padrão na emissão fiscal do cliente.">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="cTribNac">
+          <Field label="cTribNac" hint="6 dígitos (ex.: 010501). Não é o opSimpNac.">
             <Input value={settings.nfse_ctrib_nac} onChange={(e) => patch("nfse_ctrib_nac", e.target.value)} />
           </Field>
           <Field label="cTribMun">
             <Input value={settings.nfse_ctrib_mun} onChange={(e) => patch("nfse_ctrib_mun", e.target.value)} />
           </Field>
-          <Field label="cNBS">
+          <Field label="cNBS" hint="9 dígitos (ex.: 111032200). Não use a IM aqui.">
             <Input value={settings.nfse_cnbs} onChange={(e) => patch("nfse_cnbs", e.target.value)} />
           </Field>
-          <Field label="opSimpNac">
+          <Field label="opSimpNac" hint="1=não optante SN, 2=MEI, 3=ME/EPP">
             <Input
               value={settings.nfse_op_simp_nac}
               onChange={(e) => patch("nfse_op_simp_nac", e.target.value)}

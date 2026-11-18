@@ -24,6 +24,17 @@ async function getPrestadorDefaults() {
     rt.nfse_incluir_im === 'true' ||
     (nfse.getAmbiente() === 'producao' && Boolean(im));
 
+  // cTribNac = 6 dígitos (TSCodTribNac). Não confundir com opSimpNac ('3').
+  let cTribNac = onlyDigits(rt.nfse_ctrib_nac);
+  if (!/^\d{6}$/.test(cTribNac)) cTribNac = '010501';
+
+  // cNBS = 9 dígitos. Não confundir com IM (15 dígitos).
+  let cNBS = onlyDigits(rt.nfse_cnbs);
+  if (!/^\d{9}$/.test(cNBS)) cNBS = '111032200';
+
+  let cTribMun = String(rt.nfse_ctrib_mun || '001').trim();
+  if (!cTribMun) cTribMun = '001';
+
   return {
     cnpj,
     cMun,
@@ -31,9 +42,9 @@ async function getPrestadorDefaults() {
     im: includeIm ? im || '000000078999987' : undefined,
     email: rt.nfse_prestador_email || 'PROMAUTONE@GMAIL.COM',
     fone: onlyDigits(rt.nfse_prestador_fone) || undefined,
-    cTribNac: onlyDigits(rt.nfse_ctrib_nac) || '010501',
-    cTribMun: String(rt.nfse_ctrib_mun || '001'),
-    cNBS: onlyDigits(rt.nfse_cnbs) || '111032200',
+    cTribNac,
+    cTribMun,
+    cNBS,
     opSimpNac: String(rt.nfse_op_simp_nac || '3'),
     regApTribSN: String(rt.nfse_reg_ap_trib_sn || '1'),
     regEspTrib: String(rt.nfse_reg_esp_trib || '0'),

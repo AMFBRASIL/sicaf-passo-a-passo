@@ -218,10 +218,15 @@ function buildDpsXml(dps) {
   const tomEnd = tom.end || tom.endereco || null;
 
   const serv = dps.servico || {};
-  const cTribNac = escapeXml(serv.cTribNac || serv.codigoTributacaoNacional || '');
+  // TSCodTribNac: 6 dígitos. Valor inválido (ex.: '3' de opSimpNac) quebra o XSD (E1235).
+  let cTribNacDigits = onlyDigits(serv.cTribNac || serv.codigoTributacaoNacional || '');
+  if (!/^\d{6}$/.test(cTribNacDigits)) cTribNacDigits = '010501';
+  const cTribNac = escapeXml(cTribNacDigits);
   const cTribMun = escapeXml(serv.cTribMun || serv.codigoTributacaoMunicipal || '');
   const xDescServ = escapeXml(serv.xDescServ || serv.descricao || '');
-  const cNBS = escapeXml(serv.cNBS || '');
+  let cNBSDigits = onlyDigits(serv.cNBS || '');
+  if (cNBSDigits && !/^\d{9}$/.test(cNBSDigits)) cNBSDigits = '';
+  const cNBS = escapeXml(cNBSDigits);
   const cLocalPrestacao = padLeft(onlyDigits(serv.cLocPrestacao || serv.cMun || cMun), 7);
 
   const valores = dps.valores || serv.valores || {};
@@ -359,8 +364,8 @@ function buildDpsXml(dps) {
       <cServ>
         ${cTribNac ? `<cTribNac>${cTribNac}</cTribNac>` : ''}
         ${cTribMun ? `<cTribMun>${cTribMun}</cTribMun>` : ''}
-        ${cNBS ? `<cNBS>${cNBS}</cNBS>` : ''}
         <xDescServ>${xDescServ}</xDescServ>
+        ${cNBS ? `<cNBS>${cNBS}</cNBS>` : ''}
       </cServ>
     </serv>
     <valores>
