@@ -286,6 +286,18 @@ export async function fetchAdminTicketDetalhe(id: string) {
   return parseApiJson<{ ticket?: AdminTicketDetalhe }>(res);
 }
 
+export async function gerarRespostaIaTicket(id: string, instrucao?: string) {
+  const res = await apiFetch(`/api/tickets-admin/${encodeURIComponent(id)}/gerar-resposta-ia`, {
+    method: "POST",
+    body: JSON.stringify({ instrucao: instrucao || undefined }),
+  });
+  return parseApiJson<{
+    rascunho?: string;
+    modelo?: string;
+    cliente?: string;
+  }>(res);
+}
+
 export async function criarTicketAdmin(payload: {
   titulo: string;
   descricao: string;

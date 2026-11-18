@@ -1489,6 +1489,103 @@ async function criarTicketAdmin(usuarioId, dados) {
 // EXPORTS
 // ══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Gera rascunho de resposta com IA (prévia para o admin autorizar/editar).
+ */
+async function gerarRascunhoRespostaIa(ticketId, opts = {}) {
+  try {
+    const det = await getTicketAdmin(ticketId);
+    if (!det.ok || !det.ticket) {
+      return { ok: false, error: det.error || 'Ticket não encontrado' };
+    }
+
+    const t = det.ticket;
+    const iaService = require('./ia.service');
+    const openai = await iaService.ensureReady();
+    const params = await iaService.getParams();
+
+    const historico = (t.messages || [])
+      .map((m) => {
+        const quem =
+          m.sender === 'client' || m.sender === 'cliente'
+            ? 'CLIENTE'
+            : m.sender === 'support' || m.sender === 'suporte'
+              ? 'SUPORTE'
+              : String(m.sender || 'SISTEMA').toUpperCase();
+        return `[${m.date || ''}] ${quem}${m.senderName ? ` (${m.senderName})` : ''}:\n${m.message || ''}`;
+      })
+      .join('\n\n');
+
+    const ultimaCliente = [...(t.messages || [])]
+      .reverse()
+      .find((m) => m.sender === 'client' || m.sender === 'cliente');
+
+    const system = `Você é atendente de suporte da CADBRASIL (credenciamento SICAF e portal de fornecedores públicos no Brasil).
+Escreva uma resposta profissional, clara e empática em português do Brasil, pronta para o operador enviar ao cliente.
+
+Regras:
+- Responda APENAS com o texto da mensagem (sem markdown de código, sem aspas envolvendo tudo, sem "Assunto:").
+- Use o nome/razão social do cliente quando fizer sentido.
+- Baseie-se somente no contexto do ticket; não invente protocolos, valores, prazos ou status que não estejam no histórico.
+- Se faltar informação, peça educadamente o que falta.
+- Tom: suporte CadBrasil — objetivo, cordial e confiável.
+- Pode usar saudação e assinatura curta (ex.: Equipe CadBrasil / Suporte).
+- Não mencione que você é uma IA.`;
+
+    const instrucaoExtra = String(opts.instrucao || '').trim();
+    const user = `Gere a prévia de resposta para este ticket:
+
+Cliente / Razão social: ${t.client || 'Não informado'}
+CNPJ/CPF: ${t.clientDocumento || 'Não informado'}
+Ticket: ${t.id}
+Título: ${t.title || ''}
+Categoria: ${t.category || '—'}
+Prioridade: ${t.priority || '—'}
+Status: ${t.status || '—'}
+Descrição inicial:
+${t.description || '(sem descrição)'}
+
+Última mensagem do cliente:
+${ultimaCliente?.message || '(não identificada — use o histórico completo)'}
+
+Histórico completo da conversa:
+${historico || '(sem mensagens)'}
+
+${instrucaoExtra ? `Instrução extra do operador: ${instrucaoExtra}` : ''}
+
+Escreva agora a resposta completa que o suporte enviaria.`;
+
+    const response = await openai.chat.completions.create({
+      model: params.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      temperature: Math.min(0.6, Number(params.temperature) || 0.4),
+      max_tokens: Math.min(2000, Math.max(400, Number(params.maxTokens) || 1200)),
+    });
+
+    let texto = String(response.choices?.[0]?.message?.content || '').trim();
+    if (!texto) return { ok: false, error: 'A IA não retornou texto' };
+
+    texto = texto
+      .replace(/^```(?:text|markdown)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    return {
+      ok: true,
+      rascunho: texto,
+      modelo: params.model,
+      ticketId: t.id,
+      cliente: t.client,
+    };
+  } catch (e) {
+    console.error('[Tickets] gerarRascunhoRespostaIa:', e.message);
+    return { ok: false, error: e.message || 'Falha ao gerar resposta com IA' };
+  }
+}
+
 module.exports = {
   listarTickets,
   getTicket,
@@ -1502,4 +1599,5 @@ module.exports = {
   atualizarTicket,
   criarTicketAdmin,
   adicionarAnexoAdmin,
+  gerarRascunhoRespostaIa,
 };

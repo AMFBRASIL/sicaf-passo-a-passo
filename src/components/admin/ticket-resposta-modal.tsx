@@ -26,6 +26,7 @@ import {
   User,
   UserRound,
   X,
+  Sparkles,
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,7 @@ import {
   formatTamanhoArquivo,
   prioridadeParaUi,
   enviarRespostaAdminTicket,
+  gerarRespostaIaTicket,
   MAX_ANEXO_TICKET_BYTES,
 } from "@/lib/admin-suporte-api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -608,6 +610,7 @@ function ResponderModal({
   const [fechar, setFechar] = useState(false);
   const [drag, setDrag] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [gerandoIa, setGerandoIa] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const addFiles = (files: FileList | null) => {
@@ -627,6 +630,23 @@ function ResponderModal({
       });
     }
     if (novos.length) setAnexos((prev) => [...prev, ...novos]);
+  };
+
+  const gerarComIa = async () => {
+    setGerandoIa(true);
+    try {
+      const res = await gerarRespostaIaTicket(ticket.id);
+      if (!res.ok || !res.rascunho) {
+        toast.error(res.error || "Falha ao gerar resposta com IA");
+        return;
+      }
+      setResposta(res.rascunho);
+      toast.success("Prévia gerada — revise antes de enviar");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar com IA");
+    } finally {
+      setGerandoIa(false);
+    }
   };
 
   const enviar = async () => {
@@ -694,35 +714,57 @@ function ResponderModal({
           </header>
 
           <div className="flex-1 space-y-5 overflow-y-auto px-7 py-6">
-            <div>
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Respostas rápidas
-              </Label>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {respostasRapidas.map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setResposta(r)}
-                    className="rounded-full border bg-card px-3 py-1 text-[11px] transition hover:border-primary hover:bg-primary/5"
-                  >
-                    {r.slice(0, 48)}...
-                  </button>
-                ))}
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Respostas rápidas
+                </Label>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {respostasRapidas.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setResposta(r)}
+                      className="rounded-full border bg-card px-3 py-1 text-[11px] transition hover:border-primary hover:bg-primary/5"
+                    >
+                      {r.slice(0, 48)}...
+                    </button>
+                  ))}
+                </div>
               </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="gap-2 shrink-0"
+                disabled={gerandoIa || enviando}
+                onClick={() => void gerarComIa()}
+              >
+                {gerandoIa ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {gerandoIa ? "Gerando prévia…" : "Responder com IA"}
+              </Button>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="resposta-admin" className="text-sm font-semibold">
-                Sua mensagem <span className="text-destructive">*</span>
-              </Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="resposta-admin" className="text-sm font-semibold">
+                  Sua mensagem <span className="text-destructive">*</span>
+                </Label>
+                <span className="text-[11px] text-muted-foreground">
+                  A IA gera uma prévia — revise e autorize o envio
+                </span>
+              </div>
               <Textarea
                 id="resposta-admin"
-                placeholder="Escreva sua resposta..."
+                placeholder="Escreva sua resposta ou clique em Responder com IA…"
                 value={resposta}
                 onChange={(e) => setResposta(e.target.value)}
                 className="min-h-[200px] resize-none text-base leading-relaxed"
                 autoFocus
+                disabled={gerandoIa}
               />
               <p className="text-right text-xs text-muted-foreground">{resposta.length} caracteres</p>
             </div>
@@ -752,10 +794,17 @@ function ResponderModal({
                   <Upload className="h-5 w-5" />
                 </div>
                 <p className="mt-3 text-sm font-semibold">
-                  Arraste ou <span className="text-primary underline-offset-4 hover:underline">clique para selecionar</span>
+                  Arraste ou{" "}
+                  <span className="text-primary underline-offset-4 hover:underline">clique para selecionar</span>
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">PDF, PNG, JPG, DOCX — até 20 MB cada</p>
-                <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => addFiles(e.target.files)}
+                />
               </div>
               {anexos.length > 0 && (
                 <ul className="mt-2 space-y-2">
@@ -780,7 +829,7 @@ function ResponderModal({
               )}
             </div>
 
-            <label className="flex items-center gap-2 rounded-xl border bg-card p-3 text-sm cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border bg-card p-3 text-sm">
               <input
                 type="checkbox"
                 checked={fechar}
@@ -793,13 +842,13 @@ function ResponderModal({
           </div>
 
           <footer className="flex items-center justify-between gap-3 border-t bg-muted/30 px-7 py-4">
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={enviando}>
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={enviando || gerandoIa}>
               Cancelar
             </Button>
             <Button
               size="lg"
               onClick={() => void enviar()}
-              disabled={resposta.trim().length < 2 || enviando}
+              disabled={resposta.trim().length < 2 || enviando || gerandoIa}
               className="gap-2"
             >
               {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
