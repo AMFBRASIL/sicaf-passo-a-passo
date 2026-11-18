@@ -77,12 +77,13 @@ export function FiscalTab({ clienteId }: { clienteId: number }) {
 
   const baixarArquivo = async (item: NfseFiscalItem, tipo: "pdf" | "xml") => {
     if (!item.nfse?.id) return;
-    const direct = tipo === "pdf" ? item.nfse.pdfUrl : item.nfse.xmlUrl;
-    if (direct) {
-      window.open(direct, "_blank", "noopener,noreferrer");
+    // PDF sempre via API (DANFSe oficial do ADN). XML pode usar storage direto.
+    if (tipo === "xml" && item.nfse.xmlUrl) {
+      window.open(item.nfse.xmlUrl, "_blank", "noopener,noreferrer");
       return;
     }
     try {
+      toast.message(tipo === "pdf" ? "Buscando DANFSe oficial…" : "Baixando XML…");
       const res = await apiFetch(arquivoNfseUrl(clienteId, item.nfse.id, tipo));
       if (!res.ok) {
         toast.error(`Falha ao baixar ${tipo.toUpperCase()}`);
@@ -92,9 +93,10 @@ export function FiscalTab({ clienteId }: { clienteId: number }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `NFSe_${item.nfse.id}.${tipo}`;
+      a.download = tipo === "pdf" ? `DANFSe_${item.nfse.id}.pdf` : `NFSe_${item.nfse.id}.xml`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success(`${tipo.toUpperCase()} baixado`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : `Erro no download ${tipo}`);
     }

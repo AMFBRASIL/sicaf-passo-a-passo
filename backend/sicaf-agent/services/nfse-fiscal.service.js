@@ -220,14 +220,96 @@ function parseEnderecoCliente(cliente) {
   return { xLgr, nro, xCpl, xBairro: xBairro || 'CENTRO' };
 }
 
+/**
+ * ViaCEP → IBGE do município do CEP (evita E0240: CEP x cMun incompatíveis).
+ */
+async function lookupViaCep(cepDigits) {
+  const cep = onlyDigits(cepDigits);
+  if (cep.length !== 8) return null;
+  try {
+    const https = require('https');
+    const raw = await new Promise((resolve, reject) => {
+      const req = https.get(`https://viacep.com.br/ws/${cep}/json/`, { timeout: 8000 }, (res) => {
+        let body = '';
+        res.on('data', (c) => {
+          body += c;
+        });
+        res.on('end', () => resolve(body));
+      });
+      req.on('error', reject);
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('ViaCEP timeout'));
+      });
+    });
+    const data = JSON.parse(raw);
+    if (!data || data.erro) return null;
+    return {
+      cep,
+      ibge: onlyDigits(data.ibge),
+      logradouro: data.logradouro || '',
+      bairro: data.bairro || '',
+      localidade: data.localidade || '',
+      uf: data.uf || '',
+    };
+  } catch (e) {
+    console.warn('[NFSeFiscal] ViaCEP:', e.message);
+    return null;
+  }
+}
+
+/**
+ * Garante CEP + cMun coerentes para o tomador (E0240).
+ * Prioridade: ViaCEP(ibge do CEP) > codigo_ibge do cliente > padrão SP só se CEP for de SP.
+ */
+async function resolveTomadorEndereco(cliente, prest) {
+  const end = parseEnderecoCliente(cliente);
+  let cep = onlyDigits(cliente.cep);
+  let cMun = onlyDigits(cliente.codigo_ibge || cliente.cMun);
+
+  if (cep.length === 8) {
+    const via = await lookupViaCep(cep);
+    if (!via?.ibge) {
+      return {
+        ok: false,
+        error: `CEP do tomador inválido ou não encontrado (${cep}). Atualize o CEP do cliente.`,
+      };
+    }
+    // IBGE do CEP manda — evita E0240 quando cadastro tem município errado/ausente
+    cMun = via.ibge;
+    if (!end.xLgr || end.xLgr === 'NAO INFORMADO') {
+      end.xLgr = via.logradouro || end.xLgr;
+    }
+    if (!cliente.bairro && via.bairro) end.xBairro = via.bairro;
+  } else {
+    // Sem CEP no cadastro: só usa fallback SP se o município também for SP (ou padrão)
+    const padrao = onlyDigits(prest.tomadorIbgePadrao || prest.cMun) || '3550308';
+    cMun = cMun || padrao;
+    if (cMun === '3550308' || cMun === padrao) {
+      cep = '01001000';
+      cMun = '3550308';
+    } else {
+      return {
+        ok: false,
+        error:
+          'Cliente sem CEP cadastrado. Informe um CEP válido do município do tomador para emitir a NFS-e.',
+      };
+    }
+  }
+
+  return { ok: true, cep, cMun, end };
+}
+
 async function buildDpsFromClientePagamento({ cliente, item, nDPS }) {
   const prest = await getPrestadorDefaults();
   const cnpjTom = onlyDigits(cliente.documento || cliente.cnpj);
-  const end = parseEnderecoCliente(cliente);
-  const cMunTom =
-    onlyDigits(cliente.codigo_ibge || cliente.cMun || prest.tomadorIbgePadrao) ||
-    prest.cMun;
-  const cep = onlyDigits(cliente.cep) || '01001000';
+  const addr = await resolveTomadorEndereco(cliente, prest);
+  if (!addr.ok) {
+    const err = new Error(addr.error);
+    err.code = 'E0240_LOCAL';
+    throw err;
+  }
+  const { cep, cMun: cMunTom, end } = addr;
   const valor = Number(item.valor) || 0;
   const desc =
     item.descricao ||
@@ -270,6 +352,7 @@ async function buildDpsFromClientePagamento({ cliente, item, nDPS }) {
       cTribNac: prest.cTribNac,
       cTribMun: prest.cTribMun,
       cNBS: prest.cNBS,
+      // Local da prestação: município do tomador (já alinhado ao CEP)
       cLocPrestacao: cMunTom,
       xDescServ: String(desc).slice(0, 2000),
     },
@@ -338,22 +421,58 @@ function buildPdfBuffer(info) {
   return Buffer.from(pdf, 'utf8');
 }
 
-async function uploadNfseArquivos({ clienteId, chaveAcesso, nfseXml, meta }) {
+async function obterDanfsePdfBuffer(chaveAcesso, opts = {}) {
+  const chave = onlyDigits(chaveAcesso);
+  if (chave.length < 50) return { ok: false, error: 'chaveAcesso inválida' };
+
+  // ADN pode demorar alguns segundos após a autorização
+  const attempts = Math.max(1, Number(opts.attempts) || 3);
+  const delayMs = Math.max(0, Number(opts.delayMs) || 1500);
+  let last = null;
+  for (let i = 0; i < attempts; i += 1) {
+    if (i > 0 && delayMs) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    // eslint-disable-next-line no-await-in-loop
+    last = await nfse.baixarDanfse({
+      chaveAcesso: chave,
+      useSystemCert: true,
+      clienteId: opts.clienteId,
+    });
+    if (last.ok && last.buffer?.length) return last;
+  }
+  return last || { ok: false, error: 'DANFSe indisponível' };
+}
+
+async function uploadNfseArquivos({ clienteId, chaveAcesso, nfseXml, meta, pdfBuffer }) {
   const storage = require('./storage.service');
   const folder = `nfse/${clienteId}`;
   const safeChave = onlyDigits(chaveAcesso).slice(-20) || String(Date.now());
   const req = null;
 
-  const xmlBuf = Buffer.from(nfseXml || '', 'utf8');
-  const pdfBuf = buildPdfBuffer({
-    chaveAcesso,
-    ambiente: meta?.ambiente,
-    tomadorNome: meta?.tomadorNome,
-    tomadorDoc: meta?.tomadorDoc,
-    valor: meta?.valor,
-    descricao: meta?.descricao,
-  });
+  let pdfBuf = pdfBuffer || null;
+  let pdfSource = pdfBuffer ? 'provided' : null;
+  if (!pdfBuf) {
+    const danfse = await obterDanfsePdfBuffer(chaveAcesso, { clienteId, attempts: 3, delayMs: 1800 });
+    if (danfse.ok && danfse.buffer?.length) {
+      pdfBuf = danfse.buffer;
+      pdfSource = 'adn-danfse';
+    } else {
+      console.warn('[NFSeFiscal] DANFSe oficial indisponível, usando comprovante local:', danfse?.error);
+      pdfBuf = buildPdfBuffer({
+        chaveAcesso,
+        ambiente: meta?.ambiente,
+        tomadorNome: meta?.tomadorNome,
+        tomadorDoc: meta?.tomadorDoc,
+        valor: meta?.valor,
+        descricao: meta?.descricao,
+      });
+      pdfSource = 'local-fallback';
+    }
+  }
 
+  const xmlBuf = Buffer.from(nfseXml || '', 'utf8');
   const xmlFile = {
     buffer: xmlBuf,
     originalname: `NFSe_${safeChave}.xml`,
@@ -362,7 +481,7 @@ async function uploadNfseArquivos({ clienteId, chaveAcesso, nfseXml, meta }) {
   };
   const pdfFile = {
     buffer: pdfBuf,
-    originalname: `NFSe_${safeChave}.pdf`,
+    originalname: `DANFSe_${safeChave}.pdf`,
     size: pdfBuf.length,
     mimetype: 'application/pdf',
   };
@@ -375,10 +494,11 @@ async function uploadNfseArquivos({ clienteId, chaveAcesso, nfseXml, meta }) {
   return {
     xmlUrl: xmlUp.fullUrl || xmlUp.url,
     pdfUrl: pdfUp.fullUrl || pdfUp.url,
+    pdfSource,
   };
 }
 
-async function enviarEmailNfse({ cliente, item, chaveAcesso, xmlUrl, pdfUrl, nfseXml }) {
+async function enviarEmailNfse({ cliente, item, chaveAcesso, xmlUrl, pdfUrl, nfseXml, pdfBuffer }) {
   const to =
     cliente.email_financeiro ||
     cliente.email ||
@@ -415,6 +535,13 @@ async function enviarEmailNfse({ cliente, item, chaveAcesso, xmlUrl, pdfUrl, nfs
       filename: `NFSe_${onlyDigits(chaveAcesso).slice(-12) || 'nota'}.xml`,
       content: Buffer.from(nfseXml, 'utf8'),
       contentType: 'application/xml',
+    });
+  }
+  if (pdfBuffer?.length) {
+    attachments.push({
+      filename: `DANFSe_${onlyDigits(chaveAcesso).slice(-12) || 'nota'}.pdf`,
+      content: pdfBuffer,
+      contentType: 'application/pdf',
     });
   }
 
@@ -466,13 +593,19 @@ async function emitirFiscalPagamento(opts = {}) {
     const cliente = det.client;
 
     const nDPS = String(Date.now()).slice(-8);
-    const dps = await buildDpsFromClientePagamento({ cliente, item, nDPS });
+    let dps;
+    try {
+      dps = await buildDpsFromClientePagamento({ cliente, item, nDPS });
+    } catch (e) {
+      return { ok: false, error: e.message || 'Falha ao montar dados do tomador para NFS-e.' };
+    }
 
     const result = await nfse.emitir({
       useSystemCert: true,
       clienteId,
       usuarioId: opts.usuarioId || null,
       pagamentoId: item.pagamentoId || null,
+      valor: item.valor,
       dps,
     });
 
@@ -490,11 +623,21 @@ async function emitirFiscalPagamento(opts = {}) {
 
     let xmlUrl = null;
     let pdfUrl = null;
+    let pdfBufferEmail = null;
     try {
+      // Prefere DANFSe oficial do ADN; se falhar, comprovante local
+      const danfse = await obterDanfsePdfBuffer(result.chaveAcesso, {
+        clienteId,
+        attempts: 3,
+        delayMs: 2000,
+      });
+      if (danfse.ok) pdfBufferEmail = danfse.buffer;
+
       const up = await uploadNfseArquivos({
         clienteId,
         chaveAcesso: result.chaveAcesso,
         nfseXml: result.nfseXml || result.dpsXmlAssinado,
+        pdfBuffer: pdfBufferEmail || undefined,
         meta: {
           ambiente: result.ambiente,
           tomadorNome: dps.tomador?.xNome,
@@ -525,6 +668,7 @@ async function emitirFiscalPagamento(opts = {}) {
         xmlUrl,
         pdfUrl,
         nfseXml: result.nfseXml || result.dpsXmlAssinado,
+        pdfBuffer: pdfBufferEmail,
       });
       if (email?.ok && result.emissaoId) {
         await db(NFSE_TABLE).where('id', result.emissaoId).update({
@@ -630,7 +774,49 @@ async function obterArquivoEmissao(opts = {}) {
 
     const tipo = String(opts.tipo || 'xml').toLowerCase();
     if (tipo === 'pdf') {
-      if (row.pdf_url) return { ok: true, url: row.pdf_url, tipo: 'pdf' };
+      // Sempre tenta o DANFSe oficial do portal do governo (ADN)
+      if (row.chave_acesso && row.status === 'autorizada') {
+        const danfse = await obterDanfsePdfBuffer(row.chave_acesso, {
+          clienteId: row.cliente_id,
+          attempts: 2,
+          delayMs: 1200,
+        });
+        if (danfse.ok && danfse.buffer?.length) {
+          // Atualiza cache no storage (best-effort) para e-mails/links futuros
+          try {
+            const storage = require('./storage.service');
+            const safeChave = onlyDigits(row.chave_acesso).slice(-20) || String(row.id);
+            const up = await storage.uploadFile(
+              {
+                buffer: danfse.buffer,
+                originalname: `DANFSe_${safeChave}.pdf`,
+                size: danfse.buffer.length,
+                mimetype: 'application/pdf',
+              },
+              null,
+              `nfse/${row.cliente_id || 'avulso'}`,
+            );
+            const pdfUrl = up.fullUrl || up.url;
+            if (pdfUrl) {
+              await db(NFSE_TABLE).where('id', row.id).update({
+                pdf_url: pdfUrl,
+                updated_at: db.fn.now(),
+              });
+            }
+          } catch (e) {
+            console.warn('[NFSeFiscal] cache DANFSe:', e.message);
+          }
+          return {
+            ok: true,
+            buffer: danfse.buffer,
+            filename: danfse.filename || `DANFSe_${row.id}.pdf`,
+            contentType: 'application/pdf',
+            source: 'adn-danfse',
+          };
+        }
+      }
+
+      if (row.pdf_url) return { ok: true, url: row.pdf_url, tipo: 'pdf', source: 'storage' };
       const buf = buildPdfBuffer({
         chaveAcesso: row.chave_acesso,
         ambiente: row.ambiente,
@@ -639,24 +825,33 @@ async function obterArquivoEmissao(opts = {}) {
         valor: row.valor,
         descricao: row.descricao,
       });
-      return { ok: true, buffer: buf, filename: `NFSe_${row.id}.pdf`, contentType: 'application/pdf' };
+      return {
+        ok: true,
+        buffer: buf,
+        filename: `NFSe_${row.id}.pdf`,
+        contentType: 'application/pdf',
+        source: 'local-fallback',
+      };
     }
 
-    if (row.xml_url) return { ok: true, url: row.xml_url, tipo: 'xml' };
+    // XML oficial da NFS-e (preferir banco/arquivo; storage por último se for o caso)
     if (row.nfse_xml) {
       return {
         ok: true,
         buffer: Buffer.from(row.nfse_xml, 'utf8'),
-        filename: `NFSe_${row.id}.xml`,
+        filename: `NFSe_${onlyDigits(row.chave_acesso).slice(-12) || row.id}.xml`,
         contentType: 'application/xml',
+        source: 'database',
       };
     }
+    if (row.xml_url) return { ok: true, url: row.xml_url, tipo: 'xml', source: 'storage' };
     if (row.dps_xml) {
       return {
         ok: true,
         buffer: Buffer.from(row.dps_xml, 'utf8'),
         filename: `DPS_${row.id}.xml`,
         contentType: 'application/xml',
+        source: 'dps',
       };
     }
     return { ok: false, error: 'Arquivo não disponível' };
@@ -848,5 +1043,6 @@ module.exports = {
   emitirFiscalPagamento,
   cancelarFiscalEmissao,
   obterArquivoEmissao,
+  obterDanfsePdfBuffer,
   ensureNfseExtraColumns,
 };

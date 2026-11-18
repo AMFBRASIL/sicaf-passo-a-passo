@@ -648,7 +648,7 @@ async function resolveCredentials(opts = {}) {
   };
 }
 
-function mtlsRequest(urlString, { method = 'GET', body = null, credentials }) {
+function mtlsRequest(urlString, { method = 'GET', body = null, credentials, accept = 'application/json', binary = false }) {
   return new Promise((resolve, reject) => {
     try {
       const url = new URL(urlString);
@@ -657,6 +657,8 @@ function mtlsRequest(urlString, { method = 'GET', body = null, credentials }) {
         passphrase: credentials.passphrase || '',
         rejectUnauthorized: process.env.NFSE_TLS_INSECURE === 'true' ? false : true,
         keepAlive: false,
+        // SEFIN/ADN pedem HTTP/1.1
+        ALPNProtocols: ['http/1.1'],
       });
 
       const payload = body == null ? null : Buffer.from(JSON.stringify(body), 'utf8');
@@ -669,7 +671,7 @@ function mtlsRequest(urlString, { method = 'GET', body = null, credentials }) {
           method,
           agent,
           headers: {
-            Accept: 'application/json',
+            Accept: accept,
             ...(payload
               ? {
                   'Content-Type': 'application/json; charset=utf-8',
@@ -682,7 +684,18 @@ function mtlsRequest(urlString, { method = 'GET', body = null, credentials }) {
           const chunks = [];
           res.on('data', (c) => chunks.push(c));
           res.on('end', () => {
-            const raw = Buffer.concat(chunks).toString('utf8');
+            const buf = Buffer.concat(chunks);
+            if (binary) {
+              resolve({
+                status: res.statusCode || 0,
+                headers: res.headers,
+                buffer: buf,
+                raw: null,
+                json: null,
+              });
+              return;
+            }
+            const raw = buf.toString('utf8');
             let json = null;
             try {
               json = raw ? JSON.parse(raw) : null;
@@ -694,6 +707,7 @@ function mtlsRequest(urlString, { method = 'GET', body = null, credentials }) {
               headers: res.headers,
               raw,
               json,
+              buffer: buf,
             });
           });
         },
@@ -705,6 +719,62 @@ function mtlsRequest(urlString, { method = 'GET', body = null, credentials }) {
       reject(e);
     }
   });
+}
+
+/**
+ * Baixa o DANFSe oficial (PDF) no ADN: GET {danfse}/{chaveAcesso}
+ * https://adn.nfse.gov.br/danfse/{chave} (produção)
+ */
+async function baixarDanfse(opts = {}) {
+  try {
+    await refreshRuntime();
+    const chave = onlyDigits(opts.chaveAcesso || opts.chave || '');
+    if (chave.length < 50) {
+      return { ok: false, error: 'chaveAcesso inválida para DANFSe (esperado 50 dígitos)' };
+    }
+
+    const creds = await resolveCredentials(opts);
+    if (!creds.ok) return creds;
+
+    const urls = getBaseUrls();
+    const endpoint = `${urls.danfse}/${chave}`;
+    const res = await mtlsRequest(endpoint, {
+      method: 'GET',
+      credentials: creds,
+      accept: 'application/pdf, application/octet-stream, */*',
+      binary: true,
+    });
+
+    const contentType = String(res.headers?.['content-type'] || '');
+    const isPdf =
+      contentType.includes('pdf') ||
+      (res.buffer && res.buffer.length > 4 && res.buffer.slice(0, 4).toString('utf8') === '%PDF');
+
+    if (res.status >= 200 && res.status < 300 && isPdf && res.buffer?.length) {
+      return {
+        ok: true,
+        buffer: res.buffer,
+        contentType: 'application/pdf',
+        filename: `DANFSe_${chave.slice(-12)}.pdf`,
+        ambiente: urls.ambiente,
+        source: 'adn-danfse',
+      };
+    }
+
+    let detail = '';
+    try {
+      detail = res.buffer ? res.buffer.toString('utf8').slice(0, 400) : '';
+    } catch (_) {}
+    return {
+      ok: false,
+      error: `Falha ao baixar DANFSe (HTTP ${res.status})${detail ? `: ${detail}` : ''}`,
+      status: res.status,
+      ambiente: urls.ambiente,
+    };
+  } catch (e) {
+    console.error('[NFSe] baixarDanfse:', e.message);
+    return { ok: false, error: e.message || 'Erro ao baixar DANFSe' };
+  }
 }
 
 async function ensureNfseTable(db) {
@@ -796,6 +866,9 @@ async function emitir(opts = {}) {
 
     const dps = opts.dps || {};
     const valores = dps.valores || dps.servico?.valores || {};
+    const valorNum = Number(
+      valores.vServ ?? valores.vServPrest ?? valores.valorServico ?? opts.valor ?? 0,
+    );
     const emissaoId = await persistEmissao({
       cliente_id: opts.clienteId || creds.clienteId || null,
       usuario_id: opts.usuarioId || null,
@@ -805,7 +878,7 @@ async function emitir(opts = {}) {
       id_dps: dps.id || null,
       serie: dps.serie || null,
       numero_dps: String(dps.nDPS || dps.numero || ''),
-      valor: Number(valores.vServPrest || valores.valorServico || 0) || null,
+      valor: Number.isFinite(valorNum) && valorNum > 0 ? valorNum : null,
       tomador_doc: onlyDigits(dps.tomador?.cnpj || dps.tomador?.cpf || '') || null,
       tomador_nome: dps.tomador?.xNome || dps.tomador?.nome || null,
       descricao: dps.servico?.xDescServ || dps.servico?.descricao || null,
@@ -986,6 +1059,7 @@ module.exports = {
   signDpsXml,
   resolveCredentials,
   mtlsRequest,
+  baixarDanfse,
   // operações
   emitir,
   cancelar,

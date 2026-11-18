@@ -141,12 +141,13 @@ function FiscalAdminPage() {
   }, [carregar]);
 
   const baixar = async (item: NfsePainelEmissao, tipo: "pdf" | "xml") => {
-    const direct = tipo === "pdf" ? item.pdfUrl : item.xmlUrl;
-    if (direct) {
-      window.open(direct, "_blank", "noopener,noreferrer");
+    // PDF sempre via API (DANFSe oficial). XML pode abrir storage direto.
+    if (tipo === "xml" && item.xmlUrl) {
+      window.open(item.xmlUrl, "_blank", "noopener,noreferrer");
       return;
     }
     try {
+      toast.message(tipo === "pdf" ? "Buscando DANFSe oficial…" : "Baixando XML…");
       const res = await apiFetch(
         adminFiscalArquivoUrl(item.id, tipo, { clienteId: item.clienteId }),
       );
@@ -158,9 +159,10 @@ function FiscalAdminPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `NFSe_${item.id}.${tipo}`;
+      a.download = tipo === "pdf" ? `DANFSe_${item.id}.pdf` : `NFSe_${item.id}.xml`;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success(`${tipo.toUpperCase()} baixado`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro no download");
     }
@@ -172,15 +174,12 @@ function FiscalAdminPage() {
     setPdfLoading(true);
     setPdfUrl(null);
     try {
-      if (item.pdfUrl) {
-        setPdfUrl(item.pdfUrl);
-        return;
-      }
+      toast.message("Buscando DANFSe oficial…");
       const res = await apiFetch(
         adminFiscalArquivoUrl(item.id, "pdf", { clienteId: item.clienteId, inline: true }),
       );
       if (!res.ok) {
-        toast.error("Não foi possível abrir o PDF");
+        toast.error("Não foi possível abrir o DANFSe");
         return;
       }
       const blob = await res.blob();
@@ -528,7 +527,7 @@ function FiscalAdminPage() {
           <DialogHeader className="border-b px-5 py-4 space-y-1">
             <DialogTitle className="flex items-center gap-2 text-base">
               <Eye className="h-4 w-4 text-teal-700" />
-              Pré-visualização PDF — NFS-e #{pdfItem?.id}
+              DANFSe oficial — NFS-e #{pdfItem?.id}
             </DialogTitle>
             <DialogDescription className="text-xs">
               {pdfItem?.clienteRazao || pdfItem?.tomadorNome || "—"} ·{" "}
