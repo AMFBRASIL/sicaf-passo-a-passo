@@ -201,11 +201,14 @@ function buildDpsXml(dps) {
         ? '1'
         : '';
   const regEspTrib = String(regTrib.regEspTrib ?? '0');
-  // NT 009 (prod. restrita): finNFSe sob infDPS — 0=regular, 1=crédito, 2=débito
+  // NT 009: finNFSe sob infDPS — obrigatório em produção restrita (tpAmb=2).
+  // Em produção (tpAmb=1) o XSD ainda é o antigo: após tpEmit vem cMotivoEmisTI/chNFSeRej/cLocEmi (sem finNFSe).
+  const useNt009InfDps = String(tpAmb) === '2' || dps.forceFinNFSe === true;
   const finNFSe = String(dps.finNFSe ?? '0');
   const tpNFSeCredito = dps.tpNFSeCredito != null ? String(dps.tpNFSeCredito) : '';
   const tpNFSeDebito = dps.tpNFSeDebito != null ? String(dps.tpNFSeDebito) : '';
   const cMotivoEmisTI = dps.cMotivoEmisTI != null ? String(dps.cMotivoEmisTI) : '';
+  const chNFSeRej = dps.chNFSeRej != null ? onlyDigits(dps.chNFSeRej) : '';
 
   const tom = dps.tomador || {};
   const tomCnpj = onlyDigits(tom.cnpj);
@@ -322,9 +325,14 @@ function buildDpsXml(dps) {
     <dCompet>${escapeXml(dCompet)}</dCompet>
     <tpEmit>1</tpEmit>
     ${cMotivoEmisTI ? `<cMotivoEmisTI>${escapeXml(cMotivoEmisTI)}</cMotivoEmisTI>` : ''}
-    <finNFSe>${finNFSe}</finNFSe>
-    ${finNFSe === '1' && tpNFSeCredito ? `<tpNFSeCredito>${escapeXml(tpNFSeCredito)}</tpNFSeCredito>` : ''}
+    ${
+      useNt009InfDps
+        ? `<finNFSe>${finNFSe}</finNFSe>
     ${finNFSe === '2' && tpNFSeDebito ? `<tpNFSeDebito>${escapeXml(tpNFSeDebito)}</tpNFSeDebito>` : ''}
+    ${finNFSe === '1' && tpNFSeCredito ? `<tpNFSeCredito>${escapeXml(tpNFSeCredito)}</tpNFSeCredito>` : ''}`
+        : ''
+    }
+    ${chNFSeRej ? `<chNFSeRej>${chNFSeRej}</chNFSeRej>` : ''}
     <cLocEmi>${cMun}</cLocEmi>
     <prest>
       ${prestadorXml}
