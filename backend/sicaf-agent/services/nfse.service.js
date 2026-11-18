@@ -625,9 +625,19 @@ async function resolveCredentials(opts = {}) {
   if (rt.nfse_cert_pfx_base64) {
     pfxBuffer = Buffer.from(rt.nfse_cert_pfx_base64, 'base64');
   } else {
-    const pfxPath = rt.nfse_cert_pfx_path || process.env.CERT_PFX_PATH || '';
-    if (pfxPath && fs.existsSync(pfxPath)) {
-      pfxBuffer = fs.readFileSync(pfxPath);
+    const candidates = [
+      rt.nfse_cert_pfx_path,
+      process.env.NFSE_CERT_PFX_PATH,
+      process.env.CERT_PFX_PATH,
+      // fallbacks locais (dev Windows / repo)
+      require('path').join(__dirname, '../../private/certificados/cadbrasil.pfx'),
+      require('path').join(process.cwd(), 'private/certificados/cadbrasil.pfx'),
+    ].filter(Boolean);
+    for (const pfxPath of candidates) {
+      if (pfxPath && fs.existsSync(pfxPath)) {
+        pfxBuffer = fs.readFileSync(pfxPath);
+        break;
+      }
     }
   }
 
@@ -722,58 +732,115 @@ function mtlsRequest(urlString, { method = 'GET', body = null, credentials, acce
 }
 
 /**
- * Baixa o DANFSe oficial (PDF) no ADN: GET {danfse}/{chaveAcesso}
- * https://adn.nfse.gov.br/danfse/{chave} (produção)
+ * Gera DANFSe local (NT 008) a partir do XML autorizado da NFS-e.
+ * Necessário porque a API ADN /danfse foi sobrestada (503 / NT 008).
+ */
+async function gerarDanfseLocalFromXml(nfseXml, opts = {}) {
+  try {
+    const xml = String(nfseXml || '').trim();
+    if (!xml || !xml.includes('NFSe')) {
+      return { ok: false, error: 'XML da NFS-e inválido para gerar DANFSe' };
+    }
+    const { parseNfseXml, generateDanfsePdf } = require('danfse-pdf-generator');
+    const dados = parseNfseXml(xml);
+    const ambiente =
+      opts.ambiente ||
+      getAmbiente() ||
+      (String(dados?.ambienteGerador) === '2' ? 'producaorestrita' : 'producao');
+    const pdf = await generateDanfsePdf(dados, {
+      ambienteGerador: ambiente === 'producao' ? '1' : '2',
+      hideWarnings: true,
+    });
+    if (!Buffer.isBuffer(pdf) || pdf.length < 100 || pdf.slice(0, 4).toString('utf8') !== '%PDF') {
+      return { ok: false, error: 'Gerador local não retornou PDF válido' };
+    }
+    const chave =
+      onlyDigits(opts.chaveAcesso || dados?.chaveAcesso || '').slice(-12) || 'nfse';
+    return {
+      ok: true,
+      buffer: pdf,
+      contentType: 'application/pdf',
+      filename: `DANFSe_${chave}.pdf`,
+      source: 'local-nt008',
+      ambiente,
+    };
+  } catch (e) {
+    console.error('[NFSe] gerarDanfseLocalFromXml:', e.message);
+    return { ok: false, error: e.message || 'Falha ao gerar DANFSe local' };
+  }
+}
+
+/**
+ * Obtém DANFSe (PDF): tenta ADN; se indisponível, gera local a partir do XML
+ * (opts.nfseXml ou consulta SEFIN pela chave).
  */
 async function baixarDanfse(opts = {}) {
   try {
     await refreshRuntime();
     const chave = onlyDigits(opts.chaveAcesso || opts.chave || '');
-    if (chave.length < 50) {
-      return { ok: false, error: 'chaveAcesso inválida para DANFSe (esperado 50 dígitos)' };
-    }
-
-    const creds = await resolveCredentials(opts);
-    if (!creds.ok) return creds;
-
     const urls = getBaseUrls();
-    const endpoint = `${urls.danfse}/${chave}`;
-    const res = await mtlsRequest(endpoint, {
-      method: 'GET',
-      credentials: creds,
-      accept: 'application/pdf, application/octet-stream, */*',
-      binary: true,
-    });
 
-    const contentType = String(res.headers?.['content-type'] || '');
-    const isPdf =
-      contentType.includes('pdf') ||
-      (res.buffer && res.buffer.length > 4 && res.buffer.slice(0, 4).toString('utf8') === '%PDF');
-
-    if (res.status >= 200 && res.status < 300 && isPdf && res.buffer?.length) {
-      return {
-        ok: true,
-        buffer: res.buffer,
-        contentType: 'application/pdf',
-        filename: `DANFSe_${chave.slice(-12)}.pdf`,
-        ambiente: urls.ambiente,
-        source: 'adn-danfse',
-      };
+    // 1) ADN (pode estar sobrestado / 503)
+    if (chave.length >= 50) {
+      const creds = await resolveCredentials(opts);
+      if (creds.ok) {
+        try {
+          const endpoint = `${urls.danfse}/${chave}`;
+          const res = await mtlsRequest(endpoint, {
+            method: 'GET',
+            credentials: creds,
+            accept: 'application/pdf, application/octet-stream, */*',
+            binary: true,
+          });
+          const contentType = String(res.headers?.['content-type'] || '');
+          const isPdf =
+            contentType.includes('pdf') ||
+            (res.buffer && res.buffer.length > 4 && res.buffer.slice(0, 4).toString('utf8') === '%PDF');
+          if (res.status >= 200 && res.status < 300 && isPdf && res.buffer?.length) {
+            return {
+              ok: true,
+              buffer: res.buffer,
+              contentType: 'application/pdf',
+              filename: `DANFSe_${chave.slice(-12)}.pdf`,
+              ambiente: urls.ambiente,
+              source: 'adn-danfse',
+            };
+          }
+        } catch (e) {
+          console.warn('[NFSe] ADN DANFSe indisponível:', e.message);
+        }
+      }
     }
 
-    let detail = '';
-    try {
-      detail = res.buffer ? res.buffer.toString('utf8').slice(0, 400) : '';
-    } catch (_) {}
+    // 2) XML informado
+    let xml = opts.nfseXml || opts.xml || null;
+    if (!xml && chave.length >= 50) {
+      const consulta = await consultarPorChave({
+        chaveAcesso: chave,
+        useSystemCert: opts.useSystemCert !== false,
+        clienteId: opts.clienteId,
+      });
+      if (consulta.ok && consulta.nfseXml) xml = consulta.nfseXml;
+    }
+
+    if (xml) {
+      const local = await gerarDanfseLocalFromXml(xml, {
+        chaveAcesso: chave,
+        ambiente: urls.ambiente,
+      });
+      if (local.ok) return local;
+      return local;
+    }
+
     return {
       ok: false,
-      error: `Falha ao baixar DANFSe (HTTP ${res.status})${detail ? `: ${detail}` : ''}`,
-      status: res.status,
+      error:
+        'DANFSe indisponível: API ADN fora do ar e sem XML da NFS-e para gerar o PDF local (NT 008).',
       ambiente: urls.ambiente,
     };
   } catch (e) {
     console.error('[NFSe] baixarDanfse:', e.message);
-    return { ok: false, error: e.message || 'Erro ao baixar DANFSe' };
+    return { ok: false, error: e.message || 'Erro ao obter DANFSe' };
   }
 }
 
@@ -1059,6 +1126,7 @@ module.exports = {
   signDpsXml,
   resolveCredentials,
   mtlsRequest,
+  gerarDanfseLocalFromXml,
   baixarDanfse,
   // operações
   emitir,

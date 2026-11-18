@@ -31,6 +31,7 @@
     "@aws-sdk/client-s3": "^3.988.0",
     "@xmldom/xmldom": "^0.9.12",
     "bcryptjs": "^3.0.2",
+    "danfse-pdf-generator": "^1.0.1",
     "dotenv": "^16.5.0",
     "esbuild": "^0.25.12",
     "jose": "^6.0.11",

@@ -423,25 +423,27 @@ function buildPdfBuffer(info) {
 
 async function obterDanfsePdfBuffer(chaveAcesso, opts = {}) {
   const chave = onlyDigits(chaveAcesso);
-  if (chave.length < 50) return { ok: false, error: 'chaveAcesso inválida' };
-
-  // ADN pode demorar alguns segundos após a autorização
-  const attempts = Math.max(1, Number(opts.attempts) || 3);
-  const delayMs = Math.max(0, Number(opts.delayMs) || 1500);
-  let last = null;
-  for (let i = 0; i < attempts; i += 1) {
-    if (i > 0 && delayMs) {
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
-    // eslint-disable-next-line no-await-in-loop
-    last = await nfse.baixarDanfse({
+  // 1) Preferir geração local NT 008 a partir do XML (API ADN /danfse está sobrestada)
+  if (opts.nfseXml) {
+    const local = await nfse.gerarDanfseLocalFromXml(opts.nfseXml, {
       chaveAcesso: chave,
-      useSystemCert: true,
-      clienteId: opts.clienteId,
+      ambiente: opts.ambiente,
     });
-    if (last.ok && last.buffer?.length) return last;
+    if (local.ok && local.buffer?.length) return local;
   }
+
+  if (chave.length < 50 && !opts.nfseXml) {
+    return { ok: false, error: 'chaveAcesso inválida' };
+  }
+
+  // 2) baixarDanfse: tenta ADN e, se falhar, consulta SEFIN + gera local
+  const last = await nfse.baixarDanfse({
+    chaveAcesso: chave,
+    useSystemCert: true,
+    clienteId: opts.clienteId,
+    nfseXml: opts.nfseXml || undefined,
+  });
+  if (last.ok && last.buffer?.length) return last;
   return last || { ok: false, error: 'DANFSe indisponível' };
 }
 
@@ -454,12 +456,16 @@ async function uploadNfseArquivos({ clienteId, chaveAcesso, nfseXml, meta, pdfBu
   let pdfBuf = pdfBuffer || null;
   let pdfSource = pdfBuffer ? 'provided' : null;
   if (!pdfBuf) {
-    const danfse = await obterDanfsePdfBuffer(chaveAcesso, { clienteId, attempts: 3, delayMs: 1800 });
+    const danfse = await obterDanfsePdfBuffer(chaveAcesso, {
+      clienteId,
+      nfseXml,
+      ambiente: meta?.ambiente,
+    });
     if (danfse.ok && danfse.buffer?.length) {
       pdfBuf = danfse.buffer;
-      pdfSource = 'adn-danfse';
+      pdfSource = danfse.source || 'danfse';
     } else {
-      console.warn('[NFSeFiscal] DANFSe oficial indisponível, usando comprovante local:', danfse?.error);
+      console.warn('[NFSeFiscal] DANFSe indisponível, comprovante textual:', danfse?.error);
       pdfBuf = buildPdfBuffer({
         chaveAcesso,
         ambiente: meta?.ambiente,
@@ -625,18 +631,19 @@ async function emitirFiscalPagamento(opts = {}) {
     let pdfUrl = null;
     let pdfBufferEmail = null;
     try {
-      // Prefere DANFSe oficial do ADN; se falhar, comprovante local
+      // DANFSe no layout nacional (NT 008) a partir do XML autorizado
+      const nfseXmlOficial = result.nfseXml || null;
       const danfse = await obterDanfsePdfBuffer(result.chaveAcesso, {
         clienteId,
-        attempts: 3,
-        delayMs: 2000,
+        nfseXml: nfseXmlOficial,
+        ambiente: result.ambiente,
       });
       if (danfse.ok) pdfBufferEmail = danfse.buffer;
 
       const up = await uploadNfseArquivos({
         clienteId,
         chaveAcesso: result.chaveAcesso,
-        nfseXml: result.nfseXml || result.dpsXmlAssinado,
+        nfseXml: nfseXmlOficial || result.dpsXmlAssinado,
         pdfBuffer: pdfBufferEmail || undefined,
         meta: {
           ambiente: result.ambiente,
@@ -774,15 +781,14 @@ async function obterArquivoEmissao(opts = {}) {
 
     const tipo = String(opts.tipo || 'xml').toLowerCase();
     if (tipo === 'pdf') {
-      // Sempre tenta o DANFSe oficial do portal do governo (ADN)
-      if (row.chave_acesso && row.status === 'autorizada') {
+      // Sempre regenera DANFSe no layout nacional (não usa comprovante textual antigo)
+      if (row.status === 'autorizada' && (row.nfse_xml || row.chave_acesso)) {
         const danfse = await obterDanfsePdfBuffer(row.chave_acesso, {
           clienteId: row.cliente_id,
-          attempts: 2,
-          delayMs: 1200,
+          nfseXml: row.nfse_xml || undefined,
+          ambiente: row.ambiente,
         });
         if (danfse.ok && danfse.buffer?.length) {
-          // Atualiza cache no storage (best-effort) para e-mails/links futuros
           try {
             const storage = require('./storage.service');
             const safeChave = onlyDigits(row.chave_acesso).slice(-20) || String(row.id);
@@ -811,11 +817,12 @@ async function obterArquivoEmissao(opts = {}) {
             buffer: danfse.buffer,
             filename: danfse.filename || `DANFSe_${row.id}.pdf`,
             contentType: 'application/pdf',
-            source: 'adn-danfse',
+            source: danfse.source || 'danfse',
           };
         }
       }
 
+      // Último recurso (rejeitadas / sem XML): comprovante textual
       if (row.pdf_url) return { ok: true, url: row.pdf_url, tipo: 'pdf', source: 'storage' };
       const buf = buildPdfBuffer({
         chaveAcesso: row.chave_acesso,
